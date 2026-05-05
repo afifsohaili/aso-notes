@@ -55,12 +55,16 @@ describe('admin middleware protection', async () => {
       throw new Error(`Login failed: ${await loginRes.text()}`)
     }
 
-    // Extract cookies
-    authCookies = loginRes.headers.getSetCookie().join('; ')
+    // Extract cookies - only keep name=value part
+    const setCookies = loginRes.headers.getSetCookie?.() ?? []
+    authCookies = setCookies.map(c => c.split(';')[0]).join('; ')
   })
 
   afterAll(async () => {
-    // Cleanup
+    // Cleanup - delete sessions first due to FK constraint
+    await db.query('DELETE FROM sessions WHERE "userId" IN (SELECT id FROM users WHERE email = $1)', [testUserEmail])
+    await db.query('DELETE FROM accounts WHERE "userId" IN (SELECT id FROM users WHERE email = $1)', [testUserEmail])
+    await db.query('DELETE FROM memberships WHERE user_id IN (SELECT id FROM users WHERE email = $1)', [testUserEmail])
     await db.query('DELETE FROM users WHERE email = $1', [testUserEmail])
     await db.end()
   })

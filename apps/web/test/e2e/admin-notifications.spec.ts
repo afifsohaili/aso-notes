@@ -74,7 +74,8 @@ describe('admin Notifications API', async () => {
       throw new Error(`Admin login failed: ${await adminLoginRes.text()}`)
     }
 
-    adminCookies = adminLoginRes.headers.getSetCookie().join('; ')
+    const adminSetCookies = adminLoginRes.headers.getSetCookie?.() ?? []
+    adminCookies = adminSetCookies.map(c => c.split(';')[0]).join('; ')
 
     // 2. Create regular user
     const regularSignupRes = await fetch('/api/auth/sign-up/email', {
@@ -114,7 +115,8 @@ describe('admin Notifications API', async () => {
       throw new Error(`Regular user login failed: ${await regularLoginRes.text()}`)
     }
 
-    regularUserCookies = regularLoginRes.headers.getSetCookie().join('; ')
+    const regularSetCookies = regularLoginRes.headers.getSetCookie?.() ?? []
+    regularUserCookies = regularSetCookies.map(c => c.split(';')[0]).join('; ')
   })
 
   afterAll(async () => {
