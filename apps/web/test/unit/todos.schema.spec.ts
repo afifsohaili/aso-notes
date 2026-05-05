@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import pg from 'pg'
 
 // Load .env.local for DB access
@@ -22,6 +22,10 @@ describe('todos schema', () => {
   beforeAll(async () => {
     // Ensure connection is healthy
     await pool.query('SELECT 1')
+  })
+
+  afterAll(async () => {
+    await pool.end()
   })
 
   it('should have a todos table', async () => {
