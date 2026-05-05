@@ -121,27 +121,41 @@ describe('admin Notifications API', async () => {
 
   afterAll(async () => {
     // Cleanup in correct order to avoid FK violations
-    // 1. Delete test notifications
-    await db.query('DELETE FROM notifications WHERE title LIKE \'Test Notification%\' OR message LIKE \'Test message%\' OR title LIKE \'Notification to %\'')
+    // Only delete the regular test user we created, not the hardcoded admin
+    // 1. Delete ALL notifications created by the regular test user
+    await db.query(`
+      DELETE FROM notifications 
+      WHERE created_by IN (
+        SELECT id FROM users WHERE email = $1
+      )
+    `, [regularEmail])
 
-    // 2. Delete sessions for test users
+    // 2. Delete sessions for regular test user
     await db.query(`
       DELETE FROM sessions 
       WHERE "userId" IN (
-        SELECT id FROM users WHERE email IN ($1, $2)
+        SELECT id FROM users WHERE email = $1
       )
-    `, [regularEmail, adminEmail])
+    `, [regularEmail])
 
-    // 3. Delete accounts for test users
+    // 3. Delete accounts for regular test user
     await db.query(`
       DELETE FROM accounts 
       WHERE "userId" IN (
-        SELECT id FROM users WHERE email IN ($1, $2)
+        SELECT id FROM users WHERE email = $1
       )
-    `, [regularEmail, adminEmail])
+    `, [regularEmail])
 
-    // 4. Delete test users
-    await db.query('DELETE FROM users WHERE email IN ($1, $2)', [regularEmail, adminEmail])
+    // 4. Delete memberships for regular test user
+    await db.query(`
+      DELETE FROM memberships 
+      WHERE user_id IN (
+        SELECT id FROM users WHERE email = $1
+      )
+    `, [regularEmail])
+
+    // 5. Delete only the regular test user (not the admin)
+    await db.query('DELETE FROM users WHERE email = $1', [regularEmail])
     await db.end()
   })
 

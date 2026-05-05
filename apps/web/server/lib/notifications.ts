@@ -308,11 +308,20 @@ export async function getAdminNotifications(filters: AdminNotificationFilters = 
 
   const notifications = await query.execute()
 
+  // Return pagination only when not requesting all
+  if (filters.limit === 'all') {
+    return {
+      notifications,
+    }
+  }
+
   return {
     notifications,
-    total,
-    page: filters.page || 1,
-    limit: filters.limit || 25,
+    pagination: {
+      total,
+      page: filters.page || 1,
+      limit: filters.limit || 25,
+    },
   }
 }
 
