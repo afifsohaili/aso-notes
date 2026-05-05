@@ -15,7 +15,7 @@ for (const line of envFile.split('\n')) {
   }
 }
 
-describe('GET /api/notifications', async () => {
+describe('gET /api/notifications', async () => {
   // Use pre-started server if TEST_HOST is set, otherwise start a new one
   await setup({
     host: process.env.TEST_HOST,
@@ -39,7 +39,7 @@ describe('GET /api/notifications', async () => {
     // The afterSignUp hook creates an org + membership automatically
     const res = await fetch('/api/auth/sign-up/email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: origin },
+      headers: { 'Content-Type': 'application/json', 'Origin': origin },
       body: JSON.stringify({
         name: 'Test Notifications User',
         email: testEmail,
@@ -71,7 +71,7 @@ describe('GET /api/notifications', async () => {
     // Sign in to get properly signed session cookies
     const signInRes = await fetch('/api/auth/sign-in/email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: origin },
+      headers: { 'Content-Type': 'application/json', 'Origin': origin },
       body: JSON.stringify({
         email: testEmail,
         password: 'TestPassword123!',

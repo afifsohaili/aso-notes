@@ -1,9 +1,9 @@
-import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { fetch } from '@nuxt/test-utils/e2e'
 import { Pool } from 'pg'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import 'dotenv/config'
 
-describe('Admin middleware protection', () => {
+describe('admin middleware protection', () => {
   const db = new Pool({ connectionString: process.env.DATABASE_URL })
   let authCookies: string
   let testUserEmail: string
@@ -31,7 +31,7 @@ describe('Admin middleware protection', () => {
     // Verify email
     await db.query(
       'UPDATE users SET "emailVerified" = true WHERE email = $1',
-      [testUserEmail]
+      [testUserEmail],
     )
 
     // Sign in to get session

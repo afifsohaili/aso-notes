@@ -12,11 +12,11 @@ export default defineNitroPlugin(() => {
     async (job: Job<EmailJobData>) => {
       const data = job.data
 
-      console.log(`Processing email job ${job.id}: to=${data.to}, subject=${data.subject}`)
+      console.warn(`Processing email job ${job.id}: to=${data.to}, subject=${data.subject}`)
 
       try {
         await sendEmail(data)
-        console.log(`Email job ${job.id} completed successfully`)
+        console.warn(`Email job ${job.id} completed successfully`)
       }
       catch (error) {
         console.error(`Email job ${job.id} failed:`, error)
@@ -33,8 +33,8 @@ export default defineNitroPlugin(() => {
   })
 
   worker.on('completed', (job: Job) => {
-    console.log(`Email job ${job.id} completed`)
+    console.warn(`Email job ${job.id} completed`)
   })
 
-  console.log('Email worker initialized')
+  console.warn('Email worker initialized')
 })

@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
 
     return { success: true }
   }
-  catch (error) {
+  catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to validate Turnstile token',

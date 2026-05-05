@@ -2,8 +2,8 @@ import { betterAuth } from 'better-auth'
 import { createAuthMiddleware } from 'better-auth/api'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
-import { useDatabase } from './db'
 import { enqueueEmail } from '../server/lib/email'
+import { useDatabase } from './db'
 
 interface AuthEnv {
   databaseUrl: string

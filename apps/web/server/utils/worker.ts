@@ -1,4 +1,5 @@
 import type { Processor, WorkerOptions } from 'bullmq'
+import process from 'node:process'
 import { Worker } from 'bullmq'
 import { Redis } from 'ioredis'
 

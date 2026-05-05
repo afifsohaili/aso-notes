@@ -47,7 +47,7 @@ async function handleSignup() {
         body: { token: turnstileToken },
       })
     }
-    catch (error) {
+    catch {
       alert.value = {
         message: 'Failed to validate security check. Please try again.',
         type: 'error',

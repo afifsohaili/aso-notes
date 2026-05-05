@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
-import { Logo } from '#components'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { expect, it } from 'vitest'
+import { Logo } from '#components'
 
 declare module '#components' {
   export const Logo: Component

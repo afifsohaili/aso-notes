@@ -1,5 +1,3 @@
-import { useDatabase } from '~~/utils/db'
-
 /**
  * Admin middleware - protects all /api/admin/* routes
  * Admin is defined as the user with email afifnajib@gmail.com

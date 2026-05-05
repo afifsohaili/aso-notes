@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { useQueue } from '../utils/queue'
 
 export interface EmailJobData {
@@ -38,7 +39,7 @@ export async function sendEmail(options: EmailJobData) {
     throw new Error('NUXT_BREVO_SENDER_EMAIL is not defined')
   }
 
-  console.log(`Sending email via Brevo API to ${options.to}`)
+  console.warn(`Sending email via Brevo API to ${options.to}`)
 
   const emailData = {
     sender: {
@@ -68,7 +69,7 @@ export async function sendEmail(options: EmailJobData) {
       timeout: 30000,
     })
 
-    console.log(`Email sent successfully via Brevo API to ${options.to}:`, {
+    console.warn(`Email sent successfully via Brevo API to ${options.to}:`, {
       messageId: response.messageId,
     })
 

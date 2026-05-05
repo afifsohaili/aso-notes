@@ -1,4 +1,5 @@
 import type { QueueOptions } from 'bullmq'
+import process from 'node:process'
 import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
 

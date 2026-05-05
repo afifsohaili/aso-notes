@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { fetch, setup } from '@nuxt/test-utils/e2e'
 import { Pool } from 'pg'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 // Load .env for direct DB access in test process
 const envFile = readFileSync(new URL('../../.env', import.meta.url), 'utf-8')
@@ -15,26 +15,26 @@ for (const line of envFile.split('\n')) {
   }
 }
 
-describe('Admin Notifications API', async () => {
+describe('admin Notifications API', async () => {
   // Setup Nuxt test context (uses TEST_HOST if provided, otherwise starts new server)
   await setup({
     host: process.env.TEST_HOST,
   })
   const db = new Pool({ connectionString: process.env.DATABASE_URL })
-  
+
   // Test users
   let adminCookies: string
   let regularUserCookies: string
   const adminEmail = 'afifnajib@gmail.com'
   const regularEmail = `test-regular-${Date.now()}@example.com`
-  
+
   // Test data
   let createdNotificationId: number
   const testOrgId = 'test-org-123'
 
   beforeAll(async () => {
     const testHost = process.env.TEST_HOST || 'http://localhost:3000'
-    
+
     // 1. Create admin user (the hardcoded admin email) - may already exist
     const adminSignupRes = await fetch('/api/auth/sign-up/email', {
       method: 'POST',
@@ -121,7 +121,7 @@ describe('Admin Notifications API', async () => {
     // Cleanup in correct order to avoid FK violations
     // 1. Delete test notifications
     await db.query('DELETE FROM notifications WHERE title LIKE \'Test Notification%\' OR message LIKE \'Test message%\' OR title LIKE \'Notification to %\'')
-    
+
     // 2. Delete sessions for test users
     await db.query(`
       DELETE FROM sessions 
@@ -129,7 +129,7 @@ describe('Admin Notifications API', async () => {
         SELECT id FROM users WHERE email IN ($1, $2)
       )
     `, [regularEmail, adminEmail])
-    
+
     // 3. Delete accounts for test users
     await db.query(`
       DELETE FROM accounts 
@@ -137,13 +137,13 @@ describe('Admin Notifications API', async () => {
         SELECT id FROM users WHERE email IN ($1, $2)
       )
     `, [regularEmail, adminEmail])
-    
+
     // 4. Delete test users
     await db.query('DELETE FROM users WHERE email IN ($1, $2)', [regularEmail, adminEmail])
     await db.end()
   })
 
-  describe('Authorization', () => {
+  describe('authorization', () => {
     it('returns 401 when accessing admin routes without auth', async () => {
       const res = await fetch('/api/admin/notifications')
       expect(res.status).toBe(401)
@@ -157,12 +157,12 @@ describe('Admin Notifications API', async () => {
     })
   })
 
-  describe('GET /api/admin/notifications', () => {
+  describe('gET /api/admin/notifications', () => {
     it('returns paginated list of notifications', async () => {
       const res = await fetch('/api/admin/notifications?page=1&limit=10', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body).toHaveProperty('notifications')
@@ -174,7 +174,7 @@ describe('Admin Notifications API', async () => {
       const res = await fetch('/api/admin/notifications?type=info', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.notifications.every((n: any) => n.type === 'info')).toBe(true)
@@ -184,7 +184,7 @@ describe('Admin Notifications API', async () => {
       const res = await fetch('/api/admin/notifications?target_type=organization', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.notifications.every((n: any) => n.target_type === 'organization')).toBe(true)
@@ -194,7 +194,7 @@ describe('Admin Notifications API', async () => {
       const res = await fetch('/api/admin/notifications?is_active=true', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.notifications.every((n: any) => n.is_active === true)).toBe(true)
@@ -204,7 +204,7 @@ describe('Admin Notifications API', async () => {
       const res = await fetch('/api/admin/notifications?limit=all', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.pagination).toBeUndefined()
@@ -214,19 +214,19 @@ describe('Admin Notifications API', async () => {
       const res = await fetch('/api/admin/notifications?search=test', {
         headers: { Cookie: adminCookies },
       })
-      
+
       expect(res.status).toBe(200)
       // Just verify it doesn't error - search behavior depends on DB data
     })
   })
 
-  describe('POST /api/admin/notifications', () => {
+  describe('pOST /api/admin/notifications', () => {
     it('creates a new notification', async () => {
       const res = await fetch('/api/admin/notifications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Test Notification Created',
@@ -247,7 +247,7 @@ describe('Admin Notifications API', async () => {
       expect(body.target_id).toBe(testOrgId)
       expect(body.is_active).toBe(true)
       expect(body.created_by).toBeDefined()
-      
+
       createdNotificationId = body.id
     })
 
@@ -256,7 +256,7 @@ describe('Admin Notifications API', async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Missing fields',
@@ -271,7 +271,7 @@ describe('Admin Notifications API', async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Invalid target',
@@ -288,7 +288,7 @@ describe('Admin Notifications API', async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Invalid type',
@@ -306,7 +306,7 @@ describe('Admin Notifications API', async () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Default Values Test',
@@ -322,14 +322,14 @@ describe('Admin Notifications API', async () => {
     })
   })
 
-  describe('PUT /api/admin/notifications/[id]', () => {
+  describe('pUT /api/admin/notifications/[id]', () => {
     it('updates an existing notification', async () => {
       // First create a notification to update
       const createRes = await fetch('/api/admin/notifications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Notification to Update',
@@ -348,7 +348,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Updated Title',
@@ -370,7 +370,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Non-existent',
@@ -385,7 +385,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Test',
@@ -400,7 +400,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           target_type: 'invalid_type',
@@ -415,7 +415,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           type: 'invalid_type',
@@ -430,7 +430,7 @@ describe('Admin Notifications API', async () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Only Title Updated',
@@ -444,14 +444,14 @@ describe('Admin Notifications API', async () => {
     })
   })
 
-  describe('DELETE /api/admin/notifications/[id]', () => {
+  describe('dELETE /api/admin/notifications/[id]', () => {
     it('deletes an existing notification', async () => {
       // First create a notification to delete
       const createRes = await fetch('/api/admin/notifications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: adminCookies,
+          'Cookie': adminCookies,
         },
         body: JSON.stringify({
           title: 'Notification to Delete',
