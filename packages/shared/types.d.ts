@@ -9,6 +9,20 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export type Json = JsonValue;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
+export type Numeric = ColumnType<string, number | string, number | string>;
+
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export interface Accounts {
@@ -27,8 +41,137 @@ export interface Accounts {
   userId: string;
 }
 
+export interface Answers {
+  ai_feedback: string | null;
+  answer_text: string | null;
+  attempt_id: number;
+  audio_path: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  question_id: number;
+  score: number | null;
+  time_taken_ms: number;
+}
+
+export interface Categories {
+  color: Generated<string>;
+  created_at: Generated<Timestamp>;
+  game_id: string;
+  id: Generated<string>;
+  name: string;
+  sort_order: Generated<number>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Creators {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+  platform: string;
+  platform_handle: string;
+  profile_url: string;
+}
+
+export interface DeviceTrials {
+  created_at: Generated<Timestamp>;
+  device_id: string;
+  id: Generated<string>;
+  organization_id: string;
+  platform: string;
+}
+
+export interface ExcludedRecipes {
+  created_at: Generated<Timestamp>;
+  excluded_until: Timestamp;
+  id: Generated<string>;
+  organization_id: string;
+  recipe_id: string;
+}
+
+export interface GameCollaborators {
+  created_at: Generated<Timestamp>;
+  email: string;
+  game_id: string;
+  id: Generated<string>;
+  token: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Games {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  max_players: Generated<number>;
+  name: string;
+  occasion: string;
+  rule_config: Generated<Json>;
+  status: Generated<string>;
+  template_id: string | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface GameSessions {
+  created_at: Generated<Timestamp>;
+  current_round: Generated<number>;
+  finished_at: Timestamp | null;
+  game_id: string;
+  host_user_id: string;
+  id: Generated<string>;
+  room_code: string;
+  rule_config: Generated<Json>;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface GameTemplates {
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<string>;
+  is_public: Generated<boolean>;
+  name: string;
+  occasion: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface LandingPages {
+  content: Json;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<number>;
+  price: Numeric | null;
+  require_payment: Generated<boolean>;
+  slug: string;
+  status: Generated<string>;
+  template_id: number | null;
+  title: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  wa_group_id: number | null;
+}
+
+export interface MealPlanRecipes {
+  created_at: Generated<Timestamp>;
+  day_of_week: number;
+  id: Generated<string>;
+  is_locked: Generated<boolean>;
+  meal_plan_id: string;
+  meal_type: string;
+  position: number;
+  recipe_id: string;
+}
+
+export interface MealPlans {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  is_active: boolean;
+  organization_id: string;
+  updated_at: Generated<Timestamp>;
+  week_start_date: Timestamp;
+}
+
 export interface Memberships {
   created_at: Generated<Timestamp>;
+  deactivated_at: Timestamp | null;
   id: Generated<string>;
   organization_id: string;
   role: Generated<string>;
@@ -48,11 +191,67 @@ export interface Notifications {
   type: Generated<string>;
 }
 
+export interface OrganizationPreferences {
+  adults_count: number;
+  created_at: Generated<Timestamp>;
+  cuisine_preferences: Json;
+  id: Generated<string>;
+  kids_below_6_count: number;
+  kids_over_6_count: number;
+  organization_id: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Organizations {
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   name: string;
+  subscription_status: Generated<string | null>;
+  trial_start_date: Timestamp | null;
   updated_at: Generated<Timestamp>;
+}
+
+export interface Players {
+  avatar_color: Generated<string>;
+  id: Generated<string>;
+  is_host: Generated<boolean>;
+  joined_at: Generated<Timestamp>;
+  name: string;
+  score: Generated<number>;
+  session_id: string;
+  team_id: string | null;
+}
+
+export interface Questions {
+  answer_text: string;
+  category_id: string;
+  created_at: Generated<Timestamp>;
+  difficulty: Generated<string>;
+  id: Generated<string>;
+  is_daily_double: Generated<boolean>;
+  media_caption: string | null;
+  media_type: string | null;
+  media_url: string | null;
+  point_value: number;
+  question_text: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface QuizAttempts {
+  completed_at: Timestamp | null;
+  id: Generated<number>;
+  quiz_id: number;
+  started_at: Generated<Timestamp>;
+  student_name: string;
+  total_score: number | null;
+  ulid: string;
+}
+
+export interface Quizzes {
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<number>;
+  title: string;
 }
 
 export interface ReadNotifications {
@@ -60,6 +259,34 @@ export interface ReadNotifications {
   notification_id: number;
   read_at: Generated<Timestamp>;
   user_id: string;
+}
+
+export interface Recipes {
+  allergens: Json | null;
+  cooking_time_minutes: number | null;
+  created_at: Generated<Timestamp>;
+  creator_id: string;
+  cuisine_type: string;
+  difficulty_level: string;
+  id: Generated<string>;
+  ingredients: Json;
+  instructions: Json;
+  is_halal: Generated<boolean>;
+  is_kid_friendly: boolean;
+  meal_type: string;
+  servings: number | null;
+  updated_at: Generated<Timestamp>;
+  video_url: string;
+}
+
+export interface SessionQuestions {
+  answered_by_player_id: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  points_awarded: Generated<number>;
+  question_id: string;
+  session_id: string;
+  was_answered: Generated<boolean>;
 }
 
 export interface Sessions {
@@ -73,13 +300,94 @@ export interface Sessions {
   userId: string;
 }
 
+export interface Submissions {
+  created_at: Generated<Timestamp>;
+  email: string | null;
+  id: Generated<number>;
+  landing_page_id: number;
+  name: string | null;
+  paid: Generated<boolean>;
+  payment_id: string | null;
+  phone: string;
+  status: Generated<string>;
+}
+
+export interface Subscriptions {
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp | null;
+  id: Generated<string>;
+  started_at: Generated<Timestamp>;
+  status: Generated<string>;
+  stripe_subscription_id: string | null;
+  tier: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface Templates {
+  category: string;
+  content: Json;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<number>;
+  is_active: Generated<boolean>;
+  name: string;
+  thumbnail_url: string | null;
+}
+
+export interface Todos {
+  completed: Generated<boolean>;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<number>;
+  title: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface UserAccessibility {
+  colorblind_friendly: Generated<boolean | null>;
+  created_at: Generated<Timestamp>;
+  font_size: Generated<string | null>;
+  hearing_impaired: Generated<boolean | null>;
+  high_contrast: Generated<boolean | null>;
+  id: Generated<string>;
+  large_touch_targets: Generated<boolean | null>;
+  reduce_motion: Generated<boolean | null>;
+  tts_enabled: Generated<boolean | null>;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface UserPreferences {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  rule_variation: Generated<string | null>;
+  sound_enabled: Generated<boolean | null>;
+  timer_length: Generated<number | null>;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface UserProfiles {
+  coach_phone: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  onboarding_completed: Generated<boolean>;
+  updated_at: Generated<Timestamp>;
+  use_case: string | null;
+  user_id: string;
+}
+
 export interface Users {
   createdAt: Timestamp;
   email: string;
   emailVerified: boolean;
   id: string;
   image: string | null;
+  isAnonymous: boolean | null;
   name: string;
+  stripe_customer_id: string | null;
   updatedAt: Timestamp;
 }
 
@@ -92,13 +400,63 @@ export interface UserVerifications {
   value: string;
 }
 
+export interface WaGroups {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  invite_link: string | null;
+  is_admin_verified: Generated<boolean>;
+  last_rotated_at: Timestamp | null;
+  name: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  wa_group_id: string;
+}
+
+export interface WaMessages {
+  created_at: Generated<Timestamp>;
+  error_message: string | null;
+  id: Generated<number>;
+  sent_at: Timestamp | null;
+  status: Generated<string>;
+  submission_id: number;
+  wa_message_id: string | null;
+}
+
 export interface DB {
   accounts: Accounts;
+  answers: Answers;
+  categories: Categories;
+  creators: Creators;
+  device_trials: DeviceTrials;
+  excluded_recipes: ExcludedRecipes;
+  game_collaborators: GameCollaborators;
+  game_sessions: GameSessions;
+  game_templates: GameTemplates;
+  games: Games;
+  landing_pages: LandingPages;
+  meal_plan_recipes: MealPlanRecipes;
+  meal_plans: MealPlans;
   memberships: Memberships;
   notifications: Notifications;
+  organization_preferences: OrganizationPreferences;
   organizations: Organizations;
+  players: Players;
+  questions: Questions;
+  quiz_attempts: QuizAttempts;
+  quizzes: Quizzes;
   read_notifications: ReadNotifications;
+  recipes: Recipes;
+  session_questions: SessionQuestions;
   sessions: Sessions;
+  submissions: Submissions;
+  subscriptions: Subscriptions;
+  templates: Templates;
+  todos: Todos;
+  user_accessibility: UserAccessibility;
+  user_preferences: UserPreferences;
+  user_profiles: UserProfiles;
   user_verifications: UserVerifications;
   users: Users;
+  wa_groups: WaGroups;
+  wa_messages: WaMessages;
 }
