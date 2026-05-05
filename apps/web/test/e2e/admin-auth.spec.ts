@@ -1,9 +1,13 @@
-import { fetch } from '@nuxt/test-utils/e2e'
+import { fetch, setup } from '@nuxt/test-utils/e2e'
 import { Pool } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import 'dotenv/config'
 
-describe('admin middleware protection', () => {
+describe('admin middleware protection', async () => {
+  await setup({
+    host: process.env.TEST_HOST,
+  })
+
   const db = new Pool({ connectionString: process.env.DATABASE_URL })
   let authCookies: string
   let testUserEmail: string
