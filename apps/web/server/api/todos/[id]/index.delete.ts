@@ -1,4 +1,5 @@
 import { useDatabase } from '~~/utils/db'
+import { wsManager } from '~~/server/utils/ws-manager'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -40,6 +41,9 @@ export default defineEventHandler(async (event) => {
       .deleteFrom('todos')
       .where('id', '=', todoId)
       .execute()
+
+    // Broadcast to connected WebSocket clients
+    wsManager.broadcastToUser(userId, 'todo.deleted', { id: todoId })
 
     return { success: true }
   }

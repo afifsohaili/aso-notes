@@ -1,4 +1,5 @@
 import { useDatabase } from '~~/utils/db'
+import { wsManager } from '~~/server/utils/ws-manager'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -25,6 +26,9 @@ export default defineEventHandler(async (event) => {
       })
       .returningAll()
       .executeTakeFirstOrThrow()
+
+    // Broadcast to connected WebSocket clients
+    wsManager.broadcastToUser(userId, 'todo.created', todo)
 
     setResponseStatus(event, 201)
     return todo

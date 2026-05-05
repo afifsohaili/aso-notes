@@ -51,5 +51,10 @@ export default defineNuxtConfig({
   //     '/forgot-password',
   //   ],
   // },
+  nitro: {
+    experimental: {
+      websocket: true,
+    },
+  },
   compatibilityDate: '2025-05-14',
 })

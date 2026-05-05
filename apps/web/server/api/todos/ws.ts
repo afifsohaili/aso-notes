@@ -23,9 +23,9 @@ export default defineWebSocketHandler({
         return
       }
 
-      // Store user ID on peer for later use
-      peer.ctx.userId = session.user.id
-      wsManager.addConnection(session.user.id, peer.websocket as any)
+      // Store user ID on peer context for later use
+      peer.context.userId = session.user.id
+      wsManager.addConnection(session.user.id, peer)
     }
     catch {
       peer.close(1008, 'Unauthorized')
@@ -33,8 +33,9 @@ export default defineWebSocketHandler({
   },
 
   close(peer) {
-    if (peer.ctx.userId) {
-      wsManager.removeConnection(peer.ctx.userId, peer.websocket as any)
+    const userId = peer.context?.userId as string | undefined
+    if (userId) {
+      wsManager.removeConnection(userId, peer)
     }
   },
 

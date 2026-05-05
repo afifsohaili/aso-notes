@@ -1,4 +1,4 @@
-import type { WebSocket } from 'ws'
+import type { Peer } from 'crossws'
 
 export interface WsMessage {
   type: string
@@ -6,19 +6,19 @@ export interface WsMessage {
 }
 
 class WebSocketConnectionManager {
-  private connections: Map<string, Set<WebSocket>> = new Map()
+  private connections: Map<string, Set<Peer>> = new Map()
 
-  addConnection(userId: string, ws: WebSocket): void {
+  addConnection(userId: string, peer: Peer): void {
     if (!this.connections.has(userId)) {
       this.connections.set(userId, new Set())
     }
-    this.connections.get(userId)!.add(ws)
+    this.connections.get(userId)!.add(peer)
   }
 
-  removeConnection(userId: string, ws: WebSocket): void {
+  removeConnection(userId: string, peer: Peer): void {
     const userConnections = this.connections.get(userId)
     if (userConnections) {
-      userConnections.delete(ws)
+      userConnections.delete(peer)
       if (userConnections.size === 0) {
         this.connections.delete(userId)
       }
@@ -31,14 +31,12 @@ class WebSocketConnectionManager {
 
     const message = JSON.stringify({ type: eventType, payload })
 
-    for (const ws of userConnections) {
-      if (ws.readyState === ws.OPEN) {
-        try {
-          ws.send(message)
-        }
-        catch {
-          // Ignore send errors
-        }
+    for (const peer of userConnections) {
+      try {
+        peer.send(message)
+      }
+      catch {
+        // Ignore send errors
       }
     }
   }
