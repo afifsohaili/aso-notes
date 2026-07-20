@@ -1,0 +1,14 @@
+{
+  "formatter": {
+    "prettier": {
+      "disabled": true
+    }
+  },
+  "references": {
+    "cntctus": {
+      "path": "../cntctus/",
+      "description": "A sample app that uses base-nuxt-app as base, but have the improved test setup implemented",
+    }
+  },
+  "$schema": "https://opencode.ai/config.json"
+}

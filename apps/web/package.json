@@ -56,6 +56,7 @@
     "postcss": "^8.5.14",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
+    "unimport": "^4.2.0",
     "unplugin-icons": "^23.0.1",
     "unplugin-vue-components": "^32.0.0",
     "vitest": "^4.1.5",

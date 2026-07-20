@@ -25,7 +25,7 @@ session:
   test_command: pnpm test
   max_iterations: 50
   max_time_per_iteration: 1800
-  opencode_session_id: ses_2072cc44fffevdc5GqK5FzbVAv
+  opencode_session_id: ses_206c1a468ffeLSpl2F4SXd9SRW
 roadmap:
   - id: 1
     title: Todo Database Schema & Shared Types
@@ -38,7 +38,7 @@ roadmap:
     description: TDD for GET /api/todos (list user todos), POST /api/todos (create),
       PUT /api/todos/[id] (update), DELETE /api/todos/[id] (delete). All behind
       auth middleware. Use Kysely queries with proper user scoping.
-    status: pending
+    status: completed
   - id: 3
     title: Todo WebSocket Real-Time API
     description: Add Nitro experimental WebSocket endpoint at /api/todos/ws that
@@ -75,7 +75,7 @@ roadmap:
     description: Fix admin-auth.spec.ts missing setup() call. Fix admin middleware
       hardcoded email check causing 401/403 failures in
       admin-notifications.spec.ts. Ensure full test suite passes.
-    status: pending
+    status: completed
 cycles:
   - cycle: 1
     phase: discovery
@@ -6215,8 +6215,2106 @@ cycles:
   - cycle: 26
     phase: implement
     agent: implementer
-    status: running
+    status: failed
     started_at: 2026-05-05T16:12:40.338Z
     summary: In progress...
     output:
       type: implement
+    completed_at: 2026-05-05T17:08:51.772Z
+  - cycle: 27
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T17:08:51.764Z
+    summary: "Review failed: Test suite fails overall: 21 tests failed, 28 passed, 2
+      skipped across 7 test files, admin-auth.spec.ts crashes with Error: No
+      context is available. (Forgot calling setup or createContext?) - missing
+      required setup() call from @nuxt/test-utils/e2e,
+      admin-notifications.spec.ts has 21 of 22 tests failing with HTTP 401
+      instead of expected 200/403/404/400, Phase 1 schema implementation is
+      correct: todos.schema.spec.ts passes all 4 tests (table exists, columns
+      correct, indexes present, foreign key valid), Todo CRUD API endpoints were
+      implemented with proper auth, user scoping, validation, and ownership
+      checks, todos.crud.spec.ts e2e tests pass (all todo CRUD, auth, and
+      authorization cases), Migration 1777996322000_create_todos_table.ts is
+      correctly structured with columns, indexes, and foreign key to users.id,
+      kysely.config.ts uses absolute path via fileURLToPath for migrationFolder"
+    output:
+      type: review
+      review_passed: false
+      findings:
+        - "Test suite fails overall: 21 tests failed, 28 passed, 2 skipped
+          across 7 test files"
+        - "admin-auth.spec.ts crashes with Error: No context is available.
+          (Forgot calling setup or createContext?) - missing required setup()
+          call from @nuxt/test-utils/e2e"
+        - admin-notifications.spec.ts has 21 of 22 tests failing with HTTP 401
+          instead of expected 200/403/404/400
+        - "Phase 1 schema implementation is correct: todos.schema.spec.ts passes
+          all 4 tests (table exists, columns correct, indexes present, foreign
+          key valid)"
+        - Todo CRUD API endpoints were implemented with proper auth, user
+          scoping, validation, and ownership checks
+        - todos.crud.spec.ts e2e tests pass (all todo CRUD, auth, and
+          authorization cases)
+        - Migration 1777996322000_create_todos_table.ts is correctly structured
+          with columns, indexes, and foreign key to users.id
+        - kysely.config.ts uses absolute path via fileURLToPath for
+          migrationFolder
+      suggestions:
+        - "Fix admin-auth.spec.ts by adding await setup({ host:
+          process.env.TEST_HOST }) at the start of the describe block, following
+          the pattern in admin-notifications.spec.ts and todos.crud.spec.ts"
+        - Fix admin-notifications.spec.ts by investigating why authenticated
+          requests return 401 - the hardcoded admin email check in middleware
+          may be combined with session validation issues
+        - Consider making the admin email configurable via environment variable
+          instead of hardcoding afifnajib@gmail.com
+        - Run pnpm test after all fixes to confirm zero test failures
+    completed_at: 2026-05-05T17:13:37.234Z
+  - cycle: 28
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T17:13:37.561Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T17:18:38.762Z
+  - cycle: 29
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T17:18:38.859Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T17:23:39.833Z
+  - cycle: 30
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T17:23:39.912Z
+    summary: "TypeError: Cannot read properties of null (reading 'tests_passed')"
+    output:
+      type: implement
+    completed_at: 2026-05-05T17:27:54.188Z
+  - cycle: 31
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T17:27:54.265Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T17:32:55.200Z
+  - cycle: 32
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T17:32:55.581Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T17:37:56.938Z
+  - cycle: 33
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T17:37:57.103Z
+    summary: "TypeError: Cannot read properties of null (reading 'review_passed')"
+    output:
+      type: review
+    completed_at: 2026-05-05T17:42:00.057Z
+  - cycle: 34
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T17:42:00.157Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T17:42:55.201Z
+  - cycle: 35
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T17:45:06.765Z
+    summary: "Review failed: 23 tests failing across 3 test files. Total: 23 failed,
+      29 passed, 1 unhandled error., admin-auth.spec.ts: 'returns 403 when
+      non-admin user accesses admin routes' fails with 401 instead of 403. The
+      admin middleware returns 401 Unauthorized for authenticated non-admin
+      users instead of 403 Forbidden., admin-notifications.spec.ts: 21 of 22
+      tests fail, all returning 401 instead of expected 200/403/404/400. Same
+      root cause - admin middleware does not distinguish between unauthenticated
+      (401) and authenticated non-admin (403) users., debug-auth.spec.ts: Fails
+      with 'database afifsohaili does not exist'. The test uses
+      process.env.DATABASE_URL without loading .env file first, so it falls back
+      to default postgres connection attempting to connect to OS username as
+      database name., Unhandled SqliteError: no such table: _content_info
+      originating from admin-notifications.spec.ts. Nuxt Content module SQLite
+      cleanup error during test teardown., debug-auth.spec.ts appears to be a
+      debugging artifact (intentionally throws Error with session JSON dump) and
+      should not be a committed test., Implementation summary reports
+      'TypeError: fetch failed' with zero files changed, indicating the
+      implement cycle made no progress., Todo schema verification
+      (todos.schema.spec.ts: 4/4 passing) and todo CRUD API (todos.crud.spec.ts:
+      16/16 passing) are working correctly."
+    output:
+      type: review
+      review_passed: false
+      findings:
+        - "23 tests failing across 3 test files. Total: 23 failed, 29 passed, 1
+          unhandled error."
+        - "admin-auth.spec.ts: 'returns 403 when non-admin user accesses admin
+          routes' fails with 401 instead of 403. The admin middleware returns
+          401 Unauthorized for authenticated non-admin users instead of 403
+          Forbidden."
+        - "admin-notifications.spec.ts: 21 of 22 tests fail, all returning 401
+          instead of expected 200/403/404/400. Same root cause - admin
+          middleware does not distinguish between unauthenticated (401) and
+          authenticated non-admin (403) users."
+        - "debug-auth.spec.ts: Fails with 'database afifsohaili does not exist'.
+          The test uses process.env.DATABASE_URL without loading .env file
+          first, so it falls back to default postgres connection attempting to
+          connect to OS username as database name."
+        - "Unhandled SqliteError: no such table: _content_info originating from
+          admin-notifications.spec.ts. Nuxt Content module SQLite cleanup error
+          during test teardown."
+        - debug-auth.spec.ts appears to be a debugging artifact (intentionally
+          throws Error with session JSON dump) and should not be a committed
+          test.
+        - "Implementation summary reports 'TypeError: fetch failed' with zero
+          files changed, indicating the implement cycle made no progress."
+        - "Todo schema verification (todos.schema.spec.ts: 4/4 passing) and todo
+          CRUD API (todos.crud.spec.ts: 16/16 passing) are working correctly."
+      suggestions:
+        - Fix admin middleware to return 403 for authenticated non-admin users
+          and 401 only for unauthenticated requests. The hardcoded admin email
+          check likely causes all non-matching users to be treated as
+          unauthenticated.
+        - Fix debug-auth.spec.ts to read .env file for DATABASE_URL like
+          todos.crud.spec.ts does, or remove it entirely if it is only a
+          debugging artifact.
+        - Remove debug-auth.spec.ts if it was only meant for temporary debugging
+          - it intentionally throws and will always fail.
+        - Investigate the Nuxt Content SQLite _content_info table error during
+          test teardown - may need to disable content module in test environment
+          or add proper cleanup.
+        - "Re-run the failed implement cycle to complete any intended changes,
+          since the last cycle failed with 'TypeError: fetch failed' and made no
+          file changes."
+    completed_at: 2026-05-05T17:47:26.567Z
+  - cycle: 36
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T17:47:26.645Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T17:52:27.572Z
+  - cycle: 37
+    phase: review
+    agent: reviewer
+    status: completed
+    started_at: 2026-05-05T17:52:27.909Z
+    summary: Review passed
+    output:
+      type: review
+      review_passed: true
+      findings:
+        - All 51 tests pass across 7 test files (0 failures).
+        - Auth middleware execution order was fixed by renaming auth.ts to
+          00-auth.ts so it runs before admin.ts alphabetically.
+        - Admin middleware now correctly returns 403 for authenticated non-admin
+          users instead of 401.
+        - debug-auth.spec.ts debugging artifact was removed.
+        - getAdminNotifications API was updated to return pagination object when
+          limit is not 'all', matching test expectations.
+        - admin-notifications.spec.ts cleanup was fixed to delete notifications
+          by created_by user ID and only remove the regular test user,
+          preserving the hardcoded admin account.
+      suggestions:
+        - Consider making the admin middleware check configurable via
+          environment variable instead of hardcoded email for better testability
+          and deployment flexibility.
+        - The Nuxt Content SQLite _content_info table errors during test
+          teardown are non-fatal warnings but could be cleaned up by disabling
+          the content module in test environment.
+        - Email worker failures due to missing NUXT_BREVO_API_KEY are expected
+          in test environment but produce noisy logs.
+    completed_at: 2026-05-05T17:54:44.193Z
+  - cycle: 38
+    phase: gap
+    agent: gap-analyzer
+    status: failed
+    started_at: 2026-05-05T17:54:44.291Z
+    summary: Found 2 gaps (low priority)
+    output:
+      type: gap
+      gaps:
+        - Roadmap status in notes file needs updating - Phase 1 (Todo Database
+          Schema) is complete, Phase 2 (Todo CRUD API) appears implemented with
+          passing tests, and Phase 8 (Fix Pre-existing Admin Test Failures) is
+          resolved. These should be marked completed in the roadmap.
+        - The notes file still shows Phase 1 as in_progress but all associated
+          deliverables are done and all 51 tests pass.
+      priority: low
+    completed_at: 2026-05-05T17:55:44.755Z
+  - cycle: 39
+    phase: research
+    agent: researcher
+    status: completed
+    started_at: 2026-05-05T17:55:56.751Z
+    summary: Found 1 findings from 0 sources
+    output:
+      type: research
+      findings:
+        - No external research needed. The gap is purely about updating the
+          session notes file to reflect actual completion status of roadmap
+          phases. Phase 1 (Todo Database Schema), Phase 2 (Todo CRUD API), and
+          Phase 8 (Fix Pre-existing Admin Test Failures) are all complete with
+          passing tests. The notes file should be updated accordingly.
+      sources: []
+    completed_at: 2026-05-05T17:56:05.730Z
+  - cycle: 40
+    phase: implement
+    agent: implementer
+    status: completed
+    started_at: 2026-05-05T17:56:18.955Z
+    summary: Updated session notes roadmap to reflect completed work. All 51 tests
+      pass across 7 test files. Phases 1, 2, and 8 are now accurately marked as
+      completed. Remaining phases 3-7 are pending implementation.
+    output:
+      type: implement
+      tests_passed: true
+      files_changed:
+        - path: notes-aso-agent-2026-05-05T15-48-00.yaml
+          description: "Updated roadmap phase statuses: marked Phase 1 (Todo Database
+            Schema), Phase 2 (Todo CRUD API), and Phase 8 (Fix Pre-existing
+            Admin Test Failures) as completed to reflect actual project state"
+      summary: Updated session notes roadmap to reflect completed work. All 51 tests
+        pass across 7 test files. Phases 1, 2, and 8 are now accurately marked
+        as completed. Remaining phases 3-7 are pending implementation.
+    completed_at: 2026-05-05T17:58:44.535Z
+    test_results:
+      command: pnpm test
+      passed: true
+      output: "
+
+        > nuxt-flutter-monorepo@0.0.0 test
+        /Users/afifsohaili/Projects/base-nuxt-app
+
+        > pnpm --filter web test
+
+
+
+        > web@ test /Users/afifsohaili/Projects/base-nuxt-app/apps/web
+
+        > vitest run
+
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+
+        \e[1m\e[30m\e[46m RUN \e[49m\e[39m\e[22m \e[36mv4.1.5
+        \e[39m\e[90m/Users/afifsohaili/Projects/base-nuxt-app/apps/web\e[39m
+
+
+        \ \e[32m✓\e[39m \e[30m\e[42m unit \e[49m\e[39m
+        test/unit/todos.schema.spec.ts \e[2m(\e[22m\e[2m4
+        tests\e[22m\e[2m)\e[22m\e[32m 24\e[2mms\e[22m\e[39m
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        \e[90mstdout\e[2m | test/components/landing-page.nuxt.spec.ts
+
+        \e[22m\e[39m<Suspense> is an experimental feature and its API will
+        likely change.
+
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        [log] [@nuxt/robots]  - L28: Unknown directive crawl-delay\ 
+
+        [log] [@nuxt/robots]  - Group \"AhrefsBot\" has no allow or disallow
+        rules. You must provide one of either.
+
+        [log] [@nuxt/robots]
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+        [info] [@nuxtjs/sitemap] No dynamic sources detected. Consider enabling
+        `zeroRuntime` to reduce server bundle size. See
+        https://nuxtseo.com/sitemap/guides/zero-runtime
+
+        \ \e[32m✓\e[39m \e[30m\e[46m nuxt \e[49m\e[39m
+        test/components/landing-page.nuxt.spec.ts \e[2m(\e[22m\e[2m1
+        test\e[22m\e[2m)\e[22m\e[33m 1295\e[2mms\e[22m\e[39m
+
+        [log] [nuxt-site-config]   - url \"http://localhost:3000\" from buildEnv
+        should not be localhost
+
+        [log] [nuxt-site-config]
+
+        [log] [nuxt-site-config]   - url \"http://localhost:3000\" from buildEnv
+        should not be localhost
+
+        [log] [nuxt-site-config]
+
+        [log] [nuxt-site-config]   - url \"http://localhost:3000\" from buildEnv
+        should not be localhost
+
+        [log] [nuxt-site-config]
+
+        [log] [nuxt-site-config]   - url \"http://localhost:3000\" from buildEnv
+        should not be localhost
+
+        [log] [nuxt-site-config]
+
+        [log] [nuxt-site-config]   - url \"http://localhost:3000\" from buildEnv
+        should not be localhost
+
+        [log] [nuxt-site-config]
+
+        Listening on http://127.0.0.1:52419
+
+        \ \e[32m✓\e[39m \e[30m\e[45m e2e \e[49m\e[39m
+        test/e2e/healthcheck.get.spec.ts \e[2m(\e[22m\e[2m1
+        test\e[22m\e[2m)\e[22m\e[33m 34798\e[2mms\e[22m\e[39m
+
+        Listening on http://127.0.0.1:52462
+
+        Listening on http://127.0.0.1:52472
+
+        Listening on http://127.0.0.1:52473
+
+        Listening on http://127.0.0.1:52476
+
+        \ \e[32m✓\e[39m \e[30m\e[45m e2e \e[49m\e[39m
+        test/e2e/notifications.get.spec.ts \e[2m(\e[22m\e[2m5
+        tests\e[22m\e[2m)\e[22m\e[33m 36302\e[2mms\e[22m\e[39m
+
+        \ \e[32m✓\e[39m \e[30m\e[45m e2e \e[49m\e[39m
+        test/e2e/admin-auth.spec.ts \e[2m(\e[22m\e[2m2
+        tests\e[22m\e[2m)\e[22m\e[33m 36451\e[2mms\e[22m\e[39m
+
+        \ \e[32m✓\e[39m \e[30m\e[45m e2e \e[49m\e[39m
+        test/e2e/admin-notifications.spec.ts \e[2m(\e[22m\e[2m22
+        tests\e[22m\e[2m)\e[22m\e[33m 36898\e[2mms\e[22m\e[39m
+
+        \ \e[32m✓\e[39m \e[30m\e[45m e2e \e[49m\e[39m
+        test/e2e/todos.crud.spec.ts \e[2m(\e[22m\e[2m16
+        tests\e[22m\e[2m)\e[22m\e[33m 36983\e[2mms\e[22m\e[39m
+
+
+        \e[2m Test Files \e[22m \e[1m\e[32m7 passed\e[39m\e[22m\e[90m (7)\e[39m
+
+        \e[2m      Tests \e[22m \e[1m\e[32m51 passed\e[39m\e[22m\e[90m
+        (51)\e[39m
+
+        \e[2m   Start at \e[22m 01:58:07
+
+        \e[2m   Duration \e[22m 37.23s\e[2m (transform 1.44s, setup 98ms, import
+        721ms, tests 182.75s, environment 333ms)\e[22m
+
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        [warn] [@nuxtjs/og-image] Nuxt OG Image is enabled but SSR is disabled.
+
+
+        You should enable SSR (`ssr: true`) or disable the module (`ogImage: {
+        enabled: false }`).
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        \e[90mstderr\e[2m | test/components/landing-page.nuxt.spec.ts
+
+        \e[22m\e[39m[PostHog.js] PostHog was initialized without a token. This
+        likely indicates a misconfiguration. Please check the first argument
+        passed to posthog.init()
+
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        [error] [@nuxt/robots] The `./public/_robots.txt` file contains errors:
+
+        [warn] [nuxt-site-config] [Nuxt Site Config] Invalid config provided,
+        please correct:
+
+        [warn] [nuxt-site-config] [Nuxt Site Config] Invalid config provided,
+        please correct:
+
+        [warn] [nuxt-site-config] [Nuxt Site Config] Invalid config provided,
+        please correct:
+
+        [warn] [nuxt-site-config] [Nuxt Site Config] Invalid config provided,
+        please correct:
+
+        [warn] [nuxt-site-config] [Nuxt Site Config] Invalid config provided,
+        please correct:
+
+        Email worker initialized
+
+        \e[2m2026-05-05T17:58:41.586Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Email worker initialized
+
+        Email worker initialized
+
+        Email worker initialized
+
+        Email worker initialized
+
+        \e[2m2026-05-05T17:58:43.111Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.227Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.296Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.308Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error fetching user notifications: H3Error: Unauthorized
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        6dq13/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        6dq13/output/server/chunks/routes/api/index.get.mjs:28:13)
+
+        \    at
+        file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/96\
+        dq13/output/server/chunks/nitro/nitro.mjs:1537:43
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        6dq13/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        6dq13/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 401, statusMessage: 'Unauthorized' },
+
+        \  statusCode: 401,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Unauthorized',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.321Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.342Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.346Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.358Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.378Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.409Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Processing email job 720: to=test-regular-1778003923335@example.com,
+        subject=Verify your email address
+
+        Email job 720 failed: Error: NUXT_BREVO_API_KEY is not defined
+
+        \    at sendEmail
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/e\
+        pu6bt/output/server/chunks/nitro/nitro.mjs:8256:11)
+
+        \    at useWorker.concurrency [as processFn]
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/e\
+        pu6bt/output/server/chunks/nitro/nitro.mjs:8310:15)
+
+        \    at Worker.callProcessJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:178:21)
+
+        \    at
+        /Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/ou\
+        tput/server/node_modules/bullmq/dist/cjs/classes/worker.js:589:43
+
+        \    at trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/utils/index.js:277:16)
+
+        \    at Worker.trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/queue-base.js:159:34)
+
+        \    at Worker.processJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:572:21)
+
+        \    at Worker.mainLoop
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:331:41)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Worker.run
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/epu6bt/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:264:13)
+
+        Email job 720 failed after retries: NUXT_BREVO_API_KEY is not defined
+
+        \e[2m2026-05-05T17:58:43.480Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.496Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.512Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.562Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.567Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.574Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Processing email job 721: to=test-regular-1778003887412@example.com,
+        subject=Verify your email address
+
+        Email job 721 failed: Error: NUXT_BREVO_API_KEY is not defined
+
+        \    at sendEmail
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:8256:11)
+
+        \    at useWorker.concurrency [as processFn]
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:8310:15)
+
+        \    at Worker.callProcessJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:178:21)
+
+        \    at
+        /Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/ou\
+        tput/server/node_modules/bullmq/dist/cjs/classes/worker.js:589:43
+
+        \    at trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/utils/index.js:277:16)
+
+        \    at Worker.trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/queue-base.js:159:34)
+
+        \    at Worker.processJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:572:21)
+
+        \    at Worker.mainLoop
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:331:41)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Worker.run
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:264:13)
+
+        Email job 721 failed after retries: NUXT_BREVO_API_KEY is not defined
+
+        \e[2m2026-05-05T17:58:43.664Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.681Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Processing email job 722: to=test-todo-1778003887409@example.com,
+        subject=Verify your email address
+
+        \e[2m2026-05-05T17:58:43.687Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Email job 722 failed: Error: NUXT_BREVO_API_KEY is not defined
+
+        \    at sendEmail
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:8256:11)
+
+        \    at useWorker.concurrency [as processFn]
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:8310:15)
+
+        \    at Worker.callProcessJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:178:21)
+
+        \    at
+        /Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/ou\
+        tput/server/node_modules/bullmq/dist/cjs/classes/worker.js:589:43
+
+        \    at trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/utils/index.js:277:16)
+
+        \    at Worker.trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/queue-base.js:159:34)
+
+        \    at Worker.processJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:572:21)
+
+        \    at Worker.mainLoop
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:331:41)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Worker.run
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:264:13)
+
+        Email job 722 failed after retries: NUXT_BREVO_API_KEY is not defined
+
+        \e[2m2026-05-05T17:58:43.708Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.736Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.751Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.756Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error fetching todos: H3Error: Unauthorized
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/index.get3.mjs:27:13)
+
+        \    at
+        file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct\
+        1o3x/output/server/chunks/nitro/nitro.mjs:1537:43
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 401, statusMessage: 'Unauthorized' },
+
+        \  statusCode: 401,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Unauthorized',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.769Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.770Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.783Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.783Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.796Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.802Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.811Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating todo: H3Error: Unauthorized
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/index.post.mjs:28:13)
+
+        \    at
+        file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct\
+        1o3x/output/server/chunks/nitro/nitro.mjs:1537:43
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 401, statusMessage: 'Unauthorized' },
+
+        \  statusCode: 401,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Unauthorized',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.816Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.823Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.835Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.838Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating notification: H3Error: Missing required fields: title,
+        message, target_type
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/index.post.mjs:31:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 400,
+
+        \    statusMessage: 'Missing required fields: title, message,
+        target_type'
+
+        \  },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Missing required fields: title, message,
+        target_type',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.844Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating todo: H3Error: Title is required
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/index.post.mjs:32:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 400, statusMessage: 'Title is required' },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Title is required',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.847Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating notification: H3Error: target_type must be either
+        \"organization\" or \"role\"
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/index.post.mjs:37:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 400,
+
+        \    statusMessage: 'target_type must be either \"organization\" or
+        \"role\"'
+
+        \  },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'target_type must be either \"organization\" or
+        \"role\"',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.851Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating todo: H3Error: Title is required
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/index.post.mjs:32:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 400, statusMessage: 'Title is required' },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Title is required',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.855Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error creating notification: H3Error: type must be one of: info,
+        warning, success, error
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/index.post.mjs:43:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 400,
+
+        \    statusMessage: 'type must be one of: info, warning, success, error'
+
+        \  },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'type must be one of: info, warning, success, error',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.859Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating todo: H3Error: Unauthorized
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.put.mjs:28:13)
+
+        \    at
+        file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct\
+        1o3x/output/server/chunks/nitro/nitro.mjs:1537:43
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 401, statusMessage: 'Unauthorized' },
+
+        \  statusCode: 401,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Unauthorized',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.862Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.869Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.873Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.878Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating todo: H3Error: Todo not found
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.put.mjs:40:15)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 404, statusMessage: 'Todo not found' },
+
+        \  statusCode: 404,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Todo not found',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.884Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.895Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating notification: H3Error: Notification not found
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.put.mjs\
+        :34:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 404, statusMessage: 'Notification not found' },
+
+        \  statusCode: 404,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Notification not found',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.904Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating notification: H3Error: Invalid notification ID
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.put.mjs\
+        :30:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 400, statusMessage: 'Invalid notification ID' },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Invalid notification ID',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.911Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating notification: H3Error: target_type must be either
+        \"organization\" or \"role\"
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.put.mjs\
+        :36:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 400,
+
+        \    statusMessage: 'target_type must be either \"organization\" or
+        \"role\"'
+
+        \  },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'target_type must be either \"organization\" or
+        \"role\"',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.920Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating notification: H3Error: type must be one of: info,
+        warning, success, error
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.put.mjs\
+        :42:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 400,
+
+        \    statusMessage: 'type must be one of: info, warning, success, error'
+
+        \  },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'type must be one of: info, warning, success, error',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.929Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.942Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.950Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Processing email job 723: to=test-other-1778003923882@example.com,
+        subject=Verify your email address
+
+        Email job 723 failed: Error: NUXT_BREVO_API_KEY is not defined
+
+        \    at sendEmail
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:8256:11)
+
+        \    at useWorker.concurrency [as processFn]
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:8310:15)
+
+        \    at Worker.callProcessJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:178:21)
+
+        \    at
+        /Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/ou\
+        tput/server/node_modules/bullmq/dist/cjs/classes/worker.js:589:43
+
+        \    at trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/utils/index.js:277:16)
+
+        \    at Worker.trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/queue-base.js:159:34)
+
+        \    at Worker.processJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:572:21)
+
+        \    at Worker.mainLoop
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:331:41)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Worker.run
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/99nhed/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:264:13)
+
+        Email job 723 failed after retries: NUXT_BREVO_API_KEY is not defined
+
+        \e[2m2026-05-05T17:58:43.956Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error updating todo: H3Error: Not authorized to update this todo
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.put.mjs:42:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 403,
+
+        \    statusMessage: 'Not authorized to update this todo'
+
+        \  },
+
+        \  statusCode: 403,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Not authorized to update this todo',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.966Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.971Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        \e[2m2026-05-05T17:58:43.975Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error deleting todo: H3Error: Unauthorized
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.delete.mjs:27:13)
+
+        \    at
+        file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct\
+        1o3x/output/server/chunks/nitro/nitro.mjs:1537:43
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 401, statusMessage: 'Unauthorized' },
+
+        \  statusCode: 401,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Unauthorized',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.979Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error deleting notification: H3Error: Notification not found
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.delete.\
+        mjs:33:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 404, statusMessage: 'Notification not found' },
+
+        \  statusCode: 404,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Notification not found',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.985Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error deleting notification: H3Error: Invalid notification ID
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/routes/api/admin/notifications/index.delete.\
+        mjs:29:13)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1535:24)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1855:34)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1609:31)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/9\
+        9nhed/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 400, statusMessage: 'Invalid notification ID' },
+
+        \  statusCode: 400,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Invalid notification ID',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:43.990Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Error deleting todo: H3Error: Todo not found
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.delete.mjs:38:15)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: { statusCode: 404, statusMessage: 'Todo not found' },
+
+        \  statusCode: 404,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Todo not found',
+
+        \  data: undefined
+
+        }
+
+        \e[2m2026-05-05T17:58:44.000Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Processing email job 724: to=test-other-del-1778003923998@example.com,
+        subject=Verify your email address
+
+        Email job 724 failed: Error: NUXT_BREVO_API_KEY is not defined
+
+        \    at sendEmail
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:8256:11)
+
+        \    at useWorker.concurrency [as processFn]
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:8310:15)
+
+        \    at Worker.callProcessJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:178:21)
+
+        \    at
+        /Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/ou\
+        tput/server/node_modules/bullmq/dist/cjs/classes/worker.js:589:43
+
+        \    at trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/utils/index.js:277:16)
+
+        \    at Worker.trace
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/queue-base.js:159:34)
+
+        \    at Worker.processJob
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:572:21)
+
+        \    at Worker.mainLoop
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:331:41)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Worker.run
+        (/Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/ct1o3x/o\
+        utput/server/node_modules/bullmq/dist/cjs/classes/worker.js:264:13)
+
+        \e[2m2026-05-05T17:58:44.072Z\e[0m \e[33mWARN\e[0m \e[1m[Better
+        Auth]:\e[0m [better-auth] Base URL could not be determined. Please set a
+        valid base URL using the baseURL config option or the BETTER_AUTH_URL
+        environment variable. Without this, callbacks and redirects may not work
+        correctly.
+
+        Email job 724 failed after retries: NUXT_BREVO_API_KEY is not defined
+
+        Error deleting todo: H3Error: Not authorized to delete this todo
+
+        \    at createError
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:6562:15)
+
+        \    at Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/routes/api/todos/index.delete.mjs:40:13)
+
+        \    at process.processTicksAndRejections
+        (node:internal/process/task_queues:105:5)
+
+        \    at async Object.handler
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1609:19)
+
+        \    at async Server.toNodeHandle
+        (file:///Users/afifsohaili/Projects/base-nuxt-app/apps/web/.nuxt/test/c\
+        t1o3x/output/server/chunks/nitro/nitro.mjs:1887:7) {
+
+        \  cause: {
+
+        \    statusCode: 403,
+
+        \    statusMessage: 'Not authorized to delete this todo'
+
+        \  },
+
+        \  statusCode: 403,
+
+        \  fatal: false,
+
+        \  unhandled: false,
+
+        \  statusMessage: 'Not authorized to delete this todo',
+
+        \  data: undefined
+
+        }\n"
+  - cycle: 41
+    phase: discovery
+    agent: discovery
+    status: completed
+    started_at: 2026-05-05T17:58:44.642Z
+    summary: "Re-evaluation confirms Phases 1, 2, and 8 are fully complete with all
+      51 tests passing. Phase 1 delivered the todos table migration, shared
+      types, and schema verification tests. Phase 2 delivered 4 authenticated
+      CRUD endpoints with comprehensive e2e tests. Phase 8 fixed middleware
+      execution order, pagination response format, and test cleanup. The
+      remaining phases 3-7 are unchanged and ready for implementation.
+      Dependencies remain: 3->4 for web real-time, 5 depends on 2 for API
+      foundation, 6+7 depend on 2+3 for shared API and WebSocket. Key risks are
+      still Nitro experimental WebSocket stability, Flutter monorepo
+      integration, and BetterAuth bearer token support for mobile."
+    output:
+      type: discovery
+      roadmap:
+        - id: 1
+          title: Todo Database Schema & Shared Types
+          description: Create Kysely migration for todos table with indexes and FK to
+            users. Run db:migrate:generate to update shared types. Write schema
+            verification test.
+          status: completed
+        - id: 2
+          title: Todo CRUD API Endpoints
+          description: TDD for GET /api/todos (list user todos), POST /api/todos (create),
+            PUT /api/todos/[id] (update), DELETE /api/todos/[id] (delete). All
+            behind auth middleware. Use Kysely queries with proper user scoping.
+          status: completed
+        - id: 3
+          title: Todo WebSocket Real-Time API
+          description: Add Nitro experimental WebSocket endpoint at /api/todos/ws that
+            broadcasts create/update/delete events to connected clients. TDD
+            with ws client tests.
+          status: pending
+        - id: 4
+          title: Todo List Web UI
+          description: Create /todos page with full CRUD UI using Nuxt 3 Composition API,
+            Tailwind CSS, unplugin-icons. Integrate WebSocket client for
+            real-time updates. Protected by auth middleware. TDD with component
+            and e2e tests.
+          status: pending
+        - id: 5
+          title: Drip Email System
+          description: Schedule 3 drip emails (day 1, 2, 3 after signup) via BullMQ
+            delayed jobs. Each email teaches one app feature. Create drip email
+            queue/worker and integrate with BetterAuth afterSignUp hook. TDD for
+            scheduling and content.
+          status: pending
+        - id: 6
+          title: Flutter Mobile App Scaffold + Auth
+          description: Initialize Flutter project under apps/mobile. Implement login with
+            same BetterAuth credentials via REST API. Set up shared auth state
+            management. TDD with widget and integration tests.
+          status: pending
+        - id: 7
+          title: Flutter Mobile Todo CRUD + Real-Time
+          description: Implement todo list screen with full CRUD in Flutter. Connect to
+            web API endpoints. Integrate WebSocket client for real-time updates.
+            TDD for feature flows.
+          status: pending
+        - id: 8
+          title: Fix Pre-existing Admin Test Failures
+          description: Fix admin-auth.spec.ts missing setup() call. Fix admin middleware
+            hardcoded email check causing 401/403 failures in
+            admin-notifications.spec.ts. Ensure full test suite passes.
+          status: completed
+      rationale: "Re-evaluation confirms Phases 1, 2, and 8 are fully complete with
+        all 51 tests passing. Phase 1 delivered the todos table migration,
+        shared types, and schema verification tests. Phase 2 delivered 4
+        authenticated CRUD endpoints with comprehensive e2e tests. Phase 8 fixed
+        middleware execution order, pagination response format, and test
+        cleanup. The remaining phases 3-7 are unchanged and ready for
+        implementation. Dependencies remain: 3->4 for web real-time, 5 depends
+        on 2 for API foundation, 6+7 depend on 2+3 for shared API and WebSocket.
+        Key risks are still Nitro experimental WebSocket stability, Flutter
+        monorepo integration, and BetterAuth bearer token support for mobile."
+    completed_at: 2026-05-05T17:59:31.627Z
+  - cycle: 42
+    phase: plan
+    agent: planner
+    status: completed
+    started_at: 2026-05-05T17:59:31.752Z
+    summary: "Planned 8 tasks: Write TDD e2e test at
+      apps/web/test/e2e/todos.ws.spec.ts. The test should: create an
+      authenticated user, establish WebSocket connection to /api/todos/ws with
+      auth cookies, verify connection succeeds, then perform POST/PUT/DELETE
+      operations via HTTP and verify corresponding
+      todo.created/todo.updated/todo.deleted events are received via WebSocket.
+      Also test that unauthenticated connections are rejected and that
+      broadcasts are scoped to the correct user (a second user should not
+      receive the first user's events). Use the ws npm package for WebSocket
+      client in tests., Create apps/web/server/utils/ws-manager.ts with a
+      WebSocketConnectionManager class. It should maintain a Map of userId ->
+      Set of WebSocket connections. Provide methods: addConnection(userId, ws),
+      removeConnection(userId, ws), broadcastToUser(userId, eventType, payload).
+      The broadcast should send JSON with { type, payload } format., Create
+      apps/web/server/api/todos/ws.ts using defineWebSocketHandler from Nitro
+      experimental WebSocket support. On connection, extract and validate auth
+      session from request headers. If unauthenticated, close connection with
+      1008 policy violation code. On successful auth, register the connection
+      with ws-manager for the user ID. Handle close events to unregister. Accept
+      ping messages and respond with pong for keepalive., Update
+      apps/web/server/api/todos/index.post.ts to broadcast todo.created event
+      after successful insertion. Import the ws-manager and call broadcastToUser
+      with the userId and the created todo object., Update
+      apps/web/server/api/todos/[id]/index.put.ts to broadcast todo.updated
+      event after successful update, but only if the update was successful (not
+      404/403)., Update apps/web/server/api/todos/[id]/index.delete.ts to
+      broadcast todo.deleted event with the todoId after successful deletion.,
+      Run pnpm test to verify all existing tests still pass and the new
+      WebSocket tests pass., If ws package is not installed, add it as a
+      devDependency in apps/web/package.json."
+    output:
+      type: plan
+      tasks:
+        - "Write TDD e2e test at apps/web/test/e2e/todos.ws.spec.ts. The test
+          should: create an authenticated user, establish WebSocket connection
+          to /api/todos/ws with auth cookies, verify connection succeeds, then
+          perform POST/PUT/DELETE operations via HTTP and verify corresponding
+          todo.created/todo.updated/todo.deleted events are received via
+          WebSocket. Also test that unauthenticated connections are rejected and
+          that broadcasts are scoped to the correct user (a second user should
+          not receive the first user's events). Use the ws npm package for
+          WebSocket client in tests."
+        - "Create apps/web/server/utils/ws-manager.ts with a
+          WebSocketConnectionManager class. It should maintain a Map of userId
+          -> Set of WebSocket connections. Provide methods:
+          addConnection(userId, ws), removeConnection(userId, ws),
+          broadcastToUser(userId, eventType, payload). The broadcast should send
+          JSON with { type, payload } format."
+        - Create apps/web/server/api/todos/ws.ts using defineWebSocketHandler
+          from Nitro experimental WebSocket support. On connection, extract and
+          validate auth session from request headers. If unauthenticated, close
+          connection with 1008 policy violation code. On successful auth,
+          register the connection with ws-manager for the user ID. Handle close
+          events to unregister. Accept ping messages and respond with pong for
+          keepalive.
+        - Update apps/web/server/api/todos/index.post.ts to broadcast
+          todo.created event after successful insertion. Import the ws-manager
+          and call broadcastToUser with the userId and the created todo object.
+        - Update apps/web/server/api/todos/[id]/index.put.ts to broadcast
+          todo.updated event after successful update, but only if the update was
+          successful (not 404/403).
+        - Update apps/web/server/api/todos/[id]/index.delete.ts to broadcast
+          todo.deleted event with the todoId after successful deletion.
+        - Run pnpm test to verify all existing tests still pass and the new
+          WebSocket tests pass.
+        - If ws package is not installed, add it as a devDependency in
+          apps/web/package.json.
+      approach: Follow strict TDD. First write the WebSocket e2e test that will fail
+        because the endpoint does not exist. Then implement the ws-manager
+        utility, the WebSocket endpoint, and integrate broadcasts into existing
+        CRUD endpoints. The WebSocket handler uses Nitro's
+        defineWebSocketHandler which is available in Nitro 2.x experimental.
+        Broadcasts are user-scoped so users only receive updates for their own
+        todos. The test creates two users to verify isolation. Use the ws
+        library (already commonly available) for the test client. Keep the
+        ws-manager as a singleton module so both the WebSocket handler and HTTP
+        endpoints can access it.
+    completed_at: 2026-05-05T18:00:06.983Z
+  - cycle: 43
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T18:00:07.108Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T18:05:08.246Z
+  - cycle: 44
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T18:05:08.405Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T18:10:09.731Z
+  - cycle: 45
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T18:10:09.889Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T18:15:11.263Z
+  - cycle: 46
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T18:15:11.404Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T18:20:12.767Z
+  - cycle: 47
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T18:20:12.906Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T18:25:14.292Z
+  - cycle: 48
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T18:25:14.430Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T18:30:15.784Z
+  - cycle: 49
+    phase: implement
+    agent: implementer
+    status: failed
+    started_at: 2026-05-05T18:30:15.875Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: implement
+    completed_at: 2026-05-05T18:35:17.205Z
+  - cycle: 50
+    phase: review
+    agent: reviewer
+    status: failed
+    started_at: 2026-05-05T18:35:17.330Z
+    summary: "TypeError: fetch failed"
+    output:
+      type: review
+    completed_at: 2026-05-05T18:40:18.682Z

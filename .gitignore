@@ -21,3 +21,4 @@ logs
 .env.*
 !.env.example
 .data/
+!plans/001-rails-inspired-frmwork

@@ -1,7 +1,19 @@
+import type { Transaction } from 'kysely'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { Kysely, PostgresDialect } from 'kysely'
 import pg from 'pg'
 
+export interface DbContext {
+  trx: Transaction<Database>
+}
+
+export const dbContext = new AsyncLocalStorage<DbContext>()
+
 export function useDatabase(env: { databaseUrl: string }) {
+  const activeTrx = dbContext.getStore()?.trx
+  if (activeTrx)
+    return activeTrx
+
   const pool = new pg.Pool({
     connectionString: env.databaseUrl,
   })

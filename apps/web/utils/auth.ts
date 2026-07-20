@@ -1,7 +1,5 @@
 import { betterAuth } from 'better-auth'
 import { createAuthMiddleware } from 'better-auth/api'
-import { PostgresDialect } from 'kysely'
-import pg from 'pg'
 import { enqueueEmail } from '../server/lib/email'
 import { useDatabase } from './db'
 
@@ -12,16 +10,11 @@ interface AuthEnv {
 }
 
 export function useAuth(env: AuthEnv) {
-  const pool = new pg.Pool({
-    connectionString: env.databaseUrl,
-  })
   const db = useDatabase(env)
   // Create and export the auth instance
   const auth = betterAuth({
     database: {
-      dialect: new PostgresDialect({
-        pool,
-      }),
+      db,
       type: 'postgres',
     },
     emailAndPassword: {
