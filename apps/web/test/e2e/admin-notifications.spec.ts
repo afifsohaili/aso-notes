@@ -1,182 +1,32 @@
-import { readFileSync } from 'node:fs'
-import { fetch, setup } from '@nuxt/test-utils/e2e'
-import { Pool } from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { givenVerifiedUser } from '@base/testing/auth'
+import { test } from '@base/testing/test'
+import { describe, expect } from 'vitest'
 
-// Load .env for direct DB access in test process
-const envFile = readFileSync(new URL('../../.env', import.meta.url), 'utf-8')
-for (const line of envFile.split('\n')) {
-  const match = line.match(/^([^#=]+)=(.*)$/)
-  if (match) {
-    const key = match[1].trim()
-    const value = match[2].trim().replace(/^["']|["']$/g, '')
-    if (!process.env[key])
-      process.env[key] = value
-  }
-}
+const ADMIN_EMAIL = 'afifnajib@gmail.com'
 
-describe('admin Notifications API', async () => {
-  // Setup Nuxt test context (uses TEST_HOST if provided, otherwise starts new server)
-  await setup({
-    host: process.env.TEST_HOST,
-  })
-  const db = new Pool({ connectionString: process.env.DATABASE_URL })
-
-  // Test users
-  let adminCookies: string
-  let regularUserCookies: string
-  const adminEmail = 'afifnajib@gmail.com'
-  const regularEmail = `test-regular-${Date.now()}@example.com`
-
-  // Test data
-  let createdNotificationId: number
-  const testOrgId = 'test-org-123'
-
-  beforeAll(async () => {
-    const testHost = process.env.TEST_HOST || 'http://localhost:3000'
-
-    // 1. Create admin user (the hardcoded admin email) - may already exist
-    const adminSignupRes = await fetch('/api/auth/sign-up/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': testHost,
-      },
-      body: JSON.stringify({
-        email: adminEmail,
-        password: 'AdminPass123!',
-        name: 'Admin User',
-      }),
-    })
-
-    const adminSignupBody = await adminSignupRes.json()
-    if (!adminSignupRes.ok && !adminSignupBody?.code?.includes('ALREADY_EXISTS')) {
-      throw new Error(`Admin signup failed: ${JSON.stringify(adminSignupBody)}`)
-    }
-
-    // Verify admin email
-    await db.query('UPDATE users SET "emailVerified" = true WHERE email = $1', [adminEmail])
-
-    // Login as admin
-    const adminLoginRes = await fetch('/api/auth/sign-in/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': testHost,
-      },
-      body: JSON.stringify({
-        email: adminEmail,
-        password: 'AdminPass123!',
-      }),
-    })
-
-    if (!adminLoginRes.ok) {
-      throw new Error(`Admin login failed: ${await adminLoginRes.text()}`)
-    }
-
-    const adminSetCookies = adminLoginRes.headers.getSetCookie?.() ?? []
-    adminCookies = adminSetCookies.map(c => c.split(';')[0]).join('; ')
-
-    // 2. Create regular user
-    const regularSignupRes = await fetch('/api/auth/sign-up/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': testHost,
-      },
-      body: JSON.stringify({
-        email: regularEmail,
-        password: 'RegularPass123!',
-        name: 'Regular User',
-      }),
-    })
-
-    if (!regularSignupRes.ok && regularSignupRes.status !== 409) {
-      throw new Error(`Regular user signup failed: ${await regularSignupRes.text()}`)
-    }
-
-    // Verify regular email
-    await db.query('UPDATE users SET "emailVerified" = true WHERE email = $1', [regularEmail])
-
-    // Login as regular user
-    const regularLoginRes = await fetch('/api/auth/sign-in/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': testHost,
-      },
-      body: JSON.stringify({
-        email: regularEmail,
-        password: 'RegularPass123!',
-      }),
-    })
-
-    if (!regularLoginRes.ok) {
-      throw new Error(`Regular user login failed: ${await regularLoginRes.text()}`)
-    }
-
-    const regularSetCookies = regularLoginRes.headers.getSetCookie?.() ?? []
-    regularUserCookies = regularSetCookies.map(c => c.split(';')[0]).join('; ')
-  })
-
-  afterAll(async () => {
-    // Cleanup in correct order to avoid FK violations
-    // Only delete the regular test user we created, not the hardcoded admin
-    // 1. Delete ALL notifications created by the regular test user
-    await db.query(`
-      DELETE FROM notifications 
-      WHERE created_by IN (
-        SELECT id FROM users WHERE email = $1
-      )
-    `, [regularEmail])
-
-    // 2. Delete sessions for regular test user
-    await db.query(`
-      DELETE FROM sessions 
-      WHERE "userId" IN (
-        SELECT id FROM users WHERE email = $1
-      )
-    `, [regularEmail])
-
-    // 3. Delete accounts for regular test user
-    await db.query(`
-      DELETE FROM accounts 
-      WHERE "userId" IN (
-        SELECT id FROM users WHERE email = $1
-      )
-    `, [regularEmail])
-
-    // 4. Delete memberships for regular test user
-    await db.query(`
-      DELETE FROM memberships 
-      WHERE user_id IN (
-        SELECT id FROM users WHERE email = $1
-      )
-    `, [regularEmail])
-
-    // 5. Delete only the regular test user (not the admin)
-    await db.query('DELETE FROM users WHERE email = $1', [regularEmail])
-    await db.end()
-  })
-
+describe('admin Notifications API', () => {
   describe('authorization', () => {
-    it('returns 401 when accessing admin routes without auth', async () => {
-      const res = await fetch('/api/admin/notifications')
+    test('returns 401 when accessing admin routes without auth', async ({ server }) => {
+      const res = await server('/api/admin/notifications')
       expect(res.status).toBe(401)
     })
 
-    it('returns 403 when non-admin user accesses admin routes', async () => {
-      const res = await fetch('/api/admin/notifications', {
-        headers: { Cookie: regularUserCookies },
+    test('returns 403 when non-admin user accesses admin routes', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: `regular-${Date.now()}@example.com` })
+
+      const res = await server('/api/admin/notifications', {
+        headers: { cookie: cookies },
       })
       expect(res.status).toBe(403)
     })
   })
 
   describe('gET /api/admin/notifications', () => {
-    it('returns paginated list of notifications', async () => {
-      const res = await fetch('/api/admin/notifications?page=1&limit=10', {
-        headers: { Cookie: adminCookies },
+    test('returns paginated list of notifications', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications?page=1&limit=10', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
@@ -186,9 +36,24 @@ describe('admin Notifications API', async () => {
       expect(Array.isArray(body.notifications)).toBe(true)
     })
 
-    it('filters by type', async () => {
-      const res = await fetch('/api/admin/notifications?type=info', {
-        headers: { Cookie: adminCookies },
+    test('filters by type', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Info Filter',
+          message: 'Test',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .execute()
+
+      const res = await server('/api/admin/notifications?type=info', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
@@ -196,9 +61,24 @@ describe('admin Notifications API', async () => {
       expect(body.notifications.every((n: any) => n.type === 'info')).toBe(true)
     })
 
-    it('filters by target_type', async () => {
-      const res = await fetch('/api/admin/notifications?target_type=organization', {
-        headers: { Cookie: adminCookies },
+    test('filters by target_type', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Org Filter',
+          message: 'Test',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .execute()
+
+      const res = await server('/api/admin/notifications?target_type=organization', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
@@ -206,9 +86,24 @@ describe('admin Notifications API', async () => {
       expect(body.notifications.every((n: any) => n.target_type === 'organization')).toBe(true)
     })
 
-    it('filters by is_active', async () => {
-      const res = await fetch('/api/admin/notifications?is_active=true', {
-        headers: { Cookie: adminCookies },
+    test('filters by is_active', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Active Filter',
+          message: 'Test',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .execute()
+
+      const res = await server('/api/admin/notifications?is_active=true', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
@@ -216,9 +111,11 @@ describe('admin Notifications API', async () => {
       expect(body.notifications.every((n: any) => n.is_active === true)).toBe(true)
     })
 
-    it('returns all notifications when limit=all', async () => {
-      const res = await fetch('/api/admin/notifications?limit=all', {
-        headers: { Cookie: adminCookies },
+    test('returns all notifications when limit=all', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications?limit=all', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
@@ -226,23 +123,40 @@ describe('admin Notifications API', async () => {
       expect(body.pagination).toBeUndefined()
     })
 
-    it('searches by title/message', async () => {
-      const res = await fetch('/api/admin/notifications?search=test', {
-        headers: { Cookie: adminCookies },
+    test('searches by title/message', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Searchable Test Notification',
+          message: 'Search me',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .execute()
+
+      const res = await server('/api/admin/notifications?search=test', {
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
-      // Just verify it doesn't error - search behavior depends on DB data
     })
   })
 
   describe('pOST /api/admin/notifications', () => {
-    it('creates a new notification', async () => {
-      const res = await fetch('/api/admin/notifications', {
+    test('creates a new notification', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+      const testOrgId = 'test-org-123'
+
+      const res = await server('/api/admin/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Test Notification Created',
@@ -263,16 +177,16 @@ describe('admin Notifications API', async () => {
       expect(body.target_id).toBe(testOrgId)
       expect(body.is_active).toBe(true)
       expect(body.created_by).toBeDefined()
-
-      createdNotificationId = body.id
     })
 
-    it('returns 400 when missing required fields', async () => {
-      const res = await fetch('/api/admin/notifications', {
+    test('returns 400 when missing required fields', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Missing fields',
@@ -282,12 +196,14 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('returns 400 for invalid target_type', async () => {
-      const res = await fetch('/api/admin/notifications', {
+    test('returns 400 for invalid target_type', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Invalid target',
@@ -299,12 +215,14 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('returns 400 for invalid type', async () => {
-      const res = await fetch('/api/admin/notifications', {
+    test('returns 400 for invalid type', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Invalid type',
@@ -317,12 +235,14 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('creates notification with default values', async () => {
-      const res = await fetch('/api/admin/notifications', {
+    test('creates notification with default values', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Default Values Test',
@@ -333,38 +253,35 @@ describe('admin Notifications API', async () => {
 
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.type).toBe('info') // Default type
-      expect(body.is_active).toBe(true) // Default is_active
+      expect(body.type).toBe('info')
+      expect(body.is_active).toBe(true)
     })
   })
 
   describe('pUT /api/admin/notifications/[id]', () => {
-    it('updates an existing notification', async () => {
-      // First create a notification to update
-      const createRes = await fetch('/api/admin/notifications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
-        },
-        body: JSON.stringify({
+    test('updates an existing notification', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+      const testOrgId = 'test-org-123'
+
+      const [created] = await trx
+        .insertInto('notifications')
+        .values({
           title: 'Notification to Update',
           message: 'Original message',
+          type: 'info',
           target_type: 'organization',
           target_id: testOrgId,
+          created_by: user.id,
           is_active: true,
-        }),
-      })
+        })
+        .returning('id')
+        .execute()
 
-      const created = await createRes.json()
-      const notificationId = created.id
-
-      // Now update it
-      const res = await fetch(`/api/admin/notifications/${notificationId}`, {
+      const res = await server(`/api/admin/notifications/${created.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Updated Title',
@@ -378,15 +295,17 @@ describe('admin Notifications API', async () => {
       expect(body.title).toBe('Updated Title')
       expect(body.message).toBe('Updated message')
       expect(body.is_active).toBe(false)
-      expect(body.id).toBe(notificationId)
+      expect(body.id).toBe(created.id)
     })
 
-    it('returns 404 for non-existent notification', async () => {
-      const res = await fetch('/api/admin/notifications/999999', {
+    test('returns 404 for non-existent notification', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications/999999', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Non-existent',
@@ -396,12 +315,14 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(404)
     })
 
-    it('returns 400 for invalid ID', async () => {
-      const res = await fetch('/api/admin/notifications/invalid-id', {
+    test('returns 400 for invalid ID', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications/invalid-id', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Test',
@@ -411,12 +332,28 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('returns 400 for invalid target_type', async () => {
-      const res = await fetch(`/api/admin/notifications/${createdNotificationId}`, {
+    test('returns 400 for invalid target_type', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const [created] = await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Invalid target type',
+          message: 'Test',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .returning('id')
+        .execute()
+
+      const res = await server(`/api/admin/notifications/${created.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           target_type: 'invalid_type',
@@ -426,12 +363,28 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('returns 400 for invalid type', async () => {
-      const res = await fetch(`/api/admin/notifications/${createdNotificationId}`, {
+    test('returns 400 for invalid type', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const [created] = await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Invalid type',
+          message: 'Test',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .returning('id')
+        .execute()
+
+      const res = await server(`/api/admin/notifications/${created.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           type: 'invalid_type',
@@ -441,12 +394,28 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(400)
     })
 
-    it('supports partial updates', async () => {
-      const res = await fetch(`/api/admin/notifications/${createdNotificationId}`, {
+    test('supports partial updates', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const [created] = await trx
+        .insertInto('notifications')
+        .values({
+          title: 'Partial Update',
+          message: 'Keep me',
+          type: 'info',
+          target_type: 'organization',
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .returning('id')
+        .execute()
+
+      const res = await server(`/api/admin/notifications/${created.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
+          'content-type': 'application/json',
+          'cookie': cookies,
         },
         body: JSON.stringify({
           title: 'Only Title Updated',
@@ -456,60 +425,63 @@ describe('admin Notifications API', async () => {
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.title).toBe('Only Title Updated')
-      expect(body.message).toBeDefined() // Other fields unchanged
+      expect(body.message).toBeDefined()
     })
   })
 
   describe('dELETE /api/admin/notifications/[id]', () => {
-    it('deletes an existing notification', async () => {
-      // First create a notification to delete
-      const createRes = await fetch('/api/admin/notifications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': adminCookies,
-        },
-        body: JSON.stringify({
+    test('deletes an existing notification', async ({ server, trx }) => {
+      const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const [created] = await trx
+        .insertInto('notifications')
+        .values({
           title: 'Notification to Delete',
           message: 'Will be deleted',
+          type: 'info',
           target_type: 'organization',
-        }),
-      })
+          target_id: 'test-org',
+          created_by: user.id,
+          is_active: true,
+        })
+        .returning('id')
+        .execute()
 
-      const created = await createRes.json()
-      const notificationId = created.id
-
-      // Delete it
-      const res = await fetch(`/api/admin/notifications/${notificationId}`, {
+      const res = await server(`/api/admin/notifications/${created.id}`, {
         method: 'DELETE',
-        headers: { Cookie: adminCookies },
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.success).toBe(true)
-      expect(body.notification.id).toBe(notificationId)
+      expect(body.notification.id).toBe(created.id)
 
-      // Verify it's actually deleted
-      const getRes = await fetch(`/api/admin/notifications/${notificationId}`, {
-        headers: { Cookie: adminCookies },
-      })
-      expect(getRes.status).toBe(404)
+      const remaining = await trx
+        .selectFrom('notifications')
+        .select('id')
+        .where('id', '=', created.id)
+        .execute()
+      expect(remaining).toHaveLength(0)
     })
 
-    it('returns 404 for non-existent notification', async () => {
-      const res = await fetch('/api/admin/notifications/999999', {
+    test('returns 404 for non-existent notification', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications/999999', {
         method: 'DELETE',
-        headers: { Cookie: adminCookies },
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(404)
     })
 
-    it('returns 400 for invalid ID', async () => {
-      const res = await fetch('/api/admin/notifications/invalid-id', {
+    test('returns 400 for invalid ID', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
+
+      const res = await server('/api/admin/notifications/invalid-id', {
         method: 'DELETE',
-        headers: { Cookie: adminCookies },
+        headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(400)

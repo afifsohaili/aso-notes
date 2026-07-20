@@ -1,5 +1,5 @@
-import { useDatabase } from '~~/utils/db'
 import { wsManager } from '~~/server/utils/ws-manager'
+import { useDatabase } from '~~/utils/db'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -40,9 +40,12 @@ export default defineEventHandler(async (event) => {
 
     // Build update object dynamically
     const updateData: Record<string, any> = {}
-    if (body.title !== undefined) updateData.title = body.title.trim()
-    if (body.description !== undefined) updateData.description = body.description ?? null
-    if (body.completed !== undefined) updateData.completed = Boolean(body.completed)
+    if (body.title !== undefined)
+      updateData.title = body.title.trim()
+    if (body.description !== undefined)
+      updateData.description = body.description ?? null
+    if (body.completed !== undefined)
+      updateData.completed = Boolean(body.completed)
     updateData.updated_at = new Date()
 
     const todo = await db

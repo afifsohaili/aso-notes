@@ -12,6 +12,7 @@
     "lint:fix": "eslint . --fix",
     "db:migrate": "kysely migrate latest",
     "db:migrate:generate": "kysely migrate latest && kysely-codegen --out-file ../../packages/shared/types.d.ts",
+    "db:schema:dump": "vite-node scripts/dump-schema.ts",
     "test": "vitest run",
     "test:watch": "vitest --watch",
     "test:e2e": "vitest --project e2e",

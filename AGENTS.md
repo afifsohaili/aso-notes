@@ -12,6 +12,7 @@ You are building the application with the following technologies:
 - Test: `vitest run` (single test: `vitest run test/components/landing-page.nuxt.spec.ts`)
 - DB Migrate: `pnpm db:migrate`
 - DB Migrate + Generate Types: `pnpm db:migrate:generate`
+- DB Schema Dump: `pnpm db:schema:dump` (regenerates `apps/web/db/schema.sql` from migrations)
 
 ## Code Style
 - Use @antfu/eslint-config with Vue support
@@ -37,25 +38,22 @@ You are building the application with the following technologies:
 - Use browser MCP to check the application state and take actions
 
 ## Testing
-- **Integration tests are preferred** over unit tests for testing API endpoints and full feature flows
-- Use `@nuxt/test-utils/e2e` for API route testing with real HTTP calls
-- Tests can run in two modes:
-  - **Fast mode** (recommended): Start dev server separately, then run tests with `TEST_HOST`:
-    ```bash
-    # Terminal 1: Start dev server
-    pnpm dev --port 3001
-    
-    # Terminal 2: Run tests against running server
-    TEST_HOST=http://localhost:3001 pnpm vitest run test/e2e/
-    ```
-  - **Slow mode** (isolated): Each test file starts its own server (takes ~20s per file):
-    ```bash
-    pnpm vitest run test/e2e/notifications.get.spec.ts
-    ```
-- All e2e test files should support `TEST_HOST` environment variable:
-  ```typescript
-  await setup({ host: process.env.TEST_HOST })
+- **Integration tests are preferred** over unit tests for testing API endpoints and full feature flows.
+- Use `@base/testing` for e2e tests. The default tier is **in-process transactional**:
+  - No Nuxt build, no server spawn.
+  - One template DB per run, one DB per test file, one transaction per test (rolled back).
+  - Use `test` from `@base/testing/test`, `givenVerifiedUser()` from `@base/testing/auth`, `fixtures` from `@base/testing/fixtures`, and `queue` for job assertions.
+- Run the full suite:
+  ```bash
+  pnpm --filter web test
   ```
+- Run only the fast e2e project:
+  ```bash
+  pnpm --filter web vitest run --project e2e
+  ```
+- Built-server tests (real HTTP/WebSocket) live in `test/e2e-built/` and run via the `e2e-built` project. One `nuxt build` per run; each file spawns one server from `.output/server`.
+- `TEST_HOST=http://localhost:3001 pnpm vitest run test/e2e/` still works as a local dev loop, trading isolation for speed. CI never uses it.
+- See `packages/testing/README.md` and `skills/write-e2e-test/SKILL.md` for templates and rules.
 
 ## Testing Tips
 - Vitest swallows `console.log` output. Use `throw new Error(JSON.stringify(value))` to see values in test output instead.

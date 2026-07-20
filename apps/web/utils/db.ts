@@ -10,6 +10,10 @@ export interface DbContext {
 export const dbContext = new AsyncLocalStorage<DbContext>()
 
 export function useDatabase(env: { databaseUrl: string }) {
+  const globalTrx = (globalThis as any).__BASE_TESTING_TRX__ as Transaction<Database> | undefined
+  if (globalTrx)
+    return globalTrx
+
   const activeTrx = dbContext.getStore()?.trx
   if (activeTrx)
     return activeTrx

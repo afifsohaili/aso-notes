@@ -1,5 +1,5 @@
-import { useDatabase } from '~~/utils/db'
 import { wsManager } from '~~/server/utils/ws-manager'
+import { useDatabase } from '~~/utils/db'
 
 export default defineEventHandler(async (event) => {
   try {

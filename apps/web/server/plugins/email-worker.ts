@@ -1,10 +1,16 @@
 import type { Job } from 'bullmq'
 import type { EmailJobData } from '../lib/email'
+import process from 'node:process'
 import { EMAIL_QUEUE_NAME, sendEmail } from '../lib/email'
 
 export default defineNitroPlugin(() => {
   // skip initialising worker on pre-render
   if (import.meta.prerender)
+    return
+
+  // Test harnesses spawn the built server per file; avoid starting a BullMQ
+  // worker in those processes to keep resource usage bounded.
+  if (process.env.NUXT_DISABLE_EMAIL_WORKER === '1')
     return
 
   const worker = useWorker(

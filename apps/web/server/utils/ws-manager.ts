@@ -27,7 +27,8 @@ class WebSocketConnectionManager {
 
   broadcastToUser(userId: string, eventType: string, payload: any): void {
     const userConnections = this.connections.get(userId)
-    if (!userConnections || userConnections.size === 0) return
+    if (!userConnections || userConnections.size === 0)
+      return
 
     const message = JSON.stringify({ type: eventType, payload })
 

@@ -1,4 +1,3 @@
-import type { Peer } from 'crossws'
 import { wsManager } from '~~/server/utils/ws-manager'
 import { useAuth } from '~~/utils/auth'
 

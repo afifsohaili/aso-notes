@@ -1,0 +1,38 @@
+{
+  "name": "@base/testing",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./provisioning": "./src/provisioning/index.ts",
+    "./test": "./src/test.ts",
+    "./server-caller": "./src/server-caller.ts",
+    "./transaction": "./src/transaction.ts",
+    "./runtime-config": "./src/runtime-config.ts",
+    "./vitest-plugin": "./src/vitest-plugin.ts",
+    "./fixtures": "./src/fixtures.ts",
+    "./auth": "./src/auth.ts",
+    "./queue": "./src/queue/index.ts",
+    "./built-server": "./src/built-server.ts",
+    "./built-server-global-setup": "./src/built-server-global-setup.ts",
+    "./mail-assertions": "./src/mail-assertions.ts"
+  },
+  "dependencies": {
+    "@base/jobs": "workspace:*",
+    "@monorepo/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
+    "bullmq": "^5.76.5",
+    "dotenv": "^17.4.2",
+    "h3": "^1.15.4",
+    "ioredis": "^5.10.1",
+    "kysely": "^0.28.17",
+    "pg": "^8.20.0",
+    "typescript": "^6.0.3",
+    "unimport": "^4.2.0",
+    "vitest": "^4.1.5"
+  }
+}
