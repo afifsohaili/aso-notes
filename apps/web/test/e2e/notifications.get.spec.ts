@@ -9,16 +9,16 @@ describe('gET /api/notifications', () => {
   })
 
   test('returns 200 with notifications array for authenticated user', async ({ server, trx }) => {
-    const { user, org, cookies } = await givenVerifiedUser()
+    const { user, workspace, cookies } = await givenVerifiedUser()
 
     await trx
       .insertInto('notifications')
       .values({
-        title: 'Org Notification',
-        message: 'Visible to org members',
+        title: 'Workspace Notification',
+        message: 'Visible to workspace members',
         type: 'info',
-        target_type: 'organization',
-        target_id: org.id,
+        target_type: 'workspace',
+        target_id: workspace.id,
         created_by: user.id,
         is_active: true,
       })
@@ -33,18 +33,18 @@ describe('gET /api/notifications', () => {
     expect(Array.isArray(body)).toBe(true)
   })
 
-  test('only returns active notifications matching user org or role', async ({ server, trx }) => {
-    const { user, org, cookies } = await givenVerifiedUser()
+  test('only returns active notifications matching user workspace or role', async ({ server, trx }) => {
+    const { user, workspace, cookies } = await givenVerifiedUser()
 
     await trx
       .insertInto('notifications')
       .values([
         {
-          title: 'Org Notification',
-          message: 'Visible to org members',
+          title: 'Workspace Notification',
+          message: 'Visible to workspace members',
           type: 'info',
-          target_type: 'organization',
-          target_id: org.id,
+          target_type: 'workspace',
+          target_id: workspace.id,
           created_by: user.id,
           is_active: true,
         },
@@ -58,11 +58,11 @@ describe('gET /api/notifications', () => {
           is_active: true,
         },
         {
-          title: 'Other Org Notification',
+          title: 'Other Workspace Notification',
           message: 'Should not be visible',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'non-existent-org',
+          target_type: 'workspace',
+          target_id: 'non-existent-workspace',
           created_by: user.id,
           is_active: true,
         },
@@ -70,8 +70,8 @@ describe('gET /api/notifications', () => {
           title: 'Inactive Notification',
           message: 'Should not be visible',
           type: 'info',
-          target_type: 'organization',
-          target_id: org.id,
+          target_type: 'workspace',
+          target_id: workspace.id,
           created_by: user.id,
           is_active: false,
         },
@@ -84,14 +84,14 @@ describe('gET /api/notifications', () => {
     const body = await res.json()
     const titles = body.map((n: any) => n.title)
 
-    expect(titles).toContain('Org Notification')
+    expect(titles).toContain('Workspace Notification')
     expect(titles).toContain('Role Notification')
-    expect(titles).not.toContain('Other Org Notification')
+    expect(titles).not.toContain('Other Workspace Notification')
     expect(titles).not.toContain('Inactive Notification')
   })
 
   test('includes read status fields in response', async ({ server, trx }) => {
-    const { user, org, cookies } = await givenVerifiedUser()
+    const { user, workspace, cookies } = await givenVerifiedUser()
 
     await trx
       .insertInto('notifications')
@@ -99,8 +99,8 @@ describe('gET /api/notifications', () => {
         title: 'Read Status Notification',
         message: 'Has read status',
         type: 'info',
-        target_type: 'organization',
-        target_id: org.id,
+        target_type: 'workspace',
+        target_id: workspace.id,
         created_by: user.id,
         is_active: true,
       })
@@ -115,7 +115,7 @@ describe('gET /api/notifications', () => {
   })
 
   test('returns notifications ordered by created_at descending', async ({ server, trx }) => {
-    const { user, org, cookies } = await givenVerifiedUser()
+    const { user, workspace, cookies } = await givenVerifiedUser()
 
     await trx
       .insertInto('notifications')
@@ -124,8 +124,8 @@ describe('gET /api/notifications', () => {
           title: 'Older Notification',
           message: 'Older',
           type: 'info',
-          target_type: 'organization',
-          target_id: org.id,
+          target_type: 'workspace',
+          target_id: workspace.id,
           created_by: user.id,
           is_active: true,
         },
@@ -133,8 +133,8 @@ describe('gET /api/notifications', () => {
           title: 'Newer Notification',
           message: 'Newer',
           type: 'info',
-          target_type: 'organization',
-          target_id: org.id,
+          target_type: 'workspace',
+          target_id: workspace.id,
           created_by: user.id,
           is_active: true,
         },

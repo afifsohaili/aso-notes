@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
       page: query.page ? Number(query.page) : 1,
       limit: query.limit === 'all' ? 'all' : (query.limit ? Number(query.limit) : 25),
       type: query.type as 'info' | 'warning' | 'success' | 'error' | undefined,
-      target_type: query.target_type as 'organization' | 'role' | undefined,
+      target_type: query.target_type as 'workspace' | 'role' | undefined,
       is_active: query.is_active !== undefined ? query.is_active === 'true' : undefined,
       search: query.search as string | undefined,
     }

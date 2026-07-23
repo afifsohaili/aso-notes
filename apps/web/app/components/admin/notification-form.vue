@@ -3,7 +3,7 @@ interface FormData {
   title: string
   message: string
   type: 'info' | 'warning' | 'success' | 'error'
-  target_type: 'organization' | 'role'
+  target_type: 'workspace' | 'role'
   target_id: string
   is_active: boolean
 }
@@ -47,7 +47,7 @@ const typeOptions = [
 
 const targetTypeOptions = [
   { value: 'role', label: 'Role' },
-  { value: 'organization', label: 'Organization' },
+  { value: 'workspace', label: 'Workspace' },
 ]
 
 const roleOptions = [
@@ -55,8 +55,8 @@ const roleOptions = [
   { value: 'member', label: 'Members' },
 ]
 
-// Fetch organizations for targeting
-const { data: organizations } = await useFetch('/api/admin/organizations')
+// Fetch workspaces for targeting
+const { data: workspaces } = await useFetch('/api/admin/workspaces')
 
 // Watch target_type changes to reset target_id
 watch(() => formData.value.target_type, () => {
@@ -196,9 +196,9 @@ watch(() => props.initialData, (newData) => {
             {{ role.label }}
           </option>
         </template>
-        <template v-if="formData.target_type === 'organization'">
-          <option v-for="org in organizations" :key="org.id" :value="org.id">
-            {{ org.name }}
+        <template v-if="formData.target_type === 'workspace'">
+          <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+            {{ workspace.name }}
           </option>
         </template>
       </select>

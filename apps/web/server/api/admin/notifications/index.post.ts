@@ -16,10 +16,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Validate target_type
-    if (!['organization', 'role'].includes(body.target_type)) {
+    if (!['workspace', 'role'].includes(body.target_type)) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'target_type must be either "organization" or "role"',
+        statusMessage: 'target_type must be either "workspace" or "role"',
       })
     }
 

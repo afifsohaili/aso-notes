@@ -2,6 +2,7 @@ import { dbContext } from './transaction'
 import { getActiveTransaction } from './active-transaction'
 import { createServerCaller } from './server-caller'
 import type { Kysely } from 'kysely'
+import type { Memberships, Users, Workspaces } from '@monorepo/shared'
 
 const TEST_PASSWORD = 'TestPassword123!'
 
@@ -75,12 +76,12 @@ export async function signInAs(userId: string): Promise<string> {
 }
 
 /**
- * Create a verified user with a default organization and admin membership,
- * mirroring the intent of the current manual sign-up/verify/org/membership flow.
+ * Create a verified user with a default workspace and admin membership,
+ * mirroring the intent of the current manual sign-up/verify/workspace/membership flow.
  */
 export async function givenVerifiedUser(
   overrides: Partial<Users> = {},
-): Promise<{ user: Users, org: Organizations, membership: Memberships, cookies: string }> {
+): Promise<{ user: Users, workspace: Workspaces, membership: Memberships, cookies: string }> {
   const caller = await getCaller()
   const trx = getTrx()
 
@@ -107,22 +108,22 @@ export async function givenVerifiedUser(
   }
 
   // BetterAuth skips the after-sign-up hook when email verification is required,
-  // so we verify the email and create the org/membership manually.
+  // so we verify the email and create the workspace/membership manually.
   await trx
     .updateTable('users')
     .set({ emailVerified: true })
     .where('id', '=', userId)
     .execute()
 
-  const [org] = await trx
-    .insertInto('organizations')
-    .values({ name: `${email}'s Organization` })
+  const [workspace] = await trx
+    .insertInto('workspaces')
+    .values({ name: `${email}'s Workspace` })
     .returning(['id', 'name', 'created_at', 'updated_at'])
     .execute()
 
   await trx
     .insertInto('memberships')
-    .values({ user_id: userId, organization_id: org.id, role: 'admin' })
+    .values({ user_id: userId, workspace_id: workspace.id, role: 'admin' })
     .execute()
 
   const cookies = await signInAs(userId)
@@ -137,8 +138,8 @@ export async function givenVerifiedUser(
     .selectFrom('memberships')
     .selectAll()
     .where('user_id', '=', userId)
-    .where('organization_id', '=', org.id)
+    .where('workspace_id', '=', workspace.id)
     .executeTakeFirstOrThrow()
 
-  return { user, org, membership, cookies }
+  return { user, workspace, membership, cookies }
 }

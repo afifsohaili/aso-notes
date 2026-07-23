@@ -11,14 +11,14 @@ export default defineEventHandler(async (event) => {
 
     const membership = await db
       .selectFrom('memberships')
-      .select(['organization_id', 'role'])
+      .select(['workspace_id', 'role'])
       .where('user_id', '=', userId)
       .where('deactivated_at', 'is', null)
       .executeTakeFirst()
 
     const notifications = await getUserNotifications(
       userId,
-      membership?.organization_id,
+      membership?.workspace_id,
       membership?.role,
     )
 

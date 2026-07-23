@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.14
--- Dumped by pg_dump version 15.10
+-- Dumped from database version 16.9 (Debian 16.9-1.pgdg120+1)
+-- Dumped by pg_dump version 16.9 (Debian 16.9-1.pgdg120+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -64,6 +64,44 @@ DROP TABLE IF EXISTS public.memberships;
 DROP TABLE IF EXISTS public.kysely_migration_lock;
 DROP TABLE IF EXISTS public.kysely_migration;
 DROP TABLE IF EXISTS public.accounts;
+DROP EXTENSION IF EXISTS vector;
+DROP EXTENSION IF EXISTS age;
+DROP SCHEMA IF EXISTS ag_catalog;
+--
+-- Name: ag_catalog; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA ag_catalog;
+
+
+--
+-- Name: age; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS age WITH SCHEMA ag_catalog;
+
+
+--
+-- Name: EXTENSION age; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION age IS 'AGE database extension';
+
+
+--
+-- Name: vector; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION vector; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+
+
 SET default_table_access_method = heap;
 
 --
@@ -134,7 +172,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-23 10:56:33.651652'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-23 09:29:35.392316'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -167,7 +205,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-23 10:56:33.651652'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-23 09:29:35.392316'::timestamp without time zone NOT NULL
 );
 
 

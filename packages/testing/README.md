@@ -39,14 +39,14 @@ test('GET /api/notifications returns 401', async ({ server }) => {
 })
 
 test('user sees own notifications', async ({ server, trx }) => {
-  const { user, org, cookies } = await givenVerifiedUser()
+  const { user, workspace, cookies } = await givenVerifiedUser()
 
   await trx.insertInto('notifications').values({
     title: 'Hello',
     message: 'World',
     type: 'info',
-    target_type: 'organization',
-    target_id: org.id,
+    target_type: 'workspace',
+    target_id: workspace.id,
     created_by: user.id,
     is_active: true,
   }).execute()
@@ -114,11 +114,11 @@ Typed fixture loader backed by `@monorepo/shared` DB types.
 import { fixture, ref } from '@base/testing/fixtures'
 
 const fx = await fixtures.load({
-  org: fixture('organizations', { name: 'Acme' }),
+  workspace: fixture('workspaces', { name: 'Acme' }),
   user: fixture('users', { name: 'Alice' }),
   membership: fixture('memberships', {
     user_id: ref('user'),
-    organization_id: ref('org'),
+    workspace_id: ref('workspace'),
     role: 'admin',
   }),
 })
@@ -131,8 +131,8 @@ Fixture refs are resolved in dependency order (topological sort). Cycles throw a
 ```ts
 import { givenVerifiedUser, signInAs } from '@base/testing/auth'
 
-// Creates a verified user + default org + admin membership, signs them in.
-const { user, org, membership, cookies } = await givenVerifiedUser()
+// Creates a verified user + default workspace + admin membership, signs them in.
+const { user, workspace, membership, cookies } = await givenVerifiedUser()
 
 // Sign in as an existing user and get the Cookie header value.
 const cookies = await signInAs(userId)

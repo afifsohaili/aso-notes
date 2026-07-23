@@ -8,7 +8,7 @@ definePageMeta({
 const title = ref('')
 const message = ref('')
 const type = ref<'info' | 'warning' | 'success' | 'error'>('info')
-const targetType = ref<'organization' | 'role'>('role')
+const targetType = ref<'workspace' | 'role'>('role')
 const targetId = ref('')
 const isActive = ref(true)
 const isSubmitting = ref(false)
@@ -42,7 +42,7 @@ const typeOptions = [
 // Target type options
 const targetTypeOptions = [
   { value: 'role', label: 'Role' },
-  { value: 'organization', label: 'Organization' },
+  { value: 'workspace', label: 'Workspace' },
 ]
 
 // Role options
@@ -59,8 +59,8 @@ const pageSizeOptions = [
   { value: 'all', label: 'All' },
 ]
 
-// Fetch organizations for targeting
-const { data: organizations } = await useFetch('/api/admin/organizations')
+// Fetch workspaces for targeting
+const { data: workspaces } = await useFetch('/api/admin/workspaces')
 
 // Fetch notifications with filters
 const { data: notificationsData, refresh: refreshNotifications } = await useFetch('/api/admin/notifications', {
@@ -108,9 +108,9 @@ function getTypeClass(notificationType: string) {
 }
 
 function getTargetDisplay(notification: any) {
-  if (notification.target_type === 'organization') {
-    const org = organizations.value?.find((o: any) => o.id === notification.target_id)
-    return `${org?.name || 'Unknown Org'}`
+  if (notification.target_type === 'workspace') {
+    const workspace = workspaces.value?.find((o: any) => o.id === notification.target_id)
+    return `${workspace?.name || 'Unknown Workspace'}`
   }
   else if (notification.target_type === 'role') {
     const role = roleOptions.find(r => r.value === notification.target_id)
@@ -250,7 +250,7 @@ async function toggleActive(notification: any) {
             Create Notification
           </h3>
           <p class="mt-1 max-w-2xl text-sm text-gray-500">
-            Send notifications to users based on organization or role.
+            Send notifications to users based on workspace or role.
           </p>
         </div>
 
@@ -336,9 +336,9 @@ async function toggleActive(notification: any) {
                       {{ role.label }}
                     </option>
                   </template>
-                  <template v-if="targetType === 'organization'">
-                    <option v-for="org in organizations" :key="org.id" :value="org.id">
-                      {{ org.name }}
+                  <template v-if="targetType === 'workspace'">
+                    <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                      {{ workspace.name }}
                     </option>
                   </template>
                 </select>
@@ -531,9 +531,9 @@ async function toggleActive(notification: any) {
                           {{ role.label }}
                         </option>
                       </template>
-                      <template v-if="editingData.target_type === 'organization'">
-                        <option v-for="org in organizations" :key="org.id" :value="org.id">
-                          {{ org.name }}
+                      <template v-if="editingData.target_type === 'workspace'">
+                        <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                          {{ workspace.name }}
                         </option>
                       </template>
                     </select>

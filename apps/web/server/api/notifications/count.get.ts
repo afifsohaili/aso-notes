@@ -8,10 +8,10 @@ export default defineEventHandler(async (event) => {
     const userId = event.context.user.id
     const db = useDatabase(useRuntimeConfig(event))
 
-    // Get user's organization and role from membership
+    // Get user's workspace and role from membership
     const membership = await db
       .selectFrom('memberships')
-      .select(['organization_id', 'role'])
+      .select(['workspace_id', 'role'])
       .where('user_id', '=', userId)
       .where('deactivated_at', 'is', null)
       .executeTakeFirst()
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     if (unreadOnly) {
       const count = await getUnreadNotificationCount(
         userId,
-        membership?.organization_id,
+        membership?.workspace_id,
         membership?.role,
       )
 
@@ -36,11 +36,11 @@ export default defineEventHandler(async (event) => {
         .where((eb) => {
           const conditions = []
 
-          if (membership?.organization_id) {
+          if (membership?.workspace_id) {
             conditions.push(
               eb.and([
-                eb('n.target_type', '=', 'organization'),
-                eb('n.target_id', '=', membership.organization_id),
+                eb('n.target_type', '=', 'workspace'),
+                eb('n.target_id', '=', membership.workspace_id),
               ]),
             )
           }
@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
 
       const unreadCount = await getUnreadNotificationCount(
         userId,
-        membership?.organization_id,
+        membership?.workspace_id,
         membership?.role,
       )
 

@@ -27,6 +27,21 @@ export interface Accounts {
   userId: string;
 }
 
+export interface AgCatalogAgGraph {
+  graphid: number;
+  name: string;
+  namespace: string;
+}
+
+export interface AgCatalogAgLabel {
+  graph: number;
+  id: number | null;
+  kind: string | null;
+  name: string;
+  relation: string;
+  seq_name: string;
+}
+
 export interface Memberships {
   created_at: Generated<Timestamp>;
   deactivated_at: Timestamp | null;
@@ -105,6 +120,8 @@ export interface Workspaces {
 
 export interface DB {
   accounts: Accounts;
+  "ag_catalog.ag_graph": AgCatalogAgGraph;
+  "ag_catalog.ag_label": AgCatalogAgLabel;
   memberships: Memberships;
   notifications: Notifications;
   read_notifications: ReadNotifications;

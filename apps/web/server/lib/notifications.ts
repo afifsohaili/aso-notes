@@ -5,7 +5,7 @@ export interface CreateNotificationData {
   title: string
   message: string
   type?: 'info' | 'warning' | 'success' | 'error'
-  target_type: 'organization' | 'role'
+  target_type: 'workspace' | 'role'
   target_id?: string | null
   created_by: string
   is_active?: boolean
@@ -15,7 +15,7 @@ export interface AdminNotificationFilters {
   page?: number
   limit?: number | 'all'
   type?: 'info' | 'warning' | 'success' | 'error'
-  target_type?: 'organization' | 'role'
+  target_type?: 'workspace' | 'role'
   is_active?: boolean
   search?: string
 }
@@ -44,7 +44,7 @@ export async function createNotification(data: CreateNotificationData) {
     .executeTakeFirstOrThrow()
 }
 
-export async function getUserNotifications(userId: string, organizationId?: string, userRole?: string) {
+export async function getUserNotifications(userId: string, workspaceId?: string, userRole?: string) {
   const config = useRuntimeConfig()
   const db = useDatabase({ databaseUrl: config.databaseUrl })
 
@@ -77,11 +77,11 @@ export async function getUserNotifications(userId: string, organizationId?: stri
     .where((eb) => {
       const conditions = []
 
-      if (organizationId) {
+      if (workspaceId) {
         conditions.push(
           eb.and([
-            eb('n.target_type', '=', 'organization'),
-            eb('n.target_id', '=', organizationId),
+            eb('n.target_type', '=', 'workspace'),
+            eb('n.target_id', '=', workspaceId),
           ]),
         )
       }
@@ -108,7 +108,7 @@ export async function getUserNotifications(userId: string, organizationId?: stri
   })) as UserNotification[]
 }
 
-export async function getUnreadNotificationCount(userId: string, organizationId?: string, userRole?: string) {
+export async function getUnreadNotificationCount(userId: string, workspaceId?: string, userRole?: string) {
   const config = useRuntimeConfig()
   const db = useDatabase({ databaseUrl: config.databaseUrl })
 
@@ -124,11 +124,11 @@ export async function getUnreadNotificationCount(userId: string, organizationId?
     .where((eb) => {
       const conditions = []
 
-      if (organizationId) {
+      if (workspaceId) {
         conditions.push(
           eb.and([
-            eb('n.target_type', '=', 'organization'),
-            eb('n.target_id', '=', organizationId),
+            eb('n.target_type', '=', 'workspace'),
+            eb('n.target_id', '=', workspaceId),
           ]),
         )
       }
@@ -182,7 +182,7 @@ export async function markNotificationsAsRead(notificationIds: number[], userId:
     .execute()
 }
 
-export async function markAllNotificationsAsRead(userId: string, organizationId?: string, userRole?: string) {
+export async function markAllNotificationsAsRead(userId: string, workspaceId?: string, userRole?: string) {
   const config = useRuntimeConfig()
   const db = useDatabase({ databaseUrl: config.databaseUrl })
 
@@ -199,11 +199,11 @@ export async function markAllNotificationsAsRead(userId: string, organizationId?
     .where((eb) => {
       const conditions = []
 
-      if (organizationId) {
+      if (workspaceId) {
         conditions.push(
           eb.and([
-            eb('n.target_type', '=', 'organization'),
-            eb('n.target_id', '=', organizationId),
+            eb('n.target_type', '=', 'workspace'),
+            eb('n.target_id', '=', workspaceId),
           ]),
         )
       }

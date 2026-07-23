@@ -7,10 +7,10 @@ export default defineEventHandler(async (event) => {
     const userId = event.context.user.id
     const db = useDatabase(useRuntimeConfig(event))
 
-    // Get user's organization and role from membership
+    // Get user's workspace and role from membership
     const membership = await db
       .selectFrom('memberships')
-      .select(['organization_id', 'role'])
+      .select(['workspace_id', 'role'])
       .where('user_id', '=', userId)
       .where('deactivated_at', 'is', null)
       .executeTakeFirst()
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       // Mark all notifications as read
       await markAllNotificationsAsRead(
         userId,
-        membership?.organization_id,
+        membership?.workspace_id,
         membership?.role,
       )
 

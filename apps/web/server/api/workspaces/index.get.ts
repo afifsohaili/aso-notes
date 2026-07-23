@@ -10,19 +10,19 @@ export default defineEventHandler(async (event) => {
 
   if (!session || !session.user)
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  const [organization] = await db
-    .selectFrom('organizations')
-    .innerJoin('memberships', 'organizations.id', 'memberships.organization_id')
+  const [workspace] = await db
+    .selectFrom('workspaces')
+    .innerJoin('memberships', 'workspaces.id', 'memberships.workspace_id')
     .where('memberships.user_id', '=', session.user.id)
     .select([
-      'organizations.id',
-      'organizations.name',
-      'organizations.created_at',
-      'organizations.updated_at',
+      'workspaces.id',
+      'workspaces.name',
+      'workspaces.created_at',
+      'workspaces.updated_at',
       'memberships.role',
     ])
     .limit(1)
     .execute()
 
-  return organization
+  return workspace
 })

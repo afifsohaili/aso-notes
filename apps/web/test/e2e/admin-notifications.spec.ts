@@ -45,8 +45,8 @@ describe('admin Notifications API', () => {
           title: 'Info Filter',
           message: 'Test',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -67,23 +67,23 @@ describe('admin Notifications API', () => {
       await trx
         .insertInto('notifications')
         .values({
-          title: 'Org Filter',
+          title: 'Workspace Filter',
           message: 'Test',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
         .execute()
 
-      const res = await server('/api/admin/notifications?target_type=organization', {
+      const res = await server('/api/admin/notifications?target_type=workspace', {
         headers: { cookie: cookies },
       })
 
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.notifications.every((n: any) => n.target_type === 'organization')).toBe(true)
+      expect(body.notifications.every((n: any) => n.target_type === 'workspace')).toBe(true)
     })
 
     test('filters by is_active', async ({ server, trx }) => {
@@ -95,8 +95,8 @@ describe('admin Notifications API', () => {
           title: 'Active Filter',
           message: 'Test',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -132,8 +132,8 @@ describe('admin Notifications API', () => {
           title: 'Searchable Test Notification',
           message: 'Search me',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -150,7 +150,7 @@ describe('admin Notifications API', () => {
   describe('pOST /api/admin/notifications', () => {
     test('creates a new notification', async ({ server }) => {
       const { cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
-      const testOrgId = 'test-org-123'
+      const testWorkspaceId = 'test-workspace-123'
 
       const res = await server('/api/admin/notifications', {
         method: 'POST',
@@ -162,8 +162,8 @@ describe('admin Notifications API', () => {
           title: 'Test Notification Created',
           message: 'Test message for creation',
           type: 'info',
-          target_type: 'organization',
-          target_id: testOrgId,
+          target_type: 'workspace',
+          target_id: testWorkspaceId,
           is_active: true,
         }),
       })
@@ -173,8 +173,8 @@ describe('admin Notifications API', () => {
       expect(body.title).toBe('Test Notification Created')
       expect(body.message).toBe('Test message for creation')
       expect(body.type).toBe('info')
-      expect(body.target_type).toBe('organization')
-      expect(body.target_id).toBe(testOrgId)
+      expect(body.target_type).toBe('workspace')
+      expect(body.target_id).toBe(testWorkspaceId)
       expect(body.is_active).toBe(true)
       expect(body.created_by).toBeDefined()
     })
@@ -227,7 +227,7 @@ describe('admin Notifications API', () => {
         body: JSON.stringify({
           title: 'Invalid type',
           message: 'Test message',
-          target_type: 'organization',
+          target_type: 'workspace',
           type: 'invalid_type',
         }),
       })
@@ -261,7 +261,7 @@ describe('admin Notifications API', () => {
   describe('pUT /api/admin/notifications/[id]', () => {
     test('updates an existing notification', async ({ server, trx }) => {
       const { user, cookies } = await givenVerifiedUser({ email: ADMIN_EMAIL })
-      const testOrgId = 'test-org-123'
+      const testWorkspaceId = 'test-workspace-123'
 
       const [created] = await trx
         .insertInto('notifications')
@@ -269,8 +269,8 @@ describe('admin Notifications API', () => {
           title: 'Notification to Update',
           message: 'Original message',
           type: 'info',
-          target_type: 'organization',
-          target_id: testOrgId,
+          target_type: 'workspace',
+          target_id: testWorkspaceId,
           created_by: user.id,
           is_active: true,
         })
@@ -341,8 +341,8 @@ describe('admin Notifications API', () => {
           title: 'Invalid target type',
           message: 'Test',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -372,8 +372,8 @@ describe('admin Notifications API', () => {
           title: 'Invalid type',
           message: 'Test',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -403,8 +403,8 @@ describe('admin Notifications API', () => {
           title: 'Partial Update',
           message: 'Keep me',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })
@@ -439,8 +439,8 @@ describe('admin Notifications API', () => {
           title: 'Notification to Delete',
           message: 'Will be deleted',
           type: 'info',
-          target_type: 'organization',
-          target_id: 'test-org',
+          target_type: 'workspace',
+          target_id: 'test-workspace',
           created_by: user.id,
           is_active: true,
         })

@@ -52,24 +52,24 @@ export function useAuth(env: AuthEnv) {
         if (ctx.path.startsWith('/sign-up')) {
           const session = ctx.context.newSession
           const user = session?.user
-          // Create a default organization for new users
+          // Create a default workspace for new users
           if (user) {
             try {
-              // Create a new organization for the user
-              const [organization] = await db
-                .insertInto('organizations')
-                .values({ name: `${user.name}'s Organization` })
+              // Create a new workspace for the user
+              const [workspace] = await db
+                .insertInto('workspaces')
+                .values({ name: `${user.name}'s Workspace` })
                 .returning(['id', 'name', 'created_at', 'updated_at'])
                 .execute()
 
-              // Add the user as an admin to the organization
+              // Add the user as an admin to the workspace
               await db
                 .insertInto('memberships')
-                .values({ user_id: user.id, organization_id: organization.id, role: 'admin' })
+                .values({ user_id: user.id, workspace_id: workspace.id, role: 'admin' })
                 .execute()
             }
             catch (error) {
-              console.error('Failed to create organization for new user:', error)
+              console.error('Failed to create workspace for new user:', error)
             }
           }
         }
