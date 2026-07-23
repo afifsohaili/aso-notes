@@ -21,10 +21,10 @@ ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS "sessions_u
 ALTER TABLE IF EXISTS ONLY public.read_notifications DROP CONSTRAINT IF EXISTS read_notifications_user_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.read_notifications DROP CONSTRAINT IF EXISTS read_notifications_notification_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.notifications DROP CONSTRAINT IF EXISTS notifications_created_by_fkey;
+ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_user_id_fkey;
-ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_organization_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.accounts DROP CONSTRAINT IF EXISTS "accounts_userId_fkey";
-DROP INDEX IF EXISTS public.memberships_user_org_unique;
+DROP INDEX IF EXISTS public.memberships_user_workspace_unique;
 DROP INDEX IF EXISTS public.idx_todos_user_id;
 DROP INDEX IF EXISTS public.idx_todos_created_at;
 DROP INDEX IF EXISTS public.idx_todos_completed;
@@ -34,6 +34,7 @@ DROP INDEX IF EXISTS public.idx_read_notifications_notification;
 DROP INDEX IF EXISTS public.idx_notifications_target;
 DROP INDEX IF EXISTS public.idx_notifications_created_at;
 DROP INDEX IF EXISTS public.idx_notifications_active;
+ALTER TABLE IF EXISTS ONLY public.workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
 ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_pkey;
 ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_email_key;
 ALTER TABLE IF EXISTS ONLY public.user_verifications DROP CONSTRAINT IF EXISTS user_verifications_pkey;
@@ -41,7 +42,6 @@ ALTER TABLE IF EXISTS ONLY public.todos DROP CONSTRAINT IF EXISTS todos_pkey;
 ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS sessions_token_key;
 ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS sessions_pkey;
 ALTER TABLE IF EXISTS ONLY public.read_notifications DROP CONSTRAINT IF EXISTS read_notifications_pkey;
-ALTER TABLE IF EXISTS ONLY public.organizations DROP CONSTRAINT IF EXISTS organizations_pkey;
 ALTER TABLE IF EXISTS ONLY public.notifications DROP CONSTRAINT IF EXISTS notifications_pkey;
 ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_pkey;
 ALTER TABLE IF EXISTS ONLY public.kysely_migration DROP CONSTRAINT IF EXISTS kysely_migration_pkey;
@@ -50,6 +50,7 @@ ALTER TABLE IF EXISTS ONLY public.accounts DROP CONSTRAINT IF EXISTS accounts_pk
 ALTER TABLE IF EXISTS public.todos ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE IF EXISTS public.read_notifications ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE IF EXISTS public.notifications ALTER COLUMN id DROP DEFAULT;
+DROP TABLE IF EXISTS public.workspaces;
 DROP TABLE IF EXISTS public.users;
 DROP TABLE IF EXISTS public.user_verifications;
 DROP SEQUENCE IF EXISTS public.todos_id_seq;
@@ -57,7 +58,6 @@ DROP TABLE IF EXISTS public.todos;
 DROP TABLE IF EXISTS public.sessions;
 DROP SEQUENCE IF EXISTS public.read_notifications_id_seq;
 DROP TABLE IF EXISTS public.read_notifications;
-DROP TABLE IF EXISTS public.organizations;
 DROP SEQUENCE IF EXISTS public.notifications_id_seq;
 DROP TABLE IF EXISTS public.notifications;
 DROP TABLE IF EXISTS public.memberships;
@@ -114,7 +114,7 @@ CREATE TABLE public.kysely_migration_lock (
 CREATE TABLE public.memberships (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id character varying NOT NULL,
-    organization_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
     role character varying DEFAULT 'member'::character varying NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -134,7 +134,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-20 22:31:49.187155'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-23 10:56:33.651652'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -160,18 +160,6 @@ ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
 
 
 --
--- Name: organizations; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.organizations (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    name character varying NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
 -- Name: read_notifications; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -179,7 +167,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-20 22:31:49.187155'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-23 10:56:33.651652'::timestamp without time zone NOT NULL
 );
 
 
@@ -284,6 +272,18 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: workspaces; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.workspaces (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: notifications id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -345,14 +345,6 @@ ALTER TABLE ONLY public.notifications
 
 
 --
--- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.organizations
-    ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
-
-
---
 -- Name: read_notifications read_notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -406,6 +398,14 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: workspaces workspaces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workspaces
+    ADD CONSTRAINT workspaces_pkey PRIMARY KEY (id);
 
 
 --
@@ -472,10 +472,10 @@ CREATE INDEX idx_todos_user_id ON public.todos USING btree (user_id);
 
 
 --
--- Name: memberships_user_org_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: memberships_user_workspace_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX memberships_user_org_unique ON public.memberships USING btree (user_id, organization_id);
+CREATE UNIQUE INDEX memberships_user_workspace_unique ON public.memberships USING btree (user_id, workspace_id);
 
 
 --
@@ -487,19 +487,19 @@ ALTER TABLE ONLY public.accounts
 
 
 --
--- Name: memberships memberships_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.memberships
-    ADD CONSTRAINT memberships_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
-
-
---
 -- Name: memberships memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memberships
     ADD CONSTRAINT memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: memberships memberships_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memberships
+    ADD CONSTRAINT memberships_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
