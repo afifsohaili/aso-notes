@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+/**
+ * Wrapper around `pg_dump` that calls the copy inside the aso-notes-db container.
+ *
+ * The local Postgres client tools are PostgreSQL 15, but the container runs 16.
+ * pg_dump requires the client version to be >= the server version, so we run
+ * pg_dump from inside the container instead of installing PostgreSQL 16 locally.
+ */
+import { spawnSync } from 'node:child_process'
+
+const args = process.argv.slice(2).map((arg) => {
+  if (arg.includes('@127.0.0.1:5433/')) {
+    return arg.replace('@127.0.0.1:5433/', '@127.0.0.1:5432/')
+  }
+  return arg
+})
+
+const result = spawnSync('docker', ['exec', '-i', 'aso-notes-db', 'pg_dump', ...args], {
+  stdio: 'inherit',
+  shell: false,
+})
+
+process.exit(result.status ?? (result.error ? 1 : 0))
