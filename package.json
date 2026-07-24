@@ -2,6 +2,7 @@
   "name": "nuxt-flutter-monorepo",
   "version": "0.0.0",
   "private": true,
+  "license": "BUSL-1.1",
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
