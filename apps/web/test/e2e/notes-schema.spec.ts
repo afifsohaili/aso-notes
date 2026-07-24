@@ -1,6 +1,7 @@
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
 import { describe, expect } from 'vitest'
+import { ensureNotesGraphCatalog } from './age-catalog'
 
 /**
  * M1 feature spec: the notes-domain schema (plan-002-system data model).
@@ -298,16 +299,10 @@ describe('notes domain schema (M1)', () => {
   test('AGE graph notes_graph exists', async ({ trx }) => {
     // The e2e template DB is provisioned from db/schema.sql (pg_dump
     // --schema-only), which carries the notes_graph schema + label tables
-    // created by the migration but not the ag_catalog.ag_graph row (catalog
-    // data). Backfill the row idempotently so the catalog query below runs;
-    // the schema-level assertion is what proves the migration created the graph.
-    await sql`
-      INSERT INTO ag_catalog.ag_graph (graphid, name, namespace)
-      SELECT n.oid, 'notes_graph', 'notes_graph'
-      FROM pg_namespace n
-      WHERE n.nspname = 'notes_graph'
-        AND NOT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'notes_graph')
-    `.execute(trx)
+    // created by the migration but not the AGE catalog rows (catalog data).
+    // Backfill them idempotently so the catalog query below runs; the
+    // schema-level assertion is what proves the migration created the graph.
+    await ensureNotesGraphCatalog(trx)
 
     const { rows: schemas } = await sql<{ schema_name: string }>`
       SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'notes_graph'

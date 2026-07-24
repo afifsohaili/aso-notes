@@ -6,13 +6,14 @@ import { runPipeline } from '../pipeline/run-pipeline'
 
 /**
  * Ingestion worker handler (plan-002-system §Sync service, slow path): load
- * the note row, run its pipeline, then flip status. Atomic per note per
- * content version — nothing persists before the pipeline's final store stage,
- * so a failure only moves the row to 'failed' and the BullMQ retry restarts
- * from the top.
+ * the note row and run its pipeline. Atomic per note per content version —
+ * the pipeline's final store-graph stage persists everything (including the
+ * status='ingested'/ingested_hash flip) in one transaction, so a failure
+ * only moves the row to 'failed' here and the BullMQ retry restarts from
+ * the top.
  *
- * M4 note: the store-graph stage will own the ingested_hash/status write
- * inside its final transaction; the update here is idempotent with that.
+ * The M1 schema has no error column: failures are logged and visible via
+ * BullMQ failed-job retention.
  */
 export async function ingestNote(args: {
   db: SyncDb
@@ -37,11 +38,6 @@ export async function ingestNote(args: {
       new PipelineContext({ note, workspaceId: note.workspace_id, db }),
       options,
     )
-    await db
-      .updateTable('notes')
-      .set({ status: 'ingested', ingested_hash: note.content_hash, updated_at: sql`now()` })
-      .where('id', '=', note.id)
-      .execute()
   }
   catch (error) {
     await db

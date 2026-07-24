@@ -35,7 +35,20 @@ async function givenNote(trx: any, workspaceId: string, path: string, updatedAt:
   return row
 }
 
-function stubRegistry(stages: { id: string, invoke: () => Promise<void> }[]) {
+function markIngestedStage(): { id: string, invoke: (ctx: { db: any, note: { id: string, content_hash: string | null } }) => Promise<void> } {
+  return {
+    id: 'mark-ingested',
+    async invoke(ctx) {
+      await ctx.db
+        .updateTable('notes')
+        .set({ status: 'ingested', ingested_hash: ctx.note.content_hash, updated_at: sql`now()` })
+        .where('id', '=', ctx.note.id)
+        .execute()
+    },
+  }
+}
+
+function stubRegistry(stages: { id: string, invoke: (ctx: any) => Promise<void> }[]) {
   const registry = new StageRegistry()
   for (const stage of stages)
     registry.register(stage)
@@ -71,12 +84,12 @@ describe('sweeper', () => {
     const workspaceId = await givenWorkspace(trx, 'sweep-ingest')
     const note = await givenNote(trx, workspaceId, '/ok.md', '10 minutes')
 
-    const registry = stubRegistry([{ id: 'noop', invoke: async () => {} }])
+    const registry = stubRegistry([markIngestedStage()])
     await runSweeperOnce({
       db: trx,
       workspaceId,
       dispatcher: createInlineDispatcher(noteId =>
-        ingestNote({ db: trx, noteId, options: { registry, pipelines: { 'markdown-note': ['noop'] } } })),
+        ingestNote({ db: trx, noteId, options: { registry, pipelines: { 'markdown-note': ['mark-ingested'] } } })),
     })
 
     const after = await getNote(trx, note.id)
@@ -89,7 +102,7 @@ describe('sweeper', () => {
     const bad = await givenNote(trx, workspaceId, '/bad.md', '10 minutes')
     const good = await givenNote(trx, workspaceId, '/good.md', '10 minutes')
 
-    const okRegistry = stubRegistry([{ id: 'noop', invoke: async () => {} }])
+    const okRegistry = stubRegistry([markIngestedStage()])
     const badRegistry = stubRegistry([{
       id: 'boom',
       invoke: async () => { throw new Error('stage exploded') },
@@ -104,7 +117,7 @@ describe('sweeper', () => {
           noteId,
           options: {
             registry: noteId === bad.id ? badRegistry : okRegistry,
-            pipelines: { 'markdown-note': [noteId === bad.id ? 'boom' : 'noop'] },
+            pipelines: { 'markdown-note': [noteId === bad.id ? 'boom' : 'mark-ingested'] },
           },
         })),
     })

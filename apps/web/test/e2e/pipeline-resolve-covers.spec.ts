@@ -54,6 +54,7 @@ function ctxFor(trx: any, workspaceId: string, note: any): PipelineContext {
       path: note.path,
       title: note.path,
       content: '# note',
+      content_hash: null,
       pipeline: 'markdown-note',
     },
     workspaceId,

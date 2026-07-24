@@ -1,0 +1,96 @@
+import type { CompletionRequest, LLMProvider } from '../../server/lib/ai/types'
+import type { PipelineNote } from '../../server/lib/pipeline/types'
+import { describe, expect, it } from 'vitest'
+import { PipelineContext } from '../../server/lib/pipeline/context'
+import { ExtractGraphStage } from '../../server/lib/pipeline/stages/extract-graph'
+
+function fakeNote(overrides: Partial<PipelineNote> = {}): PipelineNote {
+  return {
+    id: 'note-1',
+    workspace_id: 'ws-1',
+    folder_id: null,
+    path: '/a.md',
+    title: 'a',
+    content: '',
+    content_hash: null,
+    pipeline: 'markdown-note',
+    ...overrides,
+  }
+}
+
+function fakeCtx(note: PipelineNote): PipelineContext {
+  return new PipelineContext({ note, workspaceId: note.workspace_id, db: null as never })
+}
+
+function stubLLM(payload: string | null, seen?: CompletionRequest[]): LLMProvider {
+  return {
+    async complete(request) {
+      seen?.push(request)
+      return { message: { role: 'assistant', content: payload } }
+    },
+  }
+}
+
+const noVocab = async () => ({ concepts: [], tags: [] })
+
+describe('extractGraphStage', () => {
+  it('requests structured output with the extraction json schema', async () => {
+    const seen: CompletionRequest[] = []
+    const ctx = fakeCtx(fakeNote())
+    ctx.chunks = [{ index: 0, text: 'body', tokenCount: 1, headingPath: [] }]
+
+    await new ExtractGraphStage(stubLLM('{}', seen), noVocab).invoke(ctx)
+
+    expect(seen).toHaveLength(1)
+    const format = seen[0]!.responseFormat
+    expect(format?.type).toBe('json_schema')
+    if (format?.type === 'json_schema') {
+      expect(format.jsonSchema.name).toBe('graph_extraction')
+      expect(format.jsonSchema.schema).toHaveProperty('properties.concepts')
+      expect(format.jsonSchema.schema).toHaveProperty('properties.mentions')
+      expect(format.jsonSchema.schema).toHaveProperty('properties.tags')
+    }
+  })
+
+  it('assembles the prompt from ctx (cover chain, chunks) and the loaded vocabulary', async () => {
+    const seen: CompletionRequest[] = []
+    const ctx = fakeCtx(fakeNote({ title: 'Graph Notes', path: '/proj/graph.md' }))
+    ctx.coverChain = 'cover context'
+    ctx.chunks = [{ index: 0, text: 'about kysely', tokenCount: 3, headingPath: ['DB'] }]
+
+    const vocab = async () => ({
+      concepts: [{ name: 'Kysely', description: 'type-safe SQL' }],
+      tags: ['databases'],
+    })
+    await new ExtractGraphStage(stubLLM('{}', seen), vocab).invoke(ctx)
+
+    const user = seen[0]!.messages[1]!.content as string
+    expect(user).toContain('cover context')
+    expect(user).toContain('Graph Notes')
+    expect(user).toContain('about kysely')
+    expect(user).toContain('Kysely')
+    expect(user).toContain('databases')
+  })
+
+  it('parses the model payload into ctx.extraction, dropping refs beyond ctx.chunks', async () => {
+    const payload = JSON.stringify({
+      concepts: [{ name: 'Alpha', description: 'first' }],
+      mentions: [{ concept: 'Alpha', chunkRefs: [0, 7] }],
+      tags: ['t'],
+    })
+    const ctx = fakeCtx(fakeNote())
+    ctx.chunks = [{ index: 0, text: 'body', tokenCount: 1, headingPath: [] }]
+
+    await new ExtractGraphStage(stubLLM(payload), noVocab).invoke(ctx)
+
+    expect(ctx.extraction?.concepts).toEqual([{ name: 'Alpha', description: 'first' }])
+    expect(ctx.extraction?.mentions).toEqual([{ concept: 'Alpha', chunkRefs: [0] }])
+    expect(ctx.extraction?.tags).toEqual(['t'])
+  })
+
+  it('throws when the model returns no content', async () => {
+    const ctx = fakeCtx(fakeNote())
+    ctx.chunks = []
+    await expect(new ExtractGraphStage(stubLLM(null), noVocab).invoke(ctx)).rejects.toThrow()
+  })
+})

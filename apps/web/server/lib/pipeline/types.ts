@@ -13,17 +13,20 @@ export interface PipelineNote {
   path: string
   title: string
   content: string | null
+  content_hash: string | null
   pipeline: string
 }
 
 /**
  * Structured graph extraction produced by the extract-graph stage (M4).
- * Shape locked in the plan: concepts, relations, chunk-level mentions.
+ * Shape locked in the plan: concepts, relations, chunk-level mentions, plus
+ * suggested tag names.
  */
 export interface GraphExtraction {
   concepts: { name: string, description: string }[]
-  relations: { from: string, to: string, type: string }[]
+  relations: { from: string, to: string, type: string, description?: string }[]
   mentions: { concept: string, chunkRefs: number[] }[]
+  tags: string[]
 }
 
 /** External source extracted from a note's raw markdown. */
@@ -31,6 +34,14 @@ export interface ExtractedSource {
   url: string
   urlNormalized: string
   type: 'youtube' | 'tiktok' | 'web'
+}
+
+/** Internal note-to-note link extracted from a note's raw markdown. */
+export interface ExtractedLink {
+  /** The target as written; retained when the link dangles. */
+  rawTarget: string
+  /** Resolved notes.id, or null while the target note doesn't exist. */
+  toNoteId: string | null
 }
 
 export type PipelineDb = Kysely<DB> | Transaction<DB>

@@ -14,6 +14,7 @@ function fakeNote(overrides: Partial<PipelineNote> = {}): PipelineNote {
     path: '/a.md',
     title: 'a',
     content: '',
+    content_hash: null,
     pipeline: 'markdown-note',
     ...overrides,
   }

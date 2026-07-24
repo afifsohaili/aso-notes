@@ -1,5 +1,5 @@
-import type { EmbeddingProvider } from '../ai/types'
-import { createEmbeddingProviderFromEnv } from '../ai'
+import type { EmbeddingProvider, LLMProvider } from '../ai/types'
+import { createEmbeddingProviderFromEnv, createLLMProviderFromEnv } from '../ai'
 import {
   CHUNK_MARKDOWN_AWARE_STAGE,
   EMBED_CHUNKS_STAGE,
@@ -21,6 +21,7 @@ import { StoreGraphStage } from './stages/store-graph'
 
 export interface StageDeps {
   embeddingProvider: EmbeddingProvider
+  llmProvider: LLMProvider
 }
 
 let singleton: StageRegistry | null = null
@@ -35,22 +36,26 @@ export function createStageRegistry(deps: StageDeps): StageRegistry {
   registry.register(new ResolveCoversStage())
   registry.register(new ChunkMarkdownAwareStage())
   registry.register(new EmbedChunksStage(deps.embeddingProvider))
-  registry.register(new ExtractGraphStage())
+  registry.register(new ExtractGraphStage(deps.llmProvider))
   registry.register(new ExtractLinksStage())
   registry.register(new ExtractSourcesStage())
-  registry.register(new StoreGraphStage())
+  registry.register(new StoreGraphStage(deps.embeddingProvider))
   validatePipelines(registry, PIPELINES)
   return registry
 }
 
 /**
- * Lazily-built process-wide registry. The embedding provider is constructed
- * from runtime config on first use so importing this module is side-effect
- * free (unit tests never call this — they inject their own registry).
+ * Lazily-built process-wide registry. The providers are constructed from
+ * runtime config on first use so importing this module is side-effect free
+ * (unit tests never call this — they inject their own registry).
  */
 export function getStageRegistry(): StageRegistry {
-  if (!singleton)
-    singleton = createStageRegistry({ embeddingProvider: createEmbeddingProviderFromEnv() })
+  if (!singleton) {
+    singleton = createStageRegistry({
+      embeddingProvider: createEmbeddingProviderFromEnv(),
+      llmProvider: createLLMProviderFromEnv(),
+    })
+  }
   return singleton
 }
 
