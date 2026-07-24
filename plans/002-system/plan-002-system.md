@@ -166,7 +166,7 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - **Neighbor query quirk**: `length(r)` on a variable-length edge list fails in AGE 1.5 with `length() argument must resolve to a scalar`. Fix: use a path variable `MATCH p=(a)-[:RELATES_TO*1..n]-(b)` and `min(length(p))`.
 - **Link edge target nodes**: `store-graph` MERGEs the target `Note` vertex before creating a `LINKS` edge, because AGE edge creation requires both endpoints to exist; the source `Note` node is already MERGEd at the start of the stage.
 
-- **M5 — Agent**: tool registry + 7 tools, loop with cap + wrap-up, SSE route, messages persistence.
+- **M5 — Agent**: tool registry + 7 tools, loop with cap + wrap-up, SSE route, messages persistence. **DONE (2026-07-24)** — agent module in `apps/web/server/lib/agent/`, routes `apps/web/server/api/conversations/`, 27 new e2e tests. Notes below.
 - **M6 — Chat UI**: conversation sidebar, query box, SSE activity log, answer + citations.
 - **M7 — Notes UI**: folder tree, note view, tag management, in-app editor.
 - **M8 — Graph UI**: Cytoscape canvas + concept list panel.
@@ -179,3 +179,29 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - `youtube-transcript` pipeline (prettify stage), TikTok, Excalidraw sources.
 - Token streaming for chat answers.
 - pg_trgm on concepts if semantic search underperforms in practice.
+
+### M5 implementation notes (divergences & decisions)
+
+- **Module layout**: `server/lib/agent/{types,loop,run-agent,providers,vector}.ts` + `server/lib/agent/tools/{read-note,search-notes,search-concepts,get-concept-neighbors,get-mentions,find-paths-between,search-sources}.ts`; routes live at `server/api/conversations/{index.post,index.get,[id].get}.ts` rather than the plan's `server/api/query.post.ts`.
+- **Loop constant**: exported as `MAX_AGENT_ITERATIONS = 10` (the task spec's name), not `MAX_TOOL_ITERATIONS`.
+- **SSE event shapes**: each frame is one JSON object prefixed with `data: ` and terminated with a double newline. Events carry a `type` discriminator for easier UI parsing:
+  - `tool_call { type: 'tool_call', name, args, toolCallId }`
+  - `tool_result { type: 'tool_result', name, result, toolCallId }`
+  - `answer { type: 'answer', text, notes[], conversationId }`
+  - `error { type: 'error', message }`
+  This differs from the plan's sketch (`tool_call {name, args}`, `tool_result {name, summary}`, `answer {text, notes[]}`). The `summary` field was generalized to the full `result` object so the UI can render structured tool output.
+- **Tool result contract**: every tool returns `{ result: unknown, notes: string[] }`; `notes` is the list of cited note paths accumulated for the final `answer` event.
+- **Tool result shapes** (JSON-serializable):
+  - `read_note`: `{ note: { path, title, content } }` or `{ notFound: true, path }` / `{ error }`
+  - `search_notes`: `{ notes: [{ path, title, chunks: [{ text, seq }] }], count }`
+  - `search_concepts`: `{ concepts: [{ id, name, description, distance }], count }`
+  - `get_concept_neighbors`: `{ neighbors: [{ id, name, distance }], count }`
+  - `get_mentions`: `{ notes: [{ path, title, chunks: [{ text, seq }] }], count }`
+  - `find_paths_between`: `{ paths: [{ nodes: [{ id, name }], edges: [{ type }], length }], count }`
+  - `search_sources`: `{ sources: [{ url, title, type, note_path, note_title }], count }`
+- **Provider resolution**: `server/lib/agent/providers.ts` exposes `createAgentProviders(env)` which returns OpenRouter providers by default and supports test overrides via `setAgentTestProviders({ llm, embedding })`. The route uses this seam so the feature spec can script a stub LLM.
+- **Conversation context**: prior messages of the current conversation are loaded from `messages` and replayed to the LLM in OpenAI-style order. The new user message is persisted before the loop starts; assistant and tool messages are persisted after the loop finishes.
+- **AGE path parsing**: `find_paths_between` returns `nodes(p)` and `relationships(p)` from AGE and parses the agtype text manually (stripping `::vertex`/`::edge` type suffixes) because AGE 1.5 rejects list-comprehension syntax (`[x IN list | ...]`) in cypher.
+- **GET routes added early**: `GET /api/conversations` (list by updated_at desc) and `GET /api/conversations/:id` (with messages) are implemented now for M6 consumption even though M6 is not yet built.
+- **Workspace resolution**: same single-tenant MVP rule as M3 — the route picks the user's first membership by `created_at`.
+
