@@ -17,8 +17,16 @@ export const EMAIL_QUEUE_NAME = 'email'
 /**
  * Enqueue an email job to be processed by the email worker.
  * This function is non-blocking and returns immediately.
+ *
+ * Redis is optional infrastructure: when NUXT_REDIS_URL is not set
+ * (e.g. tests, minimal environments), this degrades to a logged no-op
+ * instead of throwing.
  */
 export async function enqueueEmail(data: EmailJobData) {
+  if (!process.env.NUXT_REDIS_URL) {
+    console.warn(`NUXT_REDIS_URL is not set; skipping email to ${data.to} (subject: ${data.subject})`)
+    return
+  }
   const emailQueue = useQueue<EmailJobData>(EMAIL_QUEUE_NAME)
   return emailQueue.add('send-email', data)
 }
