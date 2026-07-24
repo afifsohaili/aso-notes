@@ -2,16 +2,22 @@ import { readFileSync } from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-// Load .env.local for DB access
-const envFile = readFileSync(new URL('../../.env.local', import.meta.url), 'utf-8')
-for (const line of envFile.split('\n')) {
-  const match = line.match(/^([^#=]+)=(.*)$/)
-  if (match) {
-    const key = match[1].trim()
-    const value = match[2].trim().replace(/^["']|["']$/g, '')
-    if (!process.env[key])
-      process.env[key] = value
+// Load .env.local for DB access (optional — the shell env may already
+// provide NUXT_DATABASE_URL/DATABASE_URL).
+try {
+  const envFile = readFileSync(new URL('../../.env.local', import.meta.url), 'utf-8')
+  for (const line of envFile.split('\n')) {
+    const match = line.match(/^([^#=]+)=(.*)$/)
+    if (match) {
+      const key = match[1].trim()
+      const value = match[2].trim().replace(/^["']|["']$/g, '')
+      if (!process.env[key])
+        process.env[key] = value
+    }
   }
+}
+catch {
+  // no .env.local — rely on process env
 }
 
 const pool = new pg.Pool({

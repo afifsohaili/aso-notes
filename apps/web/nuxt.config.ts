@@ -36,6 +36,9 @@ export default defineNuxtConfig({
     posthogApiKey: '',
     databaseUrl: '',
     turnstileSecretKey: '',
+    openrouterApiKey: '',
+    openrouterChatModel: '',
+    openrouterEmbeddingModel: '',
   },
   postcss: {
     plugins: {
