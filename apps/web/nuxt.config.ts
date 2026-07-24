@@ -39,6 +39,7 @@ export default defineNuxtConfig({
     openrouterApiKey: '',
     openrouterChatModel: '',
     openrouterEmbeddingModel: '',
+    notesDir: '',
   },
   postcss: {
     plugins: {

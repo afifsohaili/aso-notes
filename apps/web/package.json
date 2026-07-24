@@ -24,6 +24,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "better-auth": "^1.6.9",
     "bullmq": "^5.76.5",
+    "chokidar": "^5.0.0",
     "h3": "^1.15.4",
     "ioredis": "^5.10.1",
     "kysely": "^0.28.17",

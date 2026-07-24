@@ -25,6 +25,9 @@ importers:
       bullmq:
         specifier: ^5.76.5
         version: 5.76.5
+      chokidar:
+        specifier: ^5.0.0
+        version: 5.0.0
       h3:
         specifier: ^1.15.4
         version: 1.15.11

@@ -80,6 +80,7 @@ export async function withBuiltServer(opts: WithBuiltServerOptions = {}): Promis
       NUXT_REDIS_URL: process.env.NUXT_REDIS_URL,
       NUXT_BETTER_AUTH_SECRET: process.env.NUXT_BETTER_AUTH_SECRET,
       NUXT_DISABLE_EMAIL_WORKER: '1',
+      NUXT_DISABLE_NOTES_SYNC: '1',
       ...opts.env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
