@@ -9,6 +9,18 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export type Json = JsonValue;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export interface Accounts {
@@ -42,6 +54,57 @@ export interface AgCatalogAgLabel {
   seq_name: string;
 }
 
+export interface Chunks {
+  created_at: Generated<Timestamp>;
+  embedding: string | null;
+  id: Generated<string>;
+  note_id: string;
+  seq: number;
+  text: string;
+  token_count: number | null;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
+export interface Concepts {
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  embedding: string | null;
+  id: Generated<string>;
+  name: string;
+  name_normalized: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
+export interface Conversations {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  title: string | null;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
+export interface Folders {
+  cover_content: string | null;
+  cover_hash: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  path: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
+export interface Links {
+  created_at: Generated<Timestamp>;
+  from_note_id: string;
+  id: Generated<string>;
+  raw_target: string;
+  to_note_id: string | null;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
 export interface Memberships {
   created_at: Generated<Timestamp>;
   deactivated_at: Timestamp | null;
@@ -49,6 +112,65 @@ export interface Memberships {
   role: Generated<string>;
   updated_at: Generated<Timestamp>;
   user_id: string;
+  workspace_id: string;
+}
+
+export interface Mentions {
+  chunk_id: string;
+  concept_id: string;
+  id: Generated<string>;
+  workspace_id: string;
+}
+
+export interface Messages {
+  content: string | null;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  role: string;
+  tool_call_id: string | null;
+  tool_calls: Json | null;
+  workspace_id: string;
+}
+
+export interface Notes {
+  content: string | null;
+  content_hash: string | null;
+  created_at: Generated<Timestamp>;
+  folder_id: string | null;
+  id: Generated<string>;
+  ingested_hash: string | null;
+  path: string;
+  pipeline: Generated<string>;
+  status: Generated<string>;
+  title: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
+export interface NotesGraphAgLabelEdge {
+  end_id: string;
+  id: Generated<string>;
+  properties: Generated<string>;
+  start_id: string;
+}
+
+export interface NotesGraphAgLabelVertex {
+  id: Generated<string>;
+  properties: Generated<string>;
+}
+
+export interface NoteTagDismissals {
+  created_at: Generated<Timestamp>;
+  note_id: string;
+  tag_id: string;
+  workspace_id: string;
+}
+
+export interface NoteTags {
+  note_id: string;
+  origin: string;
+  tag_id: string;
   workspace_id: string;
 }
 
@@ -71,6 +193,17 @@ export interface ReadNotifications {
   user_id: string;
 }
 
+export interface Relations {
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  from_concept_id: string;
+  id: Generated<string>;
+  to_concept_id: string;
+  type: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
 export interface Sessions {
   createdAt: Timestamp;
   expiresAt: Timestamp;
@@ -80,6 +213,27 @@ export interface Sessions {
   updatedAt: Timestamp;
   userAgent: string | null;
   userId: string;
+}
+
+export interface Sources {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  note_id: string;
+  title: string | null;
+  type: string | null;
+  updated_at: Generated<Timestamp>;
+  url: string;
+  url_normalized: string;
+  workspace_id: string;
+}
+
+export interface Tags {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+  name_normalized: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
 }
 
 export interface Todos {
@@ -122,10 +276,25 @@ export interface DB {
   accounts: Accounts;
   "ag_catalog.ag_graph": AgCatalogAgGraph;
   "ag_catalog.ag_label": AgCatalogAgLabel;
+  chunks: Chunks;
+  concepts: Concepts;
+  conversations: Conversations;
+  folders: Folders;
+  links: Links;
   memberships: Memberships;
+  mentions: Mentions;
+  messages: Messages;
+  note_tag_dismissals: NoteTagDismissals;
+  note_tags: NoteTags;
+  notes: Notes;
+  "notes_graph._ag_label_edge": NotesGraphAgLabelEdge;
+  "notes_graph._ag_label_vertex": NotesGraphAgLabelVertex;
   notifications: Notifications;
   read_notifications: ReadNotifications;
+  relations: Relations;
   sessions: Sessions;
+  sources: Sources;
+  tags: Tags;
   todos: Todos;
   user_verifications: UserVerifications;
   users: Users;

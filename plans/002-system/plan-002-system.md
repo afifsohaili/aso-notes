@@ -43,8 +43,8 @@ All tables carry `workspace_id` (multi-tenant-ready). IDs uuid with `gen_random_
 | ----- | ------- | ----- |
 | `folders` | id, workspace_id, path (unique per workspace), cover_content, cover_hash, timestamps | Path-string model, no parent_id. Cover = `__folder-cover.md`, never a Note. |
 | `notes` | id, workspace_id, folder_id FK, path (unique per workspace), title, content, content_hash, ingested_hash, status (`pending`\|`ingested`\|`failed`), pipeline, timestamps | `pipeline` = pipeline discriminator. status drives sweeper. |
-| `chunks` | id, workspace_id, note_id FK, seq, text, token_count, embedding vector(N), timestamps | Wipe+rewrite per ingestion. HNSW index on embedding. |
-| `concepts` | id, workspace_id, name, name_normalized (unique per workspace), description, embedding vector(N), timestamps | name_normalized = lowercase, collapse whitespace/punct. HNSW on embedding. |
+| `chunks` | id, workspace_id, note_id FK, seq, text, token_count, embedding halfvec(2048), timestamps | Wipe+rewrite per ingestion. HNSW index on embedding. |
+| `concepts` | id, workspace_id, name, name_normalized (unique per workspace), description, embedding halfvec(2048), timestamps | name_normalized = lowercase, collapse whitespace/punct. HNSW on embedding. |
 | `relations` | id, workspace_id, from_concept_id FK, to_concept_id FK, type, description, timestamps | type = free-text label from LLM. |
 | `mentions` | id, workspace_id, chunk_id FK, concept_id FK, unique(chunk_id, concept_id) | Chunk-level. Cascade delete via chunks. |
 | `tags` | id, workspace_id, name, name_normalized (unique per workspace), timestamps | |
@@ -53,7 +53,7 @@ All tables carry `workspace_id` (multi-tenant-ready). IDs uuid with `gen_random_
 | `links` | id, workspace_id, from_note_id FK, to_note_id FK (nullable), raw_target, timestamps | Dangling links keep raw_target; re-resolved when target note appears. |
 | `sources` | id, workspace_id, note_id FK, url, url_normalized, title, type, timestamps | type derived from host (youtube/tiktok/web). Dedup key (note_id, url_normalized). |
 | `conversations` | id, workspace_id, title, timestamps | Title from first ~60 chars of first query. |
-| `messages` | id, conversation_id FK, role (`user`\|`assistant`\|`tool`), content, tool_calls jsonb, tool_call_id, created_at | OpenAI-style; full replay of agent runs. |
+| `messages` | id, workspace_id, conversation_id FK, role (`user`\|`assistant`\|`tool`), content, tool_calls jsonb, tool_call_id, created_at | OpenAI-style; full replay of agent runs. |
 
 ## AGE graph (derived mirror, same transaction)
 
@@ -110,7 +110,17 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 
 ## Build order
 
-- **M1 — Schema**: migrations for all tables + AGE graph creation + indexes (vector HNSW, name_normalized uniques, pg_trgm not needed). Regenerate types + schema dump.
+- **M1 — Schema**: migrations for all tables + AGE graph creation + indexes (vector HNSW, name_normalized uniques, pg_trgm not needed). Regenerate types + schema dump. **DONE (2026-07-24)** — migration `1784859182887_create_notes_domain.ts`, spec `apps/web/test/e2e/notes-schema.spec.ts` (11 tests). Notes below.
+
+### M1 implementation notes (divergences & decisions)
+
+- **Embedding dimension verified: 2048** — `nvidia/llama-nemotron-embed-vl-1b-v2` outputs a single 2048-dim embedding (model card: https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2).
+- **`halfvec(2048)` instead of `vector(2048)`** for `chunks.embedding` / `concepts.embedding`: pgvector HNSW caps `vector` at 2000 dimensions; `halfvec` allows 4000. HNSW indexes use `halfvec_cosine_ops`. **M2+ must cast embedding literals to `halfvec`** on insert and query (`'[...]'::halfvec`).
+- **DB image rebuilt** (`docker/postgres/Dockerfile`): the previous third-party image (`marcosbolanos/pgvector-age`) segfaulted Postgres on ANY vector index build (HNSW and IVFFlat, any dimension). Now `postgres:16-bookworm` + pgvector `v0.8.0` + AGE `PG16/v1.5.0-rc0` compiled from pinned sources. Existing data volume is compatible (same PG major).
+- **`notes.folder_id` nullable, ON DELETE SET NULL** — plan didn't specify; path strings are the identity model, root notes have no folder row, and losing a folder row must not destroy notes.
+- **`messages.workspace_id` added** (not in the plan's column list) per the blanket tenant rule; `messages.role` got a CHECK constraint (`user|assistant|tool`) like `notes.status` / `note_tags.origin`.
+- **`note_tags` / `note_tag_dismissals` use composite PKs `(note_id, tag_id)`** (no surrogate id, per plan column lists); `mentions` has a surrogate id and no timestamps, per plan.
+- **e2e provisioning caveat**: the test template DB loads `db/schema.sql` (`pg_dump --schema-only`), which carries the `notes_graph` schema + label tables but NOT the `ag_catalog.ag_graph` row (catalog data). `notes-schema.spec.ts` backfills that row idempotently (`graphid` = the graph namespace's `pg_namespace.oid`) — reuse this pattern if future specs need the AGE catalog.
 - **M2 — Pipeline framework + AI strategy**: Stage/Registry/Context, boot validation, OpenRouter chat+embed clients behind interfaces, BullMQ ingestion queue registration.
 - **M3 — Sync**: chokidar plugin, upsert fast path, sweeper, rename guard, folder-cover handling. Chunk+embed stages live; extraction stubbed → notes searchable end-to-end.
 - **M4 — Extraction + graph**: extract-graph stage, store-graph with concept resolution + concept embeddings, AGE mirror helpers.
