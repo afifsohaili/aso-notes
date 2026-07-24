@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { useDatabase } from '~~/utils/db'
 import { createSyncDispatcher } from '../lib/sync/dispatcher'
 import { handleFileUnlink, handleFileUpsert, startupScan } from '../lib/sync/files'
 import { runSweeperOnce, SWEEP_INTERVAL_MS } from '../lib/sync/sweeper'

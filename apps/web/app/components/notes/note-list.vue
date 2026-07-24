@@ -1,0 +1,73 @@
+<script setup lang="ts">
+import DocumentIcon from '~icons/heroicons/document-text'
+
+export interface NoteListItem {
+  path: string
+  title: string
+  status: string
+  tags: { id: string, name: string, origin: string }[]
+  updatedAt: string
+}
+
+defineProps<{
+  notes: NoteListItem[]
+  selectedPath: string | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'select', path: string): void
+}>()
+
+const statusClasses: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  ingested: 'bg-green-100 text-green-800',
+  failed: 'bg-red-100 text-red-800',
+}
+
+function statusClass(status: string): string {
+  return statusClasses[status] ?? 'bg-gray-100 text-gray-800'
+}
+</script>
+
+<template>
+  <div class="overflow-y-auto h-full">
+    <ul class="divide-y divide-gray-200">
+      <li
+        v-for="note in notes"
+        :key="note.path"
+        class="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+        :class="selectedPath === note.path ? 'bg-indigo-50' : ''"
+        @click="emit('select', note.path)"
+      >
+        <div class="flex items-start gap-3">
+          <DocumentIcon class="h-5 w-5 text-gray-400 mt-0.5" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-gray-900 truncate">
+                {{ note.title }}
+              </p>
+              <span
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize"
+                :class="statusClass(note.status)"
+              >
+                {{ note.status }}
+              </span>
+            </div>
+            <p class="text-xs text-gray-500 truncate mt-0.5">
+              {{ note.path }}
+            </p>
+            <div v-if="note.tags.length > 0" class="flex flex-wrap gap-1 mt-2">
+              <span
+                v-for="tag in note.tags"
+                :key="tag.id"
+                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700"
+              >
+                {{ tag.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</template>

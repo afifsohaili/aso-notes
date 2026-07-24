@@ -6,5 +6,18 @@
   "login-form.submit.loading": "Logging in...",
   "login-form.submit.text": "Send login link",
   "login-form.submit.success": "Check your email for the login link!",
-  "login-form.submit.error": "Something went wrong. Please try again."
+  "login-form.submit.error": "Something went wrong. Please try again.",
+  "notes.title": "Notes",
+  "notes.folders": "Folders",
+  "notes.notes": "Notes",
+  "notes.selectNote": "Select a note to view",
+  "notes.edit": "Edit",
+  "notes.cancel": "Cancel",
+  "notes.save": "Save",
+  "notes.tags": "Tags",
+  "notes.aiTag": "AI-suggested tag",
+  "notes.addTag": "Add",
+  "notes.addTagPlaceholder": "Add a tag...",
+  "notes.sources": "Sources",
+  "notes.folder": "Folder"
 }

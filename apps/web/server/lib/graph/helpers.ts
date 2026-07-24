@@ -135,6 +135,21 @@ export function mergeTaggedEdge(
   )
 }
 
+export function deleteTaggedEdge(
+  db: GraphDb,
+  edge: { noteId: string, tagId: string, workspaceId: string },
+  scope?: GraphScope,
+): Promise<void> {
+  return executeCypher(
+    db,
+    [
+      `MATCH (n:Note {id: ${agLiteral(edge.noteId)}})-[r:TAGGED]->(t:Tag {id: ${agLiteral(edge.tagId)}})`,
+      'DELETE r',
+    ].join(' '),
+    graphName(scope),
+  )
+}
+
 export function mergeLinkEdge(
   db: GraphDb,
   edge: { fromNoteId: string, toNoteId: string, workspaceId: string },

@@ -168,8 +168,29 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 
 - **M5 — Agent**: tool registry + 7 tools, loop with cap + wrap-up, SSE route, messages persistence. **DONE (2026-07-24)** — agent module in `apps/web/server/lib/agent/`, routes `apps/web/server/api/conversations/`, 27 new e2e tests. Notes below.
 - **M6 — Chat UI**: conversation sidebar, query box, SSE activity log, answer + citations.
-- **M7 — Notes UI**: folder tree, note view, tag management, in-app editor.
+- **M7 — Notes UI**: folder tree, note view, tag management, in-app editor. **DONE (2026-07-24)** — UI components in `apps/web/app/components/notes/`, routes `apps/web/server/api/folders/` and `apps/web/server/api/notes/`, page `apps/web/app/pages/notes/index.vue`, e2e + component + unit tests. Notes below.
 - **M8 — Graph UI**: Cytoscape canvas + concept list panel.
+
+### M7 implementation notes (divergences & decisions)
+
+- **Module layout**: UI components in `apps/web/app/components/notes/{folder-tree,note-list,note-detail,markdown-renderer}.vue`; page `apps/web/app/pages/notes/index.vue`; auth middleware `apps/web/app/middleware/auth.ts`; API routes `apps/web/server/api/folders/index.get.ts`, `apps/web/server/api/notes/index.get.ts`, and `apps/web/server/api/notes/[...slug].ts`.
+- **Backend helpers**: `server/lib/notes/{paths,tree,tags}.ts` provide workspace-scoped path normalization, folder-tree building, and tag add/remove with AGE mirror. `server/lib/graph/helpers.ts` gained `deleteTaggedEdge` for tag removal.
+- **API surface**:
+  - `GET /api/folders` → `{ folders: FolderNode[] }` where `FolderNode = { name, path, hasCover, noteCount, children: FolderNode[] }`.
+  - `GET /api/notes?folder=` → `{ notes: NoteListItem[] }` where `NoteListItem = { id, path, title, status }`; `folder` query is optional prefix filter.
+  - `GET /api/notes/:path` → `NoteDetailNote = { id, path, title, content, status, tags: Tag[], sources: Source[] }`.
+  - `PUT /api/notes/:path` → `{ id, path, title, content, status }` (writes to disk and DB, sets `status='pending'`).
+  - `POST /api/notes/:path/tags` → `{ id, name, origin }` (origin always `'user'`); `DELETE /api/notes/:path/tags/:tagId` → `204`.
+- **Path traversal guard**: `normalizeNotePath` rejects `..`, absolute paths, and non-markdown files; routes return `400` or `404`.
+- **Auth & workspace**: all routes use `requireAuth()` + `requireWorkspaceMembership`; returned data is scoped to the workspace.
+- **AGE mirror for tag edits**: `addTagToNote` and `removeTagFromNote` run inside a transaction and mirror `Tag` nodes + `TAGGED` edges to AGE. A `runInTransaction` helper makes the functions safe when called inside a test transaction or outside one.
+- **Frontend state**: `pages/notes/index.vue` uses `useFetch` for folders, note list, and note detail; detail fetch is conditional on `selectedNotePath` to avoid hitting the list endpoint as a single-note path. Folder click clears the selected note; note selection drives the detail panel.
+- **In-app editor**: `note-detail.vue` toggles a plain textarea; `saveNote` PUTs the new content and refreshes the detail + list. The disk file is the source of truth; chokidar sync will update the DB accordingly.
+- **Tag UI**: tag list renders with remove buttons; a small input form adds tags. Tags are normalized (lowercase, collapse non-alphanumeric to spaces) and deduplicated per workspace.
+- **Markdown rendering**: `markdown-renderer.vue` uses `marked` to render note content to HTML; only safe markdown is expected (no explicit sanitizer added yet).
+- **Browser verification**: folder tree, note list filtering, note detail rendering, editing, and tag add/remove all verified in the dev server. Screenshots: `tmp-screenshots/notes-page.png`, `tmp-screenshots/notes-detail.png`.
+- **Test result**: 263 tests across 34 files (259 passed, 4 skipped) with `DATABASE_URL` and `NUXT_DATABASE_URL` explicitly set to the aso_notes Docker DB (`postgresql://postgres@127.0.0.1:5433/aso_notes_development`). Component test `note-detail.nuxt.spec.ts` and unit tests `notes-paths.spec.ts`, `notes-tree.spec.ts`, `notes-tags.spec.ts` all green.
+- **Deferred**: M6 (Chat UI) and M8 (Graph UI) remain unimplemented. M9 is not yet defined in this plan.
 
 ## Deferred / open
 
