@@ -36,6 +36,9 @@ export default defineNuxtConfig({
     posthogApiKey: '',
     databaseUrl: '',
     turnstileSecretKey: '',
+    emailProvider: '',
+    senderEmail: '',
+    senderName: '',
   },
   postcss: {
     plugins: {
