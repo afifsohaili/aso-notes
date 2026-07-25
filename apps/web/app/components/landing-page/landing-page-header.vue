@@ -12,6 +12,9 @@ const { session } = await useSession()
     </a>
     <div class="hidden md:flex items-center gap-4">
       <template v-if="session">
+        <nuxt-link to="/chat" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+          {{ t('chat.title') }}
+        </nuxt-link>
         <nuxt-link to="/notes" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
           {{ t('notes.title') }}
         </nuxt-link>

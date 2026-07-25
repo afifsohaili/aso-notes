@@ -1,4 +1,15 @@
 {
   "welcome": "Selamat datang ke {appName}!",
-  "language": "Bahasa Malaysia"
+  "language": "Bahasa Malaysia",
+  "chat.title": "Chat",
+  "chat.newConversation": "New conversation",
+  "chat.placeholder": "Ask anything about your notes...",
+  "chat.send": "Send",
+  "chat.streaming": "Agent is thinking...",
+  "chat.error": "Something went wrong. Please try again.",
+  "chat.empty": "Start a conversation by asking a question.",
+  "chat.sources": "Sources",
+  "chat.activity": "Agent activity",
+  "chat.result": "Result",
+  "chat.untitled": "Untitled"
 }

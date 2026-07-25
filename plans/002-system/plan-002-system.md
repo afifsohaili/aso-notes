@@ -167,7 +167,7 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - **Link edge target nodes**: `store-graph` MERGEs the target `Note` vertex before creating a `LINKS` edge, because AGE edge creation requires both endpoints to exist; the source `Note` node is already MERGEd at the start of the stage.
 
 - **M5 — Agent**: tool registry + 7 tools, loop with cap + wrap-up, SSE route, messages persistence. **DONE (2026-07-24)** — agent module in `apps/web/server/lib/agent/`, routes `apps/web/server/api/conversations/`, 27 new e2e tests. Notes below.
-- **M6 — Chat UI**: conversation sidebar, query box, SSE activity log, answer + citations.
+- **M6 — Chat UI**: conversation sidebar, query box, SSE activity log, answer + citations. **DONE (2026-07-26)** — UI components in `apps/web/app/components/chat/`, routes `apps/web/app/pages/chat/index.vue` and `/` redirect, SSE parser `apps/web/app/utils/chat-sse.ts`, `useChat` composable. Notes below.
 - **M7 — Notes UI**: folder tree, note view, tag management, in-app editor. **DONE (2026-07-24)** — UI components in `apps/web/app/components/notes/`, routes `apps/web/server/api/folders/` and `apps/web/server/api/notes/`, page `apps/web/app/pages/notes/index.vue`, e2e + component + unit tests. Notes below.
 - **M8 — Graph UI**: Cytoscape canvas + concept list panel. **DONE (2026-07-25)** — UI components in `apps/web/app/components/graph/`, routes `apps/web/server/api/graph/`, backend helpers `apps/web/server/lib/graph/ui.ts`, e2e + component + unit tests. Notes below.
 
@@ -240,4 +240,18 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - **AGE path parsing**: `find_paths_between` returns `nodes(p)` and `relationships(p)` from AGE and parses the agtype text manually (stripping `::vertex`/`::edge` type suffixes) because AGE 1.5 rejects list-comprehension syntax (`[x IN list | ...]`) in cypher.
 - **GET routes added early**: `GET /api/conversations` (list by updated_at desc) and `GET /api/conversations/:id` (with messages) are implemented now for M6 consumption even though M6 is not yet built.
 - **Workspace resolution**: same single-tenant MVP rule as M3 — the route picks the user's first membership by `created_at`.
+
+### M6 implementation notes (divergences & decisions)
+
+- **Module layout**: UI components in `apps/web/app/components/chat/{chat-thread,chat-activity,chat-sidebar}.vue`; page `apps/web/app/pages/chat/index.vue`; composable `apps/web/app/composables/use-chat.ts`; SSE parser `apps/web/app/utils/chat-sse.ts`.
+- **Route choice**: `/chat` is the canonical chat page; the signed-in home page (`/`) redirects to `/chat`. A `Chat` nav link was added to the landing header next to Notes/Graph.
+- **SSE parser**: `readChatSseEvents(reader)` consumes the POST `/api/conversations` stream using `fetch` + `ReadableStreamDefaultReader`; it reassembles frames split across chunks, tolerates malformed/non-data lines, and yields typed events for `tool_call`, `tool_result`, `answer`, and `error`.
+- **Transparency panel**: `chat-activity.vue` renders paired tool-call/tool-result events with the tool name and arguments always visible and the structured result collapsed/expandable.
+- **Answer rendering**: `chat-thread.vue` uses the existing `MarkdownRenderer` for assistant answers and renders `answer.notes[]` as links to `/notes?note=<path>`.
+- **Notes deep-linking**: `/notes` now reads `?note=` on initial load so citation links land on the correct note.
+- **Conversation continuity**: the active `conversationId` is kept after an `answer` event, passed on the next query, reflected in the URL (`/chat?conversationId=...`), and used to load persisted messages when the user selects a sidebar entry.
+- **No backend changes**: the M5 conversation routes (`POST`, `GET`, `[id].get`) were consumed as-is; no fixes were needed.
+- **Browser verification**: performed with `agent-browser`. Signed-in `/chat` rendered the conversation sidebar, loaded a seeded past conversation, and sent a new query. Because `OPENROUTER_API_KEY` is not configured in `.env.local`, the real LLM call fails and the UI renders the error message gracefully (`NUXT_OPENROUTER_API_KEY is required to create an AI provider`).
+- **Test result**: full suite `281 passed | 4 skipped (285)` across 41 files. New specs: `test/unit/chat-sse-parser.spec.ts` (5 tests), `test/components/chat-thread.nuxt.spec.ts` (2 tests), `test/components/chat-activity.nuxt.spec.ts` (1 test), `test/components/chat-sidebar.nuxt.spec.ts` (1 test).
+- **Screenshots**: `tmp-screenshots/chat-page-initial.png`, `tmp-screenshots/chat-past-conversation.png`, `tmp-screenshots/chat-error-state.png`, `tmp-screenshots/notes-deep-link.png`.
 

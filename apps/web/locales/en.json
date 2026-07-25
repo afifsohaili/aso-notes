@@ -26,5 +26,16 @@
   "graph.empty": "No concepts yet. Ingest some notes to see the graph.",
   "graph.neighbors": "Neighbors",
   "graph.mentionedIn": "Mentioned in",
-  "graph.noSelection": "Select a concept to explore its neighborhood."
+  "graph.noSelection": "Select a concept to explore its neighborhood.",
+  "chat.title": "Chat",
+  "chat.newConversation": "New conversation",
+  "chat.placeholder": "Ask anything about your notes...",
+  "chat.send": "Send",
+  "chat.streaming": "Agent is thinking...",
+  "chat.error": "Something went wrong. Please try again.",
+  "chat.empty": "Start a conversation by asking a question.",
+  "chat.sources": "Sources",
+  "chat.activity": "Agent activity",
+  "chat.result": "Result",
+  "chat.untitled": "Untitled"
 }

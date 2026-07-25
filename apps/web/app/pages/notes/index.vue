@@ -11,8 +11,10 @@ definePageMeta({
 
 const { t } = useI18n()
 
+const route = useRoute()
+
 const selectedFolderPath = ref<string | null>(null)
-const selectedNotePath = ref<string | null>(null)
+const selectedNotePath = ref<string | null>(typeof route.query.note === 'string' ? route.query.note : null)
 
 const { data: folders } = await useFetch<FolderNode[]>('/api/folders')
 
