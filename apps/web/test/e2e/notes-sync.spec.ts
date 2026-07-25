@@ -101,6 +101,38 @@ describe('sync fast path: file add/change', () => {
     expect(await folderPaths(trx, workspaceId)).toEqual([])
   })
 
+  test('a synced note uses the markdown-note-with-links pipeline so wikilinks and sources are extracted at ingestion', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'sync-pipeline')
+    const notesDir = givenNotesDir()
+    const abs = writeNote(notesDir, 'linked.md', '# Linked\n\nSee [[other]]. https://youtu.be/abc123\n')
+
+    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+
+    const note = await getNoteByPath(trx, workspaceId, '/linked.md')
+    expect(note.pipeline).toBe('markdown-note-with-links')
+  })
+
+  test('editing a legacy markdown-note row upgrades its pipeline to markdown-note-with-links', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'sync-pipeline-upgrade')
+    const notesDir = givenNotesDir()
+    const abs = writeNote(notesDir, 'legacy.md', 'v1')
+
+    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    // Simulate a note created before the pipeline was set at sync time.
+    await trx
+      .updateTable('notes')
+      .set({ pipeline: 'markdown-note' })
+      .where('workspace_id', '=', workspaceId)
+      .where('path', '=', '/legacy.md')
+      .execute()
+
+    writeFileSync(abs, 'v2 — changed')
+    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+
+    const note = await getNoteByPath(trx, workspaceId, '/legacy.md')
+    expect(note.pipeline).toBe('markdown-note-with-links')
+  })
+
   test('modifying a file keeps the note id, bumps updated_at, and marks it pending', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-modify')
     const notesDir = givenNotesDir()

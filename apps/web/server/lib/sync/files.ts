@@ -186,6 +186,8 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
           content_hash: hash,
           folder_id: folderId,
           status: 'pending',
+          // Keep the row on the full pipeline (see insert branch).
+          pipeline: 'markdown-note-with-links',
           updated_at: sql`now()`,
         })
         .where('id', '=', decision.noteId)
@@ -221,6 +223,8 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
           content,
           content_hash: hash,
           status: 'pending',
+          // Full pipeline: extract-graph plus wikilink/source extraction.
+          pipeline: 'markdown-note-with-links',
         })
         .execute()
       return 'insert'

@@ -16,10 +16,11 @@ const { t } = useI18n()
         {{ t('landingpage.hero.subtitle') }}
       </p>
       <div class="flex flex-col items-start space-y-3 sm:space-x-4 sm:space-y-0 sm:items-center sm:flex-row">
-        <a
-          href="https://web3templates.com/templates/nextly-landing-page-template-for-startups" target="_blank"
-          rel="noopener" class="px-8 py-4 text-lg font-medium text-center text-white bg-indigo-600 rounded-md "
-        >{{ t('landingpage.hero.cta') }}</a>
+        <NuxtLink
+          to="/signup" class="px-8 py-4 text-lg font-medium text-center text-white bg-indigo-600 rounded-md "
+        >
+          {{ t('landingpage.hero.cta') }}
+        </NuxtLink>
       </div>
       <ul class="pt-4">
         <li class="flex items-center">

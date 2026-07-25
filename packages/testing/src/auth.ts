@@ -107,24 +107,36 @@ export async function givenVerifiedUser(
     throw new Error(`sign-up response missing user.id: ${JSON.stringify(body)}`)
   }
 
-  // BetterAuth skips the after-sign-up hook when email verification is required,
-  // so we verify the email and create the workspace/membership manually.
+  // The auth database hook creates the workspace/membership automatically,
+  // but email verification is still required in tests, so verify the email
+  // and reuse the auto-created workspace.
   await trx
     .updateTable('users')
     .set({ emailVerified: true })
     .where('id', '=', userId)
     .execute()
 
-  const [workspace] = await trx
-    .insertInto('workspaces')
-    .values({ name: `${email}'s Workspace` })
-    .returning(['id', 'name', 'created_at', 'updated_at'])
-    .execute()
+  let workspace = await trx
+    .selectFrom('workspaces')
+    .innerJoin('memberships', 'memberships.workspace_id', 'workspaces.id')
+    .select(['workspaces.id', 'workspaces.name', 'workspaces.created_at', 'workspaces.updated_at'])
+    .where('memberships.user_id', '=', userId)
+    .executeTakeFirst()
 
-  await trx
-    .insertInto('memberships')
-    .values({ user_id: userId, workspace_id: workspace.id, role: 'admin' })
-    .execute()
+  if (!workspace) {
+    const [created] = await trx
+      .insertInto('workspaces')
+      .values({ name: `${email}'s Workspace` })
+      .returning(['id', 'name', 'created_at', 'updated_at'])
+      .execute()
+
+    await trx
+      .insertInto('memberships')
+      .values({ user_id: userId, workspace_id: created.id, role: 'admin' })
+      .execute()
+
+    workspace = created
+  }
 
   const cookies = await signInAs(userId)
 

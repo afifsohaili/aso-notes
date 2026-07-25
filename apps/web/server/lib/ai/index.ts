@@ -35,7 +35,8 @@ function resolveApiKey(env: AiEnv): string {
 export function createEmbeddingProviderFromEnv(env: AiEnv = {}): EmbeddingProvider {
   return new OpenRouterEmbeddingProvider({
     apiKey: resolveApiKey(env),
-    model: env.openrouterEmbeddingModel ?? process.env.NUXT_OPENROUTER_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL,
+    // Empty strings (nuxt runtimeConfig defaults) mean "unset".
+    model: env.openrouterEmbeddingModel || process.env.NUXT_OPENROUTER_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL,
   })
 }
 
@@ -43,6 +44,7 @@ export function createEmbeddingProviderFromEnv(env: AiEnv = {}): EmbeddingProvid
 export function createLLMProviderFromEnv(env: AiEnv = {}): LLMProvider {
   return new OpenRouterLLMProvider({
     apiKey: resolveApiKey(env),
-    model: env.openrouterChatModel ?? process.env.NUXT_OPENROUTER_CHAT_MODEL ?? DEFAULT_CHAT_MODEL,
+    // Empty strings (nuxt runtimeConfig defaults) mean "unset".
+    model: env.openrouterChatModel || process.env.NUXT_OPENROUTER_CHAT_MODEL || DEFAULT_CHAT_MODEL,
   })
 }

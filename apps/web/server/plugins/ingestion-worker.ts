@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
 import type { IngestNoteJobData } from '../lib/sync/dispatcher'
 import process from 'node:process'
+import { useDatabase } from '~~/utils/db'
 import { INGESTION_QUEUE_NAME } from '../lib/sync/dispatcher'
 import { ingestNote } from '../lib/sync/ingest'
 

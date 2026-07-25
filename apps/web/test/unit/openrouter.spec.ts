@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { createEmbeddingProviderFromEnv, createLLMProviderFromEnv, DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from '../../server/lib/ai'
 import { OpenRouterEmbeddingProvider } from '../../server/lib/ai/openrouter-embedding'
 import { OpenRouterLLMProvider } from '../../server/lib/ai/openrouter-llm'
 
@@ -120,5 +121,35 @@ describe('openRouterLLMProvider', () => {
     const { fetchFn } = mockFetch(401, { error: { message: 'bad key' } })
     const provider = new OpenRouterLLMProvider({ apiKey: 'sk-bad', fetchFn })
     await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toThrow(/401/)
+  })
+})
+
+describe('provider factories', () => {
+  it('an empty-string chat model from runtime config falls back to the default model', async () => {
+    const { calls, fetchFn } = mockFetch(200, { choices: [{ message: { role: 'assistant', content: 'ok' } }] })
+    vi.stubGlobal('fetch', fetchFn)
+    try {
+      // nuxt runtimeConfig defaults openrouterChatModel to '' — empty must
+      // mean "unset", not "send an empty model to OpenRouter".
+      const provider = createLLMProviderFromEnv({ openrouterApiKey: 'sk-test', openrouterChatModel: '' })
+      await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+      expect(JSON.parse(String(calls[0]!.init.body)).model).toBe(DEFAULT_CHAT_MODEL)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('an empty-string embedding model from runtime config falls back to the default model', async () => {
+    const { calls, fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: [0.1] }] })
+    vi.stubGlobal('fetch', fetchFn)
+    try {
+      const provider = createEmbeddingProviderFromEnv({ openrouterApiKey: 'sk-test', openrouterEmbeddingModel: '' })
+      await provider.embed(['x'])
+      expect(JSON.parse(String(calls[0]!.init.body)).model).toBe(DEFAULT_EMBEDDING_MODEL)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

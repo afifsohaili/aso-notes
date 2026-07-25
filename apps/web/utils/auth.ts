@@ -1,5 +1,7 @@
+import type { Users } from '@monorepo/shared'
+import type { Selectable } from 'kysely'
+import process from 'node:process'
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware } from 'better-auth/api'
 import { enqueueEmail } from '../server/lib/email'
 import { useDatabase } from './db'
 
@@ -19,7 +21,9 @@ export function useAuth(env: AuthEnv) {
     },
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      // Dev environments have no outgoing email provider configured, so skip
+      // verification and let the user use the app immediately.
+      requireEmailVerification: process.env.NODE_ENV !== 'development',
       sendResetPassword: async ({ user, url }) => {
         // Don't await to prevent timing attacks
         void enqueueEmail({
@@ -47,22 +51,18 @@ export function useAuth(env: AuthEnv) {
     session: { modelName: 'sessions' },
     account: { modelName: 'accounts' },
     verification: { modelName: 'user_verifications' },
-    hooks: {
-      after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path.startsWith('/sign-up')) {
-          const session = ctx.context.newSession
-          const user = session?.user
-          // Create a default workspace for new users
-          if (user) {
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user: Selectable<Users>) => {
             try {
-              // Create a new workspace for the user
+              const name = user.name || user.email.split('@')[0]
               const [workspace] = await db
                 .insertInto('workspaces')
-                .values({ name: `${user.name}'s Workspace` })
-                .returning(['id', 'name', 'created_at', 'updated_at'])
+                .values({ name: `${name}'s Workspace` })
+                .returning(['id'])
                 .execute()
 
-              // Add the user as an admin to the workspace
               await db
                 .insertInto('memberships')
                 .values({ user_id: user.id, workspace_id: workspace.id, role: 'admin' })
@@ -71,9 +71,9 @@ export function useAuth(env: AuthEnv) {
             catch (error) {
               console.error('Failed to create workspace for new user:', error)
             }
-          }
-        }
-      }),
+          },
+        },
+      },
     },
     // You can add social providers if needed
     // socialProviders: {

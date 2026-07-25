@@ -1,4 +1,5 @@
 import type { EmailJobData } from './email/interface'
+import process from 'node:process'
 import { useQueue } from '../utils/queue'
 
 export { BrevoEmailProvider } from './email/brevo'
