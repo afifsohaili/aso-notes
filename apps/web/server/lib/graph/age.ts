@@ -71,7 +71,7 @@ function cypherStatement(graph: string, query: string, columns: string): string 
  */
 async function agePreamble(db: GraphDb): Promise<void> {
   await sql`LOAD 'age'`.execute(db)
-  await sql`SET LOCAL search_path = ag_catalog, "$user", public`.execute(db)
+  await sql`SET search_path = ag_catalog, "$user", public`.execute(db)
 }
 
 /** Run a write cypher query (no RETURN) against the graph. */

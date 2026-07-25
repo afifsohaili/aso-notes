@@ -19,5 +19,12 @@
   "notes.addTag": "Add",
   "notes.addTagPlaceholder": "Add a tag...",
   "notes.sources": "Sources",
-  "notes.folder": "Folder"
+  "notes.folder": "Folder",
+  "graph.title": "Graph",
+  "graph.concepts": "Concepts",
+  "graph.searchConcepts": "Search concepts...",
+  "graph.empty": "No concepts yet. Ingest some notes to see the graph.",
+  "graph.neighbors": "Neighbors",
+  "graph.mentionedIn": "Mentioned in",
+  "graph.noSelection": "Select a concept to explore its neighborhood."
 }

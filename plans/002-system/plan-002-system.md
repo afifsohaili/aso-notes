@@ -169,7 +169,22 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - **M5 — Agent**: tool registry + 7 tools, loop with cap + wrap-up, SSE route, messages persistence. **DONE (2026-07-24)** — agent module in `apps/web/server/lib/agent/`, routes `apps/web/server/api/conversations/`, 27 new e2e tests. Notes below.
 - **M6 — Chat UI**: conversation sidebar, query box, SSE activity log, answer + citations.
 - **M7 — Notes UI**: folder tree, note view, tag management, in-app editor. **DONE (2026-07-24)** — UI components in `apps/web/app/components/notes/`, routes `apps/web/server/api/folders/` and `apps/web/server/api/notes/`, page `apps/web/app/pages/notes/index.vue`, e2e + component + unit tests. Notes below.
-- **M8 — Graph UI**: Cytoscape canvas + concept list panel.
+- **M8 — Graph UI**: Cytoscape canvas + concept list panel. **DONE (2026-07-25)** — UI components in `apps/web/app/components/graph/`, routes `apps/web/server/api/graph/`, backend helpers `apps/web/server/lib/graph/ui.ts`, e2e + component + unit tests. Notes below.
+
+### M8 implementation notes (divergences & decisions)
+
+- **Module layout**: backend graph DTO helpers in `server/lib/graph/ui.ts` (`getFullGraph`, `getConceptList`, `getConceptDetail`); API routes `server/api/graph/index.get.ts`, `server/api/graph/concepts/index.get.ts`, `server/api/graph/concepts/[id].get.ts`; UI components `app/components/graph/{graph-canvas,concept-list,concept-detail}.vue`; page `app/pages/graph/index.vue`; nav link added to `app/components/landing-page/landing-page-header.vue`.
+- **API surface**:
+  - `GET /api/graph` → `{ nodes: { id, label, name, ref }[], edges: { source, target, type, edgeType? }[] }`; workspace-scoped via AGE cypher.
+  - `GET /api/graph/concepts` → `{ id, name, description, mentionCount }[]` ordered by `mentionCount` desc.
+  - `GET /api/graph/concepts/:id` → `{ concept: { id, name, description }, neighbors: { id, name, type, weight }[], mentionedIn: { path, title }[] }`.
+- **AGE cypher quirks discovered**: `labels(n)` segfaults AGE 1.5 in the current Docker image; full-graph nodes are fetched by explicit label (`:Concept`, `:Note`, `:Tag`). Returning `r.type AS edgeType` from a `RELATES_TO` edge returns no value; the alias must be `type` (returned as `type` and then mapped to `edgeType` in DTO).
+- **Relations have no `weight` column** in the M1 schema, although the M8 spec requested `weight` in neighbor output. API returns `weight: 1` as a placeholder; a future schema migration can add a real `weight` column.
+- **Cytoscape client-only**: `graph-canvas.vue` renders only on the client via `<ClientOnly>` + dynamic imports to avoid SSR issues with `cytoscape`/`cytoscape-fcose`.
+- **Note navigation**: clicking a Note node or a mentioned note in the detail panel navigates to `/notes` (with `?note=<path>` query on detail-panel clicks); the Notes page does not yet read that query parameter.
+- **Browser verification**: logged in as seeded `graph-tester@example.com`, `/graph` rendered Cytoscape canvas with fcose layout, concept list populated, concept selection highlighted neighborhood and populated detail panel. Screenshots: `tmp-screenshots/login.png`, `tmp-screenshots/graph-page-loaded.png`, `tmp-screenshots/graph-concept-selected.png`, `tmp-screenshots/graph-note-navigate.png`, `tmp-screenshots/landing-header-graph-link.png`.
+- **Test result**: full suite `272 passed | 4 skipped (276)` across 37 files. New specs: `test/e2e/graph-api.spec.ts` (6 tests), `test/unit/graph-ui.spec.ts` (5 tests), `test/components/graph-concept-list.nuxt.spec.ts` (2 tests).
+- **Deps added**: `cytoscape`, `cytoscape-fcose`; dev dependency `@types/cytoscape`.
 
 ### M7 implementation notes (divergences & decisions)
 
@@ -190,7 +205,7 @@ Store `url` (raw) + `url_normalized` (canonical). Rules: lowercase scheme/host; 
 - **Markdown rendering**: `markdown-renderer.vue` uses `marked` to render note content to HTML; only safe markdown is expected (no explicit sanitizer added yet).
 - **Browser verification**: folder tree, note list filtering, note detail rendering, editing, and tag add/remove all verified in the dev server. Screenshots: `tmp-screenshots/notes-page.png`, `tmp-screenshots/notes-detail.png`.
 - **Test result**: 263 tests across 34 files (259 passed, 4 skipped) with `DATABASE_URL` and `NUXT_DATABASE_URL` explicitly set to the aso_notes Docker DB (`postgresql://postgres@127.0.0.1:5433/aso_notes_development`). Component test `note-detail.nuxt.spec.ts` and unit tests `notes-paths.spec.ts`, `notes-tree.spec.ts`, `notes-tags.spec.ts` all green.
-- **Deferred**: M6 (Chat UI) and M8 (Graph UI) remain unimplemented. M9 is not yet defined in this plan.
+- **Deferred**: M6 (Chat UI) remains unimplemented. M9 is not yet defined in this plan.
 
 ## Deferred / open
 
