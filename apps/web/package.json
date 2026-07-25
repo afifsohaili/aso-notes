@@ -28,7 +28,7 @@
     "chokidar": "^5.0.0",
     "cytoscape": "^3.34.0",
     "cytoscape-fcose": "^2.2.0",
-    "h3": "^1.15.4",
+    "h3": "^1.15.5",
     "ioredis": "^5.10.1",
     "kysely": "^0.28.17",
     "magicast": "^0.5.2",
@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^8.2.0",
+    "@base/jobs": "workspace:*",
     "@base/testing": "workspace:*",
     "@iconify/json": "^2.2.469",
     "@nuxt/devtools": "^4.0.0-alpha.4",

@@ -40,6 +40,9 @@ export default defineNuxtConfig({
     openrouterChatModel: '',
     openrouterEmbeddingModel: '',
     notesDir: '',
+    emailProvider: '',
+    senderEmail: '',
+    senderName: '',
   },
   postcss: {
     plugins: {
