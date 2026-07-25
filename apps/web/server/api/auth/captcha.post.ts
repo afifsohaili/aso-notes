@@ -1,7 +1,14 @@
+import process from 'node:process'
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const body = await readBody(event)
   const { token } = body
+
+  // Turnstile is not required in local development
+  if (process.env.NODE_ENV === 'development') {
+    return { success: true }
+  }
 
   if (!token) {
     throw createError({

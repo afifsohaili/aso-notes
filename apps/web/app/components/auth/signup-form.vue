@@ -8,15 +8,19 @@ const alert = ref({
   type: '' as 'error' | 'success' | '',
 })
 const config = useRuntimeConfig()
-useHead({
-  script: [
-    {
-      src: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
-      async: true,
-      defer: true,
-    },
-  ],
-})
+// Turnstile is not shown or required in local development
+const isDev = process.env.NODE_ENV === 'development'
+if (!isDev) {
+  useHead({
+    script: [
+      {
+        src: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
+        async: true,
+        defer: true,
+      },
+    ],
+  })
+}
 
 async function handleSignup() {
   try {
@@ -29,30 +33,35 @@ async function handleSignup() {
       return
     }
 
-    const turnstileToken = (window as any)?.turnstile?.getResponse()
-    if (!turnstileToken) {
-      alert.value = {
-        message: 'Please complete the Turnstile challenge',
-        type: 'error',
+    if (!isDev) {
+      const turnstileToken = (window as any)?.turnstile?.getResponse()
+      if (!turnstileToken) {
+        alert.value = {
+          message: 'Please complete the Turnstile challenge',
+          type: 'error',
+        }
+        return
       }
-      return
-    }
 
-    loading.value = true
+      loading.value = true
 
-    // Validate Turnstile token first
-    try {
-      await $fetch('/api/auth/captcha', {
-        method: 'POST',
-        body: { token: turnstileToken },
-      })
-    }
-    catch {
-      alert.value = {
-        message: 'Failed to validate security check. Please try again.',
-        type: 'error',
+      // Validate Turnstile token first
+      try {
+        await $fetch('/api/auth/captcha', {
+          method: 'POST',
+          body: { token: turnstileToken },
+        })
       }
-      return
+      catch {
+        alert.value = {
+          message: 'Failed to validate security check. Please try again.',
+          type: 'error',
+        }
+        return
+      }
+    }
+    else {
+      loading.value = true
     }
 
     // Using the signUp function directly
@@ -127,7 +136,7 @@ const floatingDialogClass = computed(() => {
           required
         >
       </div>
-      <div class="mb-8 flex justify-center">
+      <div v-if="!isDev" class="mb-8 flex justify-center">
         <div
           class="cf-turnstile" :data-sitekey="config.public.turnstileSiteKey" data-callback="e => console.log('cloudflare callback', e)"
         />
