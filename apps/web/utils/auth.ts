@@ -7,6 +7,9 @@ interface AuthEnv {
   databaseUrl: string
   redisUrl?: string
   [key: string]: string | undefined
+  public?: {
+    [key: string]: string | undefined
+  }
 }
 
 export function useAuth(env: AuthEnv) {
@@ -17,6 +20,7 @@ export function useAuth(env: AuthEnv) {
       db,
       type: 'postgres',
     },
+    baseURL: env.public.siteUrl,
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
