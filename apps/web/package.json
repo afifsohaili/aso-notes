@@ -1,11 +1,12 @@
 {
   "name": "web",
-  "portless": "asonotes",
+  "portless": { "name": "asonotes", "script": "dev:app" },
   "type": "module",
   "private": true,
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev --dotenv .env.local",
+    "dev": "portless",
+    "dev:app": "nuxt dev --dotenv .env.local",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
