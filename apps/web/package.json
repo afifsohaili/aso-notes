@@ -1,5 +1,6 @@
 {
   "name": "web",
+  "portless": "asonotes",
   "type": "module",
   "private": true,
   "scripts": {

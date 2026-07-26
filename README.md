@@ -95,6 +95,8 @@ pnpm db:migrate
 pnpm dev    # http://localhost:3000
 ```
 
+**Named URL (optional):** with [portless](https://github.com/vercel-labs/portless) installed (`npm install -g portless`), run `cd apps/web && portless` to serve the app at `https://asonotes.localhost` (trusted HTTPS, no port numbers). The name is configured via the `"portless"` key in `apps/web/package.json` and `portless.json` at the repo root.
+
 Sign up (email verification and Turnstile are bypassed in dev), then drop Markdown files into `NUXT_NOTES_DIR`. Files are picked up as `pending` and ingested in the background (chunked, embedded, and mined for Concepts/Relations). Ask questions on the **Chat** page, browse files on **Notes**, explore the derived graph on **Graph**.
 
 ## Using it yourself
