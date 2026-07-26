@@ -1,10 +1,5 @@
 export const appInfo = {
-  name: 'My app',
-  title: 'My app -- oneliner',
-  description: 'My app description',
-  pas: {
-    pain: 'Pain is pain?',
-    agitate: 'Agitate is agitate?',
-  },
-  cta: 'Try now',
+  name: 'aso-notes',
+  title: 'aso-notes',
+  description: 'Personal knowledge assistant — ask questions, get answers with citations from your own notes.',
 }

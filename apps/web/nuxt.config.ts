@@ -19,6 +19,8 @@ export default defineNuxtConfig({
     { path: '~/components', pathPrefix: false },
   ],
   site: {
+    name: 'aso-notes',
+    description: 'Personal knowledge assistant — ask questions, get answers with citations from your own notes.',
     url: process.env.NUXT_PUBLIC_SITE_URL,
   },
   vite: {

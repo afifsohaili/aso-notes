@@ -12,7 +12,7 @@ declare module '#components' {
 it('can mount some component', async () => {
   const component = await mountSuspended(Logo)
   expect(component.text()).toMatchInlineSnapshot(
-    '"My app"',
+    `"aso-notes"`,
   )
 })
 

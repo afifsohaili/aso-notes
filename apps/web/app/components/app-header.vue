@@ -1,0 +1,41 @@
+<script lang="ts" setup>
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+const route = useRoute()
+const { session } = await useSession()
+
+const links = [
+  { to: '/chat', label: () => t('chat.title') },
+  { to: '/notes', label: () => t('notes.title') },
+  { to: '/graph', label: () => t('graph.title') },
+]
+
+function isActive(to: string) {
+  return route.path === to || route.path.startsWith(`${to}/`)
+}
+</script>
+
+<template>
+  <header class="sticky top-0 z-40 bg-white border-b border-gray-200">
+    <div class="container flex items-center justify-between px-6 py-3 mx-auto">
+      <NuxtLink to="/" class="text-lg">
+        <logo />
+      </NuxtLink>
+
+      <nav v-if="session" class="flex items-center gap-1">
+        <NuxtLink
+          v-for="link in links"
+          :key="link.to"
+          :to="link.to"
+          class="px-3 py-2 rounded-md text-sm font-medium"
+          :class="isActive(link.to)
+            ? 'text-indigo-600 underline underline-offset-8 decoration-2'
+            : 'text-gray-600 hover:text-gray-900'"
+        >
+          {{ link.label() }}
+        </NuxtLink>
+      </nav>
+    </div>
+  </header>
+</template>

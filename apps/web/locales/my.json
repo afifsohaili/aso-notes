@@ -11,5 +11,9 @@
   "chat.sources": "Sources",
   "chat.activity": "Agent activity",
   "chat.result": "Result",
-  "chat.untitled": "Untitled"
+  "chat.untitled": "Untitled",
+  "notes.processPending": "Proses {count} belum selesai",
+  "notes.processing": "Sedang memproses…",
+  "notes.processDispatched": "{count} nota dihantar untuk diproses.",
+  "notes.processError": "Tidak dapat menghantar nota untuk diproses."
 }

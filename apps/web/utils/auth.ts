@@ -22,7 +22,7 @@ export function useAuth(env: AuthEnv) {
       db,
       type: 'postgres',
     },
-    baseURL: env.public.siteUrl,
+    baseURL: env.public?.siteUrl ?? process.env.NUXT_PUBLIC_SITE_URL,
     emailAndPassword: {
       enabled: true,
       // Dev environments have no outgoing email provider configured, so skip

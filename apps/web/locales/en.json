@@ -37,5 +37,9 @@
   "chat.sources": "Sources",
   "chat.activity": "Agent activity",
   "chat.result": "Result",
-  "chat.untitled": "Untitled"
+  "chat.untitled": "Untitled",
+  "notes.processPending": "Process {count} pending",
+  "notes.processing": "Processing…",
+  "notes.processDispatched": "Dispatched {count} note(s) — ingestion will finish shortly.",
+  "notes.processError": "Could not dispatch notes for processing."
 }

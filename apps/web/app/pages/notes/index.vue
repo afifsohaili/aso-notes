@@ -3,6 +3,7 @@ import type { FolderNode } from '~/components/notes/folder-tree.vue'
 import type { NoteDetailNote } from '~/components/notes/note-detail.vue'
 import type { NoteListItem } from '~/components/notes/note-list.vue'
 import { useI18n } from 'vue-i18n'
+import BoltIcon from '~icons/heroicons/bolt'
 
 definePageMeta({
   middleware: ['auth'],
@@ -70,6 +71,33 @@ async function removeTag(tagId: string) {
   await refreshNote()
   await refreshNotes()
 }
+
+const processing = ref(false)
+const processMessage = ref('')
+
+const pendingCount = computed(() => (notes.value ?? []).filter(n => n.status === 'pending').length)
+
+async function processFolder() {
+  if (!selectedFolderPath.value || processing.value)
+    return
+
+  processing.value = true
+  processMessage.value = ''
+  try {
+    const res = await $fetch<{ dispatched: number }>('/api/notes/process', {
+      method: 'POST',
+      body: { folder: selectedFolderPath.value },
+    })
+    processMessage.value = t('notes.processDispatched', { count: res.dispatched })
+    await refreshNotes()
+  }
+  catch {
+    processMessage.value = t('notes.processError')
+  }
+  finally {
+    processing.value = false
+  }
+}
 </script>
 
 <template>
@@ -95,9 +123,24 @@ async function removeTag(tagId: string) {
 
       <!-- Note list -->
       <aside class="w-80 border-r border-gray-200 bg-white flex flex-col">
-        <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          {{ t('notes.notes') }}
-        </h2>
+        <div class="flex items-center justify-between px-4 py-2">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            {{ t('notes.notes') }}
+          </h2>
+          <button
+            v-if="selectedFolderPath && pendingCount > 0"
+            type="button"
+            class="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+            :disabled="processing"
+            @click="processFolder"
+          >
+            <BoltIcon class="w-3.5 h-3.5" />
+            {{ processing ? t('notes.processing') : t('notes.processPending', { count: pendingCount }) }}
+          </button>
+        </div>
+        <p v-if="processMessage" class="px-4 pb-2 text-xs text-gray-500">
+          {{ processMessage }}
+        </p>
         <note-list
           :notes="notes ?? []"
           :selected-path="selectedNotePath"
