@@ -17,5 +17,14 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: aso-notes-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - aso-notes-redis-data:/data
+
 volumes:
   aso-notes-db-data:
+  aso-notes-redis-data:

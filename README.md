@@ -40,11 +40,66 @@ CONTEXT.md        Canonical glossary (ubiquitous language)
 
 ## Setup
 
+### Prerequisites
+
+- **Node.js 24** (see `.tool-versions`)
+- **pnpm 11** (`corepack enable` if needed)
+- **Docker** (PostgreSQL + Redis run as containers; no local installs required)
+
+### 1. Clone and install
+
 ```bash
+git clone <repo-url> && cd aso-notes
 pnpm install
-docker compose up -d    # PostgreSQL with pgvector + Apache AGE
+```
+
+### 2. Start infrastructure
+
+```bash
+docker compose up -d
+# PostgreSQL 16 with pgvector + Apache AGE on port 5433
+# Redis (ingestion queue) on port 6379
+```
+
+### 3. Configure environment
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Then fill in the values:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` / `NUXT_DATABASE_URL` | yes | Postgres connection string — the Docker default works as-is |
+| `NUXT_NOTES_DIR` | yes | Absolute path of the local folder to watch for notes (Markdown files) |
+| `NUXT_OPENROUTER_API_KEY` | yes | OpenRouter key (https://openrouter.ai/keys) — powers ingestion embeddings and the chat agent |
+| `BETTER_AUTH_SECRET` / `NUXT_BETTER_AUTH_SECRET` | yes | Auth session secret — `openssl rand -base64 32` |
+| `NUXT_REDIS_URL` | yes | Ingestion queue + sweeper — the Docker default works as-is. Without it, synced notes stay `pending` and are never ingested |
+| `NUXT_OPENROUTER_CHAT_MODEL` | no | Chat model ID — default `deepseek/deepseek-v4-flash` |
+| `NUXT_OPENROUTER_EMBEDDING_MODEL` | no | Embedding model ID — default `nvidia/llama-nemotron-embed-vl-1b-v2:free` |
+| `NUXT_EMAIL_PROVIDER`, `NUXT_BREVO_API_KEY`, `NUXT_SENDER_EMAIL`, `NUXT_SENDER_NAME` | no | Transactional email. In dev, email verification is bypassed entirely, so these are unused locally |
+| `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, `NUXT_TURNSTILE_SECRET_KEY` | no | Signup captcha — skipped entirely in dev (`NODE_ENV=development`) |
+| `NUXT_PUBLIC_POSTHOG_API_KEY`, `NUXT_POSTHOG_API_KEY` | no | PostHog analytics |
+| `NUXT_PUBLIC_SITE_URL` | no | SEO / sitemap |
+
+### 4. Migrate the database
+
+```bash
 pnpm db:migrate
 ```
+
+### 5. Run
+
+```bash
+pnpm dev    # http://localhost:3000
+```
+
+Sign up (email verification and Turnstile are bypassed in dev), then drop Markdown files into `NUXT_NOTES_DIR`. Files are picked up as `pending` and ingested in the background (chunked, embedded, and mined for Concepts/Relations). Ask questions on the **Chat** page, browse files on **Notes**, explore the derived graph on **Graph**.
+
+## Using it yourself
+
+Right now the way to run aso-notes is exactly the flow above: clone the repo, start the Docker services, configure `.env.local`, and `pnpm dev` (or `pnpm build && pnpm preview` for a production-mode build) on your own machine. There is no packaged deployment yet (no app Docker image or hosting config) — that's future work.
 
 ## Development
 
