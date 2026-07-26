@@ -1,6 +1,9 @@
 {
   "name": "web",
-  "portless": { "name": "asonotes", "script": "dev:app" },
+  "portless": {
+    "name": "asonotes",
+    "script": "dev:app"
+  },
   "type": "module",
   "private": true,
   "scripts": {
