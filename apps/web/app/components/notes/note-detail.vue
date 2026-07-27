@@ -4,14 +4,18 @@ import DocumentIcon from '~icons/heroicons/document-text'
 import PencilIcon from '~icons/heroicons/pencil'
 import XMarkIcon from '~icons/heroicons/x-mark'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   note: NoteDetailNote
-}>()
+  startEditing?: boolean
+}>(), {
+  startEditing: false,
+})
 
 const emit = defineEmits<{
   (e: 'save', content: string): void
   (e: 'addTag', name: string): void
   (e: 'removeTag', tagId: string): void
+  (e: 'editingStarted'): void
 }>()
 
 const { t } = useI18n()
@@ -31,6 +35,13 @@ export interface NoteDetailNote {
 const isEditing = ref(false)
 const draftContent = ref('')
 const newTagName = ref('')
+
+watch(() => props.startEditing, (value) => {
+  if (value) {
+    startEdit()
+    emit('editingStarted')
+  }
+}, { immediate: true })
 
 function startEdit() {
   draftContent.value = props.note.content

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ChatConversationSummary } from '~/components/chat/chat-sidebar.vue'
+import type { ChatMessage } from '~/composables/use-chat'
 import { useI18n } from 'vue-i18n'
 import PaperAirplaneIcon from '~icons/heroicons/paper-airplane'
 import SparklesIcon from '~icons/heroicons/sparkles'
+import XMarkIcon from '~icons/heroicons/x-mark'
 import { useChat } from '~/composables/use-chat'
 
 const { t } = useI18n()
@@ -35,6 +37,7 @@ const conversationId = ref<string | null>(
 )
 
 const { data: conversations, refresh: refreshConversations } = await useFetch<ChatConversationSummary[]>('/api/conversations')
+const { data: archivedConversations, refresh: refreshArchived } = await useFetch<ChatConversationSummary[]>('/api/conversations?archived=true')
 
 const sidebarConversations = computed(() => {
   return (conversations.value ?? []).map(c => ({
@@ -44,7 +47,15 @@ const sidebarConversations = computed(() => {
   }))
 })
 
-const { data: conversation } = useFetch<ConversationDetail>(
+const sidebarArchived = computed(() => {
+  return (archivedConversations.value ?? []).map(c => ({
+    id: c.id,
+    title: c.title,
+    updatedAt: c.updated_at,
+  }))
+})
+
+const { data: conversation, refresh: refreshConversation } = useFetch<ConversationDetail>(
   () => conversationId.value ? `/api/conversations/${conversationId.value}` : null,
   {
     key: computed(() => `conversation-${conversationId.value ?? 'none'}`),
@@ -59,6 +70,7 @@ const {
   error,
   currentConversationId,
   sendQuery,
+  cancel,
   reset,
   loadMessages,
 } = useChat()
@@ -75,8 +87,14 @@ watch(conversation, (detail) => {
   loadMessages(detail.messages)
 }, { immediate: true })
 
+let disposed = false
+onBeforeUnmount(() => {
+  disposed = true
+  cancel()
+})
+
 watch(currentConversationId, (id) => {
-  if (!id || id === conversationId.value)
+  if (disposed || !id || id === conversationId.value)
     return
   skipNextDetailLoad.value = true
   conversationId.value = id
@@ -93,14 +111,38 @@ watch(
 
 const queryText = ref('')
 const queryInput = ref<HTMLTextAreaElement | null>(null)
+const editingMessage = ref<ChatMessage | null>(null)
 
 async function handleSubmit() {
   const text = queryText.value.trim()
   if (!text || isStreaming.value)
     return
+
+  const editFromMessageId = editingMessage.value?.persisted ? editingMessage.value.id : undefined
+  editingMessage.value = null
   queryText.value = ''
   error.value = null
-  await sendQuery(text, conversationId.value ?? undefined)
+
+  await sendQuery(text, { conversationId: conversationId.value ?? undefined, editFromMessageId })
+
+  // Canonical reload: real message ids + persisted tool activity, citations
+  // preserved by content match inside loadMessages
+  if (!disposed && currentConversationId.value) {
+    skipNextDetailLoad.value = false
+    await refreshConversation()
+    refreshConversations()
+  }
+}
+
+function startEdit(message: ChatMessage) {
+  editingMessage.value = message
+  queryText.value = message.content
+  queryInput.value?.focus()
+}
+
+function cancelEdit() {
+  editingMessage.value = null
+  queryText.value = ''
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -108,50 +150,69 @@ function handleKeydown(event: KeyboardEvent) {
     event.preventDefault()
     handleSubmit()
   }
+  if (event.key === 'Escape' && editingMessage.value)
+    cancelEdit()
 }
 
 function selectConversation(id: string) {
   reset()
+  cancelEdit()
   conversationId.value = id
 }
 
 function startNewConversation() {
   reset()
+  cancelEdit()
   conversationId.value = null
   router.replace({ query: {} })
   queryInput.value?.focus()
 }
+
+async function setArchived(id: string, archived: boolean) {
+  await $fetch(`/api/conversations/${id}`, {
+    method: 'PATCH',
+    body: { archived },
+  })
+  refreshConversations()
+  refreshArchived()
+  if (archived && conversationId.value === id)
+    startNewConversation()
+}
 </script>
 
 <template>
-  <div class="h-screen flex flex-col">
-    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
-        {{ t('chat.title') }}
-      </h1>
-    </header>
-
+  <div class="h-[calc(100dvh-3.5rem)] flex flex-col">
     <div class="flex-1 flex overflow-hidden">
       <aside class="w-72 border-r border-gray-200 flex flex-col">
         <chat-sidebar
           :conversations="sidebarConversations"
+          :archived-conversations="sidebarArchived"
           :selected-id="conversationId"
           @select="selectConversation"
           @new-conversation="startNewConversation"
+          @archive="id => setArchived(id, true)"
+          @unarchive="id => setArchived(id, false)"
         />
       </aside>
 
       <main class="flex-1 flex flex-col bg-white overflow-hidden">
-        <chat-thread v-if="messages.length > 0" :messages="messages" />
+        <chat-thread v-if="messages.length > 0" :messages="messages" @edit="startEdit" />
         <div v-else class="flex-1 flex items-center justify-center text-gray-500">
           {{ t('chat.empty') }}
         </div>
 
         <chat-activity v-if="activities.length > 0" :activities="activities" />
 
-        <div class="border-t border-gray-200 p-4 bg-white">
+        <div class="shrink-0 border-t border-gray-200 p-4 bg-white">
           <div v-if="error" class="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
             {{ error }}
+          </div>
+
+          <div v-if="editingMessage" class="mb-2 flex items-center justify-between rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs text-amber-800">
+            <span>{{ t('chat.editingNotice') }}</span>
+            <button type="button" class="text-amber-600 hover:text-amber-800" @click="cancelEdit">
+              <XMarkIcon class="h-4 w-4" />
+            </button>
           </div>
 
           <div class="flex items-end gap-2">

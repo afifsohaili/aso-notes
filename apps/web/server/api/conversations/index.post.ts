@@ -48,7 +48,11 @@ export default defineEventHandler(async (event) => {
 
       try {
         await runAgent(
-          { query, conversationId: body?.conversationId },
+          {
+            query,
+            conversationId: body?.conversationId,
+            editFromMessageId: typeof body?.editFromMessageId === 'string' ? body.editFromMessageId : undefined,
+          },
           { workspaceId, db, llm, embedding },
           AGENT_TOOLS,
           onEvent,

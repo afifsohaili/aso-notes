@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JLto2p7eJxhpIZVJZ3hpOubQo6fPegiZwiHJxeY3iWxDBVzzNx8qTtn3ctb1abE
+\restrict dNpLUEndZQiOElcNCdyUowd5pK6e2YuEVxSB2M7yEHksLKJ1LR8H34ZhWgZ9Wy8
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -327,7 +327,8 @@ CREATE TABLE public.conversations (
     workspace_id uuid NOT NULL,
     title character varying,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    archived_at timestamp without time zone
 );
 
 
@@ -483,7 +484,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-24 03:07:47.02109'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-26 18:11:14.398956'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -516,7 +517,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-24 03:07:47.02109'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-26 18:11:14.398956'::timestamp without time zone NOT NULL
 );
 
 
@@ -1390,5 +1391,5 @@ ALTER TABLE ONLY public.todos
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JLto2p7eJxhpIZVJZ3hpOubQo6fPegiZwiHJxeY3iWxDBVzzNx8qTtn3ctb1abE
+\unrestrict dNpLUEndZQiOElcNCdyUowd5pK6e2YuEVxSB2M7yEHksLKJ1LR8H34ZhWgZ9Wy8
 

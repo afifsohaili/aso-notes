@@ -17,7 +17,7 @@ function isActive(to: string) {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <header class="sticky top-0 z-40 h-14 bg-white border-b border-gray-200">
     <div class="container flex items-center justify-between px-6 py-3 mx-auto">
       <NuxtLink to="/" class="text-lg">
         <logo />

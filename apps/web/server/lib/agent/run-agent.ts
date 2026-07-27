@@ -90,6 +90,35 @@ async function persistUserMessage(
     .execute()
 }
 
+/**
+ * Edit-previous-message: delete the target user message and everything after
+ * it in the conversation, so the new query replaces that turn. The target
+ * must belong to this conversation and workspace.
+ */
+async function truncateFromMessage(
+  ctx: AgentContext,
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  const target = await ctx.db
+    .selectFrom('messages')
+    .select(['created_at'])
+    .where('id', '=', messageId)
+    .where('conversation_id', '=', conversationId)
+    .where('workspace_id', '=', ctx.workspaceId)
+    .executeTakeFirst()
+
+  if (!target)
+    throw new Error(`Message ${messageId} not found in conversation ${conversationId}`)
+
+  await ctx.db
+    .deleteFrom('messages')
+    .where('conversation_id', '=', conversationId)
+    .where('workspace_id', '=', ctx.workspaceId)
+    .where('created_at', '>=', target.created_at)
+    .execute()
+}
+
 async function persistLoopMessages(
   ctx: AgentContext,
   conversationId: string,
@@ -112,6 +141,7 @@ async function persistLoopMessages(
 
 export interface RunAgentOptions {
   conversationId?: string
+  editFromMessageId?: string
   query: string
 }
 
@@ -122,6 +152,10 @@ export async function runAgent(
   onEvent: (event: AgentSseEvent) => void,
 ): Promise<AgentRunResult> {
   const conversation = await loadOrCreateConversation(ctx, options.conversationId, options.query)
+
+  if (options.editFromMessageId)
+    await truncateFromMessage(ctx, conversation.id, options.editFromMessageId)
+
   const priorMessages = conversation.isNew ? [] : await loadPriorMessages(ctx, conversation.id)
 
   await persistUserMessage(ctx, conversation.id, options.query)

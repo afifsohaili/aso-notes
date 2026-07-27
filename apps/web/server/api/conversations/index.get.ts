@@ -19,10 +19,14 @@ export default defineEventHandler(async (event) => {
     return []
   }
 
+  const query = getQuery(event)
+  const archivedOnly = query.archived === 'true'
+
   const conversations = await db
     .selectFrom('conversations')
     .select(['id', 'title', 'created_at', 'updated_at'])
     .where('workspace_id', '=', membership.workspace_id)
+    .where('archived_at', archivedOnly ? 'is not' : 'is', null)
     .orderBy('updated_at', 'desc')
     .execute()
 

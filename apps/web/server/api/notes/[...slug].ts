@@ -96,6 +96,32 @@ export default defineEventHandler(async (event) => {
     }
 
     const notePath = parseNoteRouteSegments(segments)
+
+    if (event.method === 'PUT') {
+      // PUT creates or updates: write the file, upsert the row (pending), return it
+      const body = await readBody(event)
+      const content = typeof body.content === 'string' ? body.content : ''
+      const notesDir = config.notesDir || process.env.NUXT_NOTES_DIR || './notes'
+      const absolutePath = path.join(notesDir, ...segments)
+      mkdirSync(path.dirname(absolutePath), { recursive: true })
+      writeFileSync(absolutePath, content)
+
+      await handleFileUpsert({ db, workspaceId, notesDir, absolutePath })
+
+      const updated = await loadNoteByPath(db, workspaceId, notePath)
+      if (!updated) {
+        throw createError({ statusCode: 500, statusMessage: 'Failed to update note' })
+      }
+      return {
+        id: updated.id,
+        path: updated.path,
+        title: updated.title,
+        content: updated.content,
+        status: updated.status,
+        updatedAt: updated.updated_at.toISOString(),
+      }
+    }
+
     const note = await loadNoteByPath(db, workspaceId, notePath)
     if (!note) {
       throw createError({ statusCode: 404, statusMessage: 'Note not found' })
@@ -118,30 +144,6 @@ export default defineEventHandler(async (event) => {
         tags,
         sources,
         updatedAt: note.updated_at.toISOString(),
-      }
-    }
-
-    if (event.method === 'PUT') {
-      const body = await readBody(event)
-      const content = typeof body.content === 'string' ? body.content : ''
-      const notesDir = config.notesDir || process.env.NUXT_NOTES_DIR || './notes'
-      const absolutePath = path.join(notesDir, ...segments)
-      mkdirSync(path.dirname(absolutePath), { recursive: true })
-      writeFileSync(absolutePath, content)
-
-      await handleFileUpsert({ db, workspaceId, notesDir, absolutePath })
-
-      const updated = await loadNoteByPath(db, workspaceId, notePath)
-      if (!updated) {
-        throw createError({ statusCode: 500, statusMessage: 'Failed to update note' })
-      }
-      return {
-        id: updated.id,
-        path: updated.path,
-        title: updated.title,
-        content: updated.content,
-        status: updated.status,
-        updatedAt: updated.updated_at.toISOString(),
       }
     }
 

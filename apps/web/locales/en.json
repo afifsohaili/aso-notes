@@ -41,5 +41,19 @@
   "notes.processPending": "Process {count} pending",
   "notes.processing": "Processing…",
   "notes.processDispatched": "Dispatched {count} note(s) — ingestion will finish shortly.",
-  "notes.processError": "Could not dispatch notes for processing."
+  "notes.processError": "Could not dispatch notes for processing.",
+  "chat.archive": "Archive",
+  "chat.unarchive": "Restore",
+  "chat.archived": "Archived",
+  "chat.editMessage": "Edit this message",
+  "chat.editingNotice": "Editing an earlier message — sending removes everything after it.",
+  "chat.running": "running",
+  "chat.done": "done",
+  "chat.notFound": "not found",
+  "chat.input": "Input",
+  "chat.expandAll": "Expand all",
+  "chat.collapseAll": "Collapse all",
+  "notes.addNote": "Add note",
+  "notes.addNotePlaceholder": "note-name",
+  "notes.addNoteExists": "A note with that name already exists here."
 }

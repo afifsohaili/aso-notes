@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { givenVerifiedUser } from '@base/testing/auth'
@@ -273,17 +273,48 @@ describe.sequential('notes API', () => {
       expect(onDisk).toBe('# Plan\n\nUpdated content.')
     })
 
+    test('creates a new note when the file does not exist yet', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      const notesDir = givenNotesDir()
+
+      const res = await server('/api/notes/project-a/brand-new.md', {
+        method: 'PUT',
+        headers: { 'cookie': cookies, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '# Brand new\n' }),
+      })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.path).toBe('/project-a/brand-new.md')
+      expect(body.status).toBe('pending')
+
+      const onDisk = readFileSync(path.join(notesDir, 'project-a/brand-new.md'), 'utf8')
+      expect(onDisk).toBe('# Brand new\n')
+
+      const row = await trx
+        .selectFrom('notes')
+        .select('status')
+        .where('workspace_id', '=', workspace.id)
+        .where('path', '=', '/project-a/brand-new.md')
+        .executeTakeFirstOrThrow()
+      expect(row.status).toBe('pending')
+    })
+
     test('rejects traversal attempts when writing', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
       await seedNotesDomain(trx, workspace.id)
-      givenNotesDir()
+      const notesDir = givenNotesDir()
 
-      const res = await server('/api/notes/project-a/../plan.md', {
+      // Encoded dot segments must never resolve to a writable path —
+      // rejected either by the router (404) or the path guard (400)
+      const res = await server('/api/notes/%2E%2E/%2E%2E/evil.md', {
         method: 'PUT',
         headers: { 'cookie': cookies, 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'x' }),
       })
-      expect(res.status).toBe(404)
+      expect([400, 404]).toContain(res.status)
+      expect(existsSync(path.join(notesDir, '..', '..', 'evil.md'))).toBe(false)
     })
   })
 

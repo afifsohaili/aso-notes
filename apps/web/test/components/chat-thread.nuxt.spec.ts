@@ -32,4 +32,22 @@ describe('chat-thread', () => {
     expect(link.attributes('href')).toBe('/notes?note=%2Fproject-a%2Fplan.md')
     expect(link.text()).toContain('/project-a/plan.md')
   })
+
+  it('emits edit for persisted user messages only', async () => {
+    const component = await mountSuspended(ChatThread, {
+      props: {
+        messages: [
+          { id: 'db-1', role: 'user', content: 'persisted message', persisted: true },
+          { id: 'local-1', role: 'user', content: 'streamed message' },
+        ],
+      },
+    })
+
+    const editButtons = component.findAll('button[title]')
+    expect(editButtons).toHaveLength(1)
+
+    await editButtons[0]!.trigger('click')
+    expect(component.emitted('edit')).toHaveLength(1)
+    expect(component.emitted('edit')![0]![0]).toMatchObject({ id: 'db-1' })
+  })
 })

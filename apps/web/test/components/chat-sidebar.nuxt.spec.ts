@@ -28,4 +28,34 @@ describe('chat-sidebar', () => {
     await newButton.trigger('click')
     expect(component.emitted('newConversation')).toHaveLength(1)
   })
+
+  it('emits archive from the hover action and unarchive from the archived section', async () => {
+    const component = await mountSuspended(ChatSidebar, {
+      props: {
+        conversations: [
+          { id: 'c1', title: 'Active one', updatedAt: new Date().toISOString() },
+        ],
+        archivedConversations: [
+          { id: 'c9', title: 'Old one', updatedAt: new Date().toISOString() },
+        ],
+        selectedId: null,
+      },
+    })
+
+    // archived section is collapsed by default, shows count
+    expect(component.text()).toContain('Archived (1)')
+
+    const archiveBtn = component.find('button[title="Archive"]')
+    await archiveBtn.trigger('click')
+    expect(component.emitted('archive')).toHaveLength(1)
+    expect(component.emitted('archive')![0]).toEqual(['c1'])
+
+    // open the archived section, restore
+    const sectionToggle = component.findAll('button').find(b => b.text().includes('Archived'))
+    await sectionToggle!.trigger('click')
+    const unarchiveBtn = component.find('button[title="Restore"]')
+    await unarchiveBtn.trigger('click')
+    expect(component.emitted('unarchive')).toHaveLength(1)
+    expect(component.emitted('unarchive')![0]).toEqual(['c9'])
+  })
 })

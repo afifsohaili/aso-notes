@@ -78,6 +78,7 @@ export interface Concepts {
 }
 
 export interface Conversations {
+  archived_at: Timestamp | null;
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   title: string | null;

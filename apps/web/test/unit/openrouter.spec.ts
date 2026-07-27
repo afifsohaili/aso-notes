@@ -128,6 +128,8 @@ describe('provider factories', () => {
   it('an empty-string chat model from runtime config falls back to the default model', async () => {
     const { calls, fetchFn } = mockFetch(200, { choices: [{ message: { role: 'assistant', content: 'ok' } }] })
     vi.stubGlobal('fetch', fetchFn)
+    // Hermetic: a developer's .env.local may set a real model — treat it as unset here
+    vi.stubEnv('NUXT_OPENROUTER_CHAT_MODEL', '')
     try {
       // nuxt runtimeConfig defaults openrouterChatModel to '' — empty must
       // mean "unset", not "send an empty model to OpenRouter".
@@ -137,12 +139,14 @@ describe('provider factories', () => {
     }
     finally {
       vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
     }
   })
 
   it('an empty-string embedding model from runtime config falls back to the default model', async () => {
     const { calls, fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: [0.1] }] })
     vi.stubGlobal('fetch', fetchFn)
+    vi.stubEnv('NUXT_OPENROUTER_EMBEDDING_MODEL', '')
     try {
       const provider = createEmbeddingProviderFromEnv({ openrouterApiKey: 'sk-test', openrouterEmbeddingModel: '' })
       await provider.embed(['x'])
@@ -150,6 +154,7 @@ describe('provider factories', () => {
     }
     finally {
       vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
     }
   })
 })

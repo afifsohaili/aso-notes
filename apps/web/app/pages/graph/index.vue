@@ -52,13 +52,7 @@ function openNote(path: string) {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col">
-    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
-        {{ t('graph.title') }}
-      </h1>
-    </header>
-
+  <div class="h-[calc(100dvh-3.5rem)] flex flex-col">
     <div class="flex-1 flex overflow-hidden">
       <!-- Concept list -->
       <aside class="w-72 border-r border-gray-200 bg-white flex flex-col">

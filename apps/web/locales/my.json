@@ -15,5 +15,19 @@
   "notes.processPending": "Proses {count} belum selesai",
   "notes.processing": "Sedang memproses…",
   "notes.processDispatched": "{count} nota dihantar untuk diproses.",
-  "notes.processError": "Tidak dapat menghantar nota untuk diproses."
+  "notes.processError": "Tidak dapat menghantar nota untuk diproses.",
+  "chat.archive": "Arkib",
+  "chat.unarchive": "Pulihkan",
+  "chat.archived": "Diarkibkan",
+  "chat.editMessage": "Edit mesej ini",
+  "chat.editingNotice": "Mengedit mesej lama — menghantar akan memadam semua selepasnya.",
+  "chat.running": "sedang berjalan",
+  "chat.done": "selesai",
+  "chat.notFound": "tidak ditemui",
+  "chat.input": "Input",
+  "chat.expandAll": "Kembangkan semua",
+  "chat.collapseAll": "Runtuhkan semua",
+  "notes.addNote": "Tambah nota",
+  "notes.addNotePlaceholder": "nama-nota",
+  "notes.addNoteExists": "Nota dengan nama itu sudah wujud di sini."
 }
