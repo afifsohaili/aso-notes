@@ -29,5 +29,7 @@
   "chat.collapseAll": "Runtuhkan semua",
   "notes.addNote": "Tambah nota",
   "notes.addNotePlaceholder": "nama-nota",
-  "notes.addNoteExists": "Nota dengan nama itu sudah wujud di sini."
+  "notes.addNoteExists": "Nota dengan nama itu sudah wujud di sini.",
+  "notes.retry": "Cuba semula",
+  "notes.retryDispatched": "Nota dihantar untuk diproses semula."
 }

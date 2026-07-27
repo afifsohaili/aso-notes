@@ -78,6 +78,22 @@ const processMessage = ref('')
 
 const pendingCount = computed(() => (notes.value ?? []).filter(n => n.status === 'pending').length)
 
+async function retryNote(path: string) {
+  processMessage.value = ''
+  try {
+    await $fetch('/api/notes/retry', {
+      method: 'POST',
+      body: { path },
+    })
+    processMessage.value = t('notes.retryDispatched')
+  }
+  catch {
+    processMessage.value = t('notes.processError')
+  }
+  await refreshNotes()
+  await refreshNote()
+}
+
 const addingNote = ref(false)
 const newNoteName = ref('')
 const newNoteError = ref('')
@@ -213,6 +229,7 @@ async function processFolder() {
           :notes="notes ?? []"
           :selected-path="selectedNotePath"
           @select="selectNote"
+          @retry="retryNote"
         />
       </aside>
 
@@ -226,6 +243,7 @@ async function processFolder() {
           @add-tag="addTag"
           @remove-tag="removeTag"
           @editing-started="startEditingNewNote = false"
+          @retry="retryNote(selectedNotePath!)"
         />
         <div v-else class="h-full flex items-center justify-center text-gray-500">
           {{ t('notes.selectNote') }}

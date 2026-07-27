@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import ArrowPathIcon from '~icons/heroicons/arrow-path'
 import DocumentIcon from '~icons/heroicons/document-text'
 import PencilIcon from '~icons/heroicons/pencil'
 import XMarkIcon from '~icons/heroicons/x-mark'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   (e: 'addTag', name: string): void
   (e: 'removeTag', tagId: string): void
   (e: 'editingStarted'): void
+  (e: 'retry'): void
 }>()
 
 const { t } = useI18n()
@@ -96,6 +98,14 @@ function statusClass(status: string): string {
         >
           {{ note.status }}
         </span>
+        <button
+          v-if="note.status === 'failed' && !isEditing"
+          class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          @click="emit('retry')"
+        >
+          <ArrowPathIcon class="h-4 w-4 mr-1.5" />
+          {{ t('notes.retry') }}
+        </button>
         <button
           v-if="!isEditing"
           class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

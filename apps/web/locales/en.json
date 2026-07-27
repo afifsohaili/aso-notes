@@ -55,5 +55,7 @@
   "chat.collapseAll": "Collapse all",
   "notes.addNote": "Add note",
   "notes.addNotePlaceholder": "note-name",
-  "notes.addNoteExists": "A note with that name already exists here."
+  "notes.addNoteExists": "A note with that name already exists here.",
+  "notes.retry": "Retry",
+  "notes.retryDispatched": "Note queued for re-ingestion."
 }

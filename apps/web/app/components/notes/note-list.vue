@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ArrowPathIcon from '~icons/heroicons/arrow-path'
 import DocumentIcon from '~icons/heroicons/document-text'
 
 export interface NoteListItem {
@@ -16,6 +17,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'select', path: string): void
+  (e: 'retry', path: string): void
 }>()
 
 const statusClasses: Record<string, string> = {
@@ -46,11 +48,22 @@ function statusClass(status: string): string {
               <p class="text-sm font-medium text-gray-900 truncate">
                 {{ note.title }}
               </p>
-              <span
-                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize"
-                :class="statusClass(note.status)"
-              >
-                {{ note.status }}
+              <span class="flex items-center gap-1">
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize"
+                  :class="statusClass(note.status)"
+                >
+                  {{ note.status }}
+                </span>
+                <button
+                  v-if="note.status === 'failed'"
+                  type="button"
+                  class="p-1 rounded text-red-500 hover:text-red-700 hover:bg-red-50"
+                  title="Retry ingestion"
+                  @click.stop="emit('retry', note.path)"
+                >
+                  <ArrowPathIcon class="h-4 w-4" />
+                </button>
               </span>
             </div>
             <p class="text-xs text-gray-500 truncate mt-0.5">
