@@ -1,0 +1,138 @@
+import { describe, expect, it } from 'vitest'
+import { OllamaEmbeddingProvider, OllamaLLMProvider } from '../../server/lib/ai/ollama'
+
+interface MockCall {
+  url: string
+  init: RequestInit
+}
+
+function mockFetch(status: number, body: unknown) {
+  const calls: MockCall[] = []
+  const fetchFn = async (url: any, init: any) => {
+    calls.push({ url: String(url), init })
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+  return { calls, fetchFn: fetchFn as typeof fetch }
+}
+
+describe('ollamaLLMProvider', () => {
+  it('posts to /api/chat with stream:false and maps the response', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      message: { role: 'assistant', content: 'hello back' },
+      prompt_eval_count: 12,
+      eval_count: 7,
+    })
+    const provider = new OllamaLLMProvider({ model: 'gemma3:4b', fetchFn })
+
+    const result = await provider.complete({
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    expect(calls[0]!.url).toBe('http://localhost:11434/api/chat')
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.model).toBe('gemma3:4b')
+    expect(body.stream).toBe(false)
+    expect(body.messages).toEqual([{ role: 'user', content: 'hello' }])
+
+    expect(result.message.content).toBe('hello back')
+    expect(result.usage).toEqual({ promptTokens: 12, completionTokens: 7 })
+  })
+
+  it('maps tools, tool_choice none (omit tools), and response format to native fields', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      message: { role: 'assistant', content: '{}' },
+    })
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn })
+
+    await provider.complete({
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [{ name: 'search_notes', description: 'search', parameters: { type: 'object' } }],
+      responseFormat: { type: 'json_schema', jsonSchema: { name: 'extraction', schema: { type: 'object' } } },
+    })
+    let body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.tools).toEqual([{ type: 'function', function: { name: 'search_notes', description: 'search', parameters: { type: 'object' } } }])
+    expect(body.format).toEqual({ type: 'object' })
+
+    await provider.complete({
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [{ name: 'search_notes', description: 'search', parameters: { type: 'object' } }],
+      toolChoice: 'none',
+    })
+    body = JSON.parse(String(calls[1]!.init.body))
+    expect(body.tools).toBeUndefined()
+  })
+
+  it('maps tool_calls back to OpenAI-style ToolCalls with generated ids and JSON-string arguments', async () => {
+    const { fetchFn } = mockFetch(200, {
+      message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ function: { name: 'search_notes', arguments: { query: 'rag', limit: 5 } } }],
+      },
+    })
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'find' }] })
+
+    expect(result.message.toolCalls).toHaveLength(1)
+    const call = result.message.toolCalls![0]!
+    expect(call.name).toBe('search_notes')
+    expect(JSON.parse(call.arguments)).toEqual({ query: 'rag', limit: 5 })
+    expect(typeof call.id).toBe('string')
+    expect(call.id.length).toBeGreaterThan(0)
+  })
+
+  it('maps assistant toolCalls to native messages with object arguments', async () => {
+    const { calls, fetchFn } = mockFetch(200, { message: { role: 'assistant', content: 'ok' } })
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn })
+
+    await provider.complete({
+      messages: [
+        { role: 'user', content: 'find' },
+        {
+          role: 'assistant',
+          content: null,
+          toolCalls: [{ id: 'call-1', name: 'search_notes', arguments: '{"query":"rag"}' }],
+        },
+        { role: 'tool', content: '{"notes":[]}', toolCallId: 'call-1' },
+      ],
+    })
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.messages[1].tool_calls).toEqual([{ function: { name: 'search_notes', arguments: { query: 'rag' } } }])
+    expect(body.messages[2]).toEqual({ role: 'tool', content: '{"notes":[]}' })
+  })
+
+  it('honours a custom baseUrl and throws with status on non-OK', async () => {
+    const { calls, fetchFn } = mockFetch(500, { error: 'boom' })
+    const provider = new OllamaLLMProvider({ model: 'm', baseUrl: 'http://host.docker.internal:11434', fetchFn })
+
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'x' }] })).rejects.toThrow(/500/)
+    expect(calls[0]!.url).toBe('http://host.docker.internal:11434/api/chat')
+  })
+})
+
+describe('ollamaEmbeddingProvider', () => {
+  it('posts to /api/embed with batched input and returns embeddings in order', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      embeddings: [[0.1, 0.2], [0.3, 0.4]],
+    })
+    const provider = new OllamaEmbeddingProvider({ model: 'nomic-embed-text', fetchFn })
+
+    const result = await provider.embed(['a', 'b'])
+
+    expect(calls[0]!.url).toBe('http://localhost:11434/api/embed')
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body).toEqual({ model: 'nomic-embed-text', input: ['a', 'b'] })
+    expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
+  })
+
+  it('throws with status on non-OK', async () => {
+    const { fetchFn } = mockFetch(404, { error: 'model not found' })
+    const provider = new OllamaEmbeddingProvider({ model: 'missing', fetchFn })
+    await expect(provider.embed(['x'])).rejects.toThrow(/404/)
+  })
+})

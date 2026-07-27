@@ -1,5 +1,6 @@
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
-import { createEmbeddingProviderFromEnv, createLLMProviderFromEnv } from '../ai'
+import process from 'node:process'
+import { createEmbeddingProvider, createLLMProvider } from '../ai/registry'
 import {
   CHUNK_MARKDOWN_AWARE_STAGE,
   EMBED_CHUNKS_STAGE,
@@ -52,8 +53,8 @@ export function createStageRegistry(deps: StageDeps): StageRegistry {
 export function getStageRegistry(): StageRegistry {
   if (!singleton) {
     singleton = createStageRegistry({
-      embeddingProvider: createEmbeddingProviderFromEnv(),
-      llmProvider: createLLMProviderFromEnv(),
+      embeddingProvider: createEmbeddingProvider(process.env).provider,
+      llmProvider: createLLMProvider('extraction', process.env).provider,
     })
   }
   return singleton

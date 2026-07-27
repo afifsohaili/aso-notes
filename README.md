@@ -76,8 +76,10 @@ Then fill in the values:
 | `NUXT_OPENROUTER_API_KEY` | yes | OpenRouter key (https://openrouter.ai/keys) — powers ingestion embeddings and the chat agent |
 | `BETTER_AUTH_SECRET` / `NUXT_BETTER_AUTH_SECRET` | yes | Auth session secret — `openssl rand -base64 32` |
 | `NUXT_REDIS_URL` | yes | Ingestion queue + sweeper — the Docker default works as-is. Without it, synced notes stay `pending` and are never ingested |
-| `NUXT_OPENROUTER_CHAT_MODEL` | no | Chat model ID — default `deepseek/deepseek-v4-flash` |
-| `NUXT_OPENROUTER_EMBEDDING_MODEL` | no | Embedding model ID — default `nvidia/llama-nemotron-embed-vl-1b-v2:free` |
+| `NUXT_LLM_AGENT_PROVIDER` / `NUXT_LLM_AGENT_BASE_URL` / `NUXT_LLM_AGENT_MODEL` | no | Chat agent backend: `openrouter` (default) or `ollama`, optional base-URL override, model ID |
+| `NUXT_LLM_EXTRACTION_PROVIDER` / `NUXT_LLM_EXTRACTION_BASE_URL` / `NUXT_LLM_EXTRACTION_MODEL` | no | Ingestion extraction backend — same triple, independent of the agent |
+| `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Local embedding models need a schema migration (2048-dim columns) |
+| `NUXT_OPENROUTER_CHAT_MODEL`, `NUXT_OPENROUTER_EMBEDDING_MODEL` | no | Legacy model overrides — still honored as fallbacks |
 | `NUXT_EMAIL_PROVIDER`, `NUXT_BREVO_API_KEY`, `NUXT_SENDER_EMAIL`, `NUXT_SENDER_NAME` | no | Transactional email. In dev, email verification is bypassed entirely, so these are unused locally |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, `NUXT_TURNSTILE_SECRET_KEY` | no | Signup captcha — skipped entirely in dev (`NODE_ENV=development`) |
 | `NUXT_PUBLIC_POSTHOG_API_KEY`, `NUXT_POSTHOG_API_KEY` | no | PostHog analytics |

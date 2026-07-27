@@ -24,4 +24,5 @@ logs
 !plans/001-rails-inspired-frmwork
 
 # Personal notes synced by the app (NUXT_NOTES_DIR)
-notes/
+notes/*
+!notes/aso-notes/

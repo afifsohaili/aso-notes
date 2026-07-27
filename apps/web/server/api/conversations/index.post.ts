@@ -29,11 +29,7 @@ export default defineEventHandler(async (event) => {
 
   const workspaceId = membership.workspace_id
 
-  const { llm, embedding } = createAgentProviders({
-    openrouterApiKey: config.openrouterApiKey,
-    openrouterChatModel: config.openrouterChatModel,
-    openrouterEmbeddingModel: config.openrouterEmbeddingModel,
-  })
+  const { llm, embedding } = createAgentProviders()
 
   setResponseHeader(event, 'content-type', 'text/event-stream')
   setResponseHeader(event, 'cache-control', 'no-cache, no-transform')

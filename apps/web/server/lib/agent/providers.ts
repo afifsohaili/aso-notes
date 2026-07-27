@@ -1,5 +1,7 @@
-import type { AiEnv, EmbeddingProvider, LLMProvider } from '../ai'
-import { createEmbeddingProviderFromEnv, createLLMProviderFromEnv } from '../ai'
+import type { EmbeddingProvider, LLMProvider } from '../ai'
+import type { EnvMap } from '../ai/registry'
+import process from 'node:process'
+import { createEmbeddingProvider, createLLMProvider } from '../ai/registry'
 
 interface AgentProviders {
   llm: LLMProvider
@@ -16,12 +18,12 @@ export function clearAgentTestProviders(): void {
   testProviders = undefined
 }
 
-export function createAgentProviders(env: AiEnv): AgentProviders {
+export function createAgentProviders(env: EnvMap = process.env): AgentProviders {
   if (testProviders)
     return testProviders
 
   return {
-    llm: createLLMProviderFromEnv(env),
-    embedding: createEmbeddingProviderFromEnv(env),
+    llm: createLLMProvider('agent', env).provider,
+    embedding: createEmbeddingProvider(env).provider,
   }
 }
