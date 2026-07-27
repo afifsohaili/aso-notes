@@ -330,15 +330,15 @@ Decouple the three LLM/embedding call sites (agent conversation, ingestion extra
 
 ### Env contract (`<common>_<specific>`)
 
-Each use gets an independent triple. Base URLs are optional — each provider has a hardcoded default (`https://openrouter.ai/api/v1`, `http://localhost:11434`).
+Each use gets an independent quad. Base URLs are optional — each provider has a hardcoded default (`https://openrouter.ai/api/v1`, `http://localhost:11434`). API key is required for openrouter, ignored for ollama. **No legacy env vars honored** — `NUXT_OPENROUTER_API_KEY` / `NUXT_OPENROUTER_CHAT_MODEL` / `NUXT_OPENROUTER_EMBEDDING_MODEL` were removed entirely (duplication across uses is expected).
 
-| Use | Provider | Base URL | Model |
-| --- | --- | --- | --- |
-| Agent (conversation/tools) | `NUXT_LLM_AGENT_PROVIDER` (default `openrouter`) | `NUXT_LLM_AGENT_BASE_URL` | `NUXT_LLM_AGENT_MODEL` |
-| Extraction (ingestion) | `NUXT_LLM_EXTRACTION_PROVIDER` (default `openrouter`) | `NUXT_LLM_EXTRACTION_BASE_URL` | `NUXT_LLM_EXTRACTION_MODEL` |
-| Embedding | `NUXT_LLM_EMBEDDING_PROVIDER` (default `openrouter`) | `NUXT_LLM_EMBEDDING_BASE_URL` | `NUXT_LLM_EMBEDDING_MODEL` |
+| Use | Provider | Base URL | Model | API key |
+| --- | --- | --- | --- | --- |
+| Agent (conversation/tools) | `NUXT_LLM_AGENT_PROVIDER` (default `openrouter`) | `NUXT_LLM_AGENT_BASE_URL` | `NUXT_LLM_AGENT_MODEL` | `NUXT_LLM_AGENT_API_KEY` |
+| Extraction (ingestion) | `NUXT_LLM_EXTRACTION_PROVIDER` (default `openrouter`) | `NUXT_LLM_EXTRACTION_BASE_URL` | `NUXT_LLM_EXTRACTION_MODEL` | `NUXT_LLM_EXTRACTION_API_KEY` |
+| Embedding | `NUXT_LLM_EMBEDDING_PROVIDER` (default `openrouter`) | `NUXT_LLM_EMBEDDING_BASE_URL` | `NUXT_LLM_EMBEDDING_MODEL` | `NUXT_LLM_EMBEDDING_API_KEY` |
 
-Model fallback chains: `NUXT_LLM_AGENT_MODEL` → `NUXT_OPENROUTER_CHAT_MODEL` (legacy) → provider default (openrouter: `deepseek/deepseek-v4-flash`; ollama: **none — clear error telling the user to set the model**). Same chain for extraction. Embedding: `NUXT_LLM_EMBEDDING_MODEL` → `NUXT_OPENROUTER_EMBEDDING_MODEL` (legacy) → `nvidia/llama-nemotron-embed-vl-1b-v2:free`. API key stays `NUXT_OPENROUTER_API_KEY` (openrouter only; ollama ignores auth).
+Model resolution: explicit env → provider default (openrouter: `deepseek/deepseek-v4-flash` chat, `nvidia/llama-nemotron-embed-vl-1b-v2:free` embedding; ollama: **none — clear error telling the user to set the model**). The legacy env-based factories (`createLLMProviderFromEnv`, `AiEnv`) and the runtimeConfig openrouter keys were deleted with them.
 
 ### Design
 

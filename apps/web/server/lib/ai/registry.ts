@@ -7,16 +7,17 @@ import { DEFAULT_CHAT_MODEL, OpenRouterLLMProvider } from './openrouter-llm'
  * AI provider registry (plan-002-system M10).
  *
  * Three call sites — agent conversation, ingestion extraction, embeddings —
- * each resolve an independent provider + model from env, following the
+ * each resolve an independent provider quad from env, following the
  * `<common>_<specific>` convention:
  *
- *   NUXT_LLM_AGENT_PROVIDER / _BASE_URL / _MODEL
- *   NUXT_LLM_EXTRACTION_PROVIDER / _BASE_URL / _MODEL
- *   NUXT_LLM_EMBEDDING_PROVIDER / _BASE_URL / _MODEL
+ *   NUXT_LLM_AGENT_PROVIDER / _BASE_URL / _MODEL / _API_KEY
+ *   NUXT_LLM_EXTRACTION_PROVIDER / _BASE_URL / _MODEL / _API_KEY
+ *   NUXT_LLM_EMBEDDING_PROVIDER / _BASE_URL / _MODEL / _API_KEY
  *
- * Provider defaults to 'openrouter'. Model falls back to the legacy
- * NUXT_OPENROUTER_CHAT_MODEL / NUXT_OPENROUTER_EMBEDDING_MODEL, then to the
- * provider default (openrouter only — ollama requires an explicit model).
+ * Provider defaults to 'openrouter'. Base URL defaults per provider.
+ * API key is required for openrouter and ignored for ollama. Model falls
+ * back to the provider default (openrouter only — ollama requires an
+ * explicit model). No legacy env vars are honored.
  */
 
 export type ProviderKind = 'openrouter' | 'ollama'
@@ -38,6 +39,27 @@ export interface ResolvedEmbedding {
   provider: EmbeddingProvider
 }
 
+const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string }> = {
+  agent: {
+    provider: 'NUXT_LLM_AGENT_PROVIDER',
+    baseUrl: 'NUXT_LLM_AGENT_BASE_URL',
+    model: 'NUXT_LLM_AGENT_MODEL',
+    apiKey: 'NUXT_LLM_AGENT_API_KEY',
+  },
+  extraction: {
+    provider: 'NUXT_LLM_EXTRACTION_PROVIDER',
+    baseUrl: 'NUXT_LLM_EXTRACTION_BASE_URL',
+    model: 'NUXT_LLM_EXTRACTION_MODEL',
+    apiKey: 'NUXT_LLM_EXTRACTION_API_KEY',
+  },
+  embedding: {
+    provider: 'NUXT_LLM_EMBEDDING_PROVIDER',
+    baseUrl: 'NUXT_LLM_EMBEDDING_BASE_URL',
+    model: 'NUXT_LLM_EMBEDDING_MODEL',
+    apiKey: 'NUXT_LLM_EMBEDDING_API_KEY',
+  },
+}
+
 function providerKind(value: string | undefined): ProviderKind {
   if (value === undefined || value === '' || value === 'openrouter')
     return 'openrouter'
@@ -46,62 +68,59 @@ function providerKind(value: string | undefined): ProviderKind {
   throw new Error(`Unknown LLM provider "${value}" — expected 'openrouter' or 'ollama'`)
 }
 
-function resolveApiKey(env: EnvMap): string {
-  const apiKey = env.NUXT_OPENROUTER_API_KEY ?? ''
+function resolveApiKey(env: EnvMap, apiKeyKey: string): string {
+  const apiKey = env[apiKeyKey] ?? ''
   if (!apiKey)
-    throw new Error('NUXT_OPENROUTER_API_KEY is required to create an AI provider')
+    throw new Error(`${apiKeyKey} is required when using the openrouter provider`)
   return apiKey
 }
 
-function resolveLLMModel(env: EnvMap, role: LlmRole, kind: ProviderKind): string {
-  const perUse = role === 'agent' ? env.NUXT_LLM_AGENT_MODEL : env.NUXT_LLM_EXTRACTION_MODEL
-  const model = perUse || env.NUXT_OPENROUTER_CHAT_MODEL
+function resolveLLMModel(env: EnvMap, keys: { model: string }, kind: ProviderKind): string {
+  const model = env[keys.model]
   if (model)
     return model
   if (kind === 'openrouter')
     return DEFAULT_CHAT_MODEL
-  const key = role === 'agent' ? 'NUXT_LLM_AGENT_MODEL' : 'NUXT_LLM_EXTRACTION_MODEL'
-  throw new Error(`${key} is required when using the ollama provider (e.g. ${key}=gemma3:4b)`)
+  throw new Error(`${keys.model} is required when using the ollama provider (e.g. ${keys.model}=gemma3:4b)`)
 }
 
 export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
-  const providerKey = role === 'agent' ? 'NUXT_LLM_AGENT_PROVIDER' : 'NUXT_LLM_EXTRACTION_PROVIDER'
-  const baseUrlKey = role === 'agent' ? 'NUXT_LLM_AGENT_BASE_URL' : 'NUXT_LLM_EXTRACTION_BASE_URL'
-
-  const kind = providerKind(env[providerKey])
-  const model = resolveLLMModel(env, role, kind)
+  const keys = KEYS[role]
+  const kind = providerKind(env[keys.provider])
+  const model = resolveLLMModel(env, keys, kind)
 
   if (kind === 'ollama') {
-    const baseUrl = env[baseUrlKey] || OLLAMA_BASE_URL
+    const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
     return { kind, model, baseUrl, provider: new OllamaLLMProvider({ model, baseUrl }) }
   }
 
-  const baseUrl = env[baseUrlKey] || OPENROUTER_BASE_URL
+  const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
   return {
     kind,
     model,
     baseUrl,
-    provider: new OpenRouterLLMProvider({ apiKey: resolveApiKey(env), model, baseUrl }),
+    provider: new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl }),
   }
 }
 
 export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
-  const kind = providerKind(env.NUXT_LLM_EMBEDDING_PROVIDER)
-  const perUse = env.NUXT_LLM_EMBEDDING_MODEL || env.NUXT_OPENROUTER_EMBEDDING_MODEL
-  const model = perUse || (kind === 'openrouter' ? DEFAULT_EMBEDDING_MODEL : '')
+  const keys = KEYS.embedding
+  const kind = providerKind(env[keys.provider])
+
+  const model = env[keys.model] || (kind === 'openrouter' ? DEFAULT_EMBEDDING_MODEL : '')
   if (!model)
-    throw new Error('NUXT_LLM_EMBEDDING_MODEL is required when using the ollama provider (e.g. NUXT_LLM_EMBEDDING_MODEL=nomic-embed-text)')
+    throw new Error(`${keys.model} is required when using the ollama provider (e.g. ${keys.model}=nomic-embed-text)`)
 
   if (kind === 'ollama') {
-    const baseUrl = env.NUXT_LLM_EMBEDDING_BASE_URL || OLLAMA_BASE_URL
+    const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
     return { kind, model, baseUrl, provider: new OllamaEmbeddingProvider({ model, baseUrl }) }
   }
 
-  const baseUrl = env.NUXT_LLM_EMBEDDING_BASE_URL || OPENROUTER_BASE_URL
+  const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
   return {
     kind,
     model,
     baseUrl,
-    provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env), model, baseUrl }),
+    provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl }),
   }
 }

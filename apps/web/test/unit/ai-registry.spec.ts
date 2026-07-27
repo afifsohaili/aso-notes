@@ -3,35 +3,22 @@ import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from '../../server/lib/ai
 import { createEmbeddingProvider, createLLMProvider } from '../../server/lib/ai/registry'
 
 describe('ai registry — createLLMProvider', () => {
-  it('defaults to openrouter with the legacy chat model fallback chain', () => {
+  it('defaults to openrouter with the provider default model', () => {
     const provider = createLLMProvider('agent', {
-      NUXT_OPENROUTER_API_KEY: 'sk-test',
-      NUXT_OPENROUTER_CHAT_MODEL: 'google/gemma-4-26b-a4b-it:free',
+      NUXT_LLM_AGENT_API_KEY: 'sk-test',
     })
     expect(provider.kind).toBe('openrouter')
-    expect(provider.model).toBe('google/gemma-4-26b-a4b-it:free')
+    expect(provider.model).toBe(DEFAULT_CHAT_MODEL)
   })
 
-  it('prefers the per-use model over the legacy chat model over the default', () => {
-    const base = { NUXT_OPENROUTER_API_KEY: 'sk-test' }
-
-    expect(createLLMProvider('agent', { ...base, NUXT_LLM_AGENT_MODEL: 'x/a', NUXT_OPENROUTER_CHAT_MODEL: 'y/b' }).model).toBe('x/a')
-    expect(createLLMProvider('agent', { ...base, NUXT_OPENROUTER_CHAT_MODEL: 'y/b' }).model).toBe('y/b')
-    expect(createLLMProvider('agent', base).model).toBe(DEFAULT_CHAT_MODEL)
-
-    expect(createLLMProvider('extraction', { ...base, NUXT_LLM_EXTRACTION_MODEL: 'x/c' }).model).toBe('x/c')
-    expect(createLLMProvider('extraction', { ...base, NUXT_OPENROUTER_CHAT_MODEL: 'y/d' }).model).toBe('y/d')
-    expect(createLLMProvider('extraction', base).model).toBe(DEFAULT_CHAT_MODEL)
-  })
-
-  it('agent and extraction resolve independently', () => {
+  it('uses the per-use model when set, independently per use', () => {
     const agent = createLLMProvider('agent', {
-      NUXT_OPENROUTER_API_KEY: 'sk-test',
+      NUXT_LLM_AGENT_API_KEY: 'sk-a',
       NUXT_LLM_AGENT_MODEL: 'agent/model',
       NUXT_LLM_EXTRACTION_MODEL: 'extraction/model',
     })
     const extraction = createLLMProvider('extraction', {
-      NUXT_OPENROUTER_API_KEY: 'sk-test',
+      NUXT_LLM_EXTRACTION_API_KEY: 'sk-b',
       NUXT_LLM_AGENT_MODEL: 'agent/model',
       NUXT_LLM_EXTRACTION_MODEL: 'extraction/model',
     })
@@ -39,7 +26,12 @@ describe('ai registry — createLLMProvider', () => {
     expect(extraction.model).toBe('extraction/model')
   })
 
-  it('builds an ollama provider with its default base url', () => {
+  it('requires the per-use api key for openrouter', () => {
+    expect(() => createLLMProvider('agent', {})).toThrow(/NUXT_LLM_AGENT_API_KEY/)
+    expect(() => createLLMProvider('extraction', {})).toThrow(/NUXT_LLM_EXTRACTION_API_KEY/)
+  })
+
+  it('builds an ollama provider with its default base url and no api key', () => {
     const provider = createLLMProvider('agent', {
       NUXT_LLM_AGENT_PROVIDER: 'ollama',
       NUXT_LLM_AGENT_MODEL: 'gemma3:4b',
@@ -62,28 +54,19 @@ describe('ai registry — createLLMProvider', () => {
     expect(() => createLLMProvider('agent', { NUXT_LLM_AGENT_PROVIDER: 'ollama' }))
       .toThrow(/NUXT_LLM_AGENT_MODEL/)
   })
-
-  it('falls back to the legacy chat model for ollama when set', () => {
-    const provider = createLLMProvider('agent', {
-      NUXT_LLM_AGENT_PROVIDER: 'ollama',
-      NUXT_OPENROUTER_CHAT_MODEL: 'gemma3:4b',
-    })
-    expect(provider.model).toBe('gemma3:4b')
-  })
 })
 
 describe('ai registry — createEmbeddingProvider', () => {
   it('defaults to openrouter with the nvidia free model', () => {
-    const provider = createEmbeddingProvider({ NUXT_OPENROUTER_API_KEY: 'sk-test' })
+    const provider = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_API_KEY: 'sk-test',
+    })
     expect(provider.kind).toBe('openrouter')
     expect(provider.model).toBe(DEFAULT_EMBEDDING_MODEL)
   })
 
-  it('resolves the embedding model fallback chain', () => {
-    const base = { NUXT_OPENROUTER_API_KEY: 'sk-test' }
-    expect(createEmbeddingProvider({ ...base, NUXT_LLM_EMBEDDING_MODEL: 'x/e', NUXT_OPENROUTER_EMBEDDING_MODEL: 'y/e' }).model).toBe('x/e')
-    expect(createEmbeddingProvider({ ...base, NUXT_OPENROUTER_EMBEDDING_MODEL: 'y/e' }).model).toBe('y/e')
-    expect(createEmbeddingProvider(base).model).toBe(DEFAULT_EMBEDDING_MODEL)
+  it('requires the embedding api key for openrouter', () => {
+    expect(() => createEmbeddingProvider({})).toThrow(/NUXT_LLM_EMBEDDING_API_KEY/)
   })
 
   it('builds an ollama embedding provider', () => {
@@ -94,5 +77,10 @@ describe('ai registry — createEmbeddingProvider', () => {
     expect(provider.kind).toBe('ollama')
     expect(provider.model).toBe('nomic-embed-text')
     expect(provider.baseUrl).toBe('http://localhost:11434')
+  })
+
+  it('throws a clear error when ollama embedding has no model configured', () => {
+    expect(() => createEmbeddingProvider({ NUXT_LLM_EMBEDDING_PROVIDER: 'ollama' }))
+      .toThrow(/NUXT_LLM_EMBEDDING_MODEL/)
   })
 })
