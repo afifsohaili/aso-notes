@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict dNpLUEndZQiOElcNCdyUowd5pK6e2YuEVxSB2M7yEHksLKJ1LR8H34ZhWgZ9Wy8
+\restrict tYWduGEeqn8EaACEcoc0lQ7WkaGVTTLjjtSOkZ9icKSS5BTcmQS0OCzxZ2Tbe8S
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -18,6 +18,8 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+ALTER TABLE IF EXISTS ONLY public.workspace_settings DROP CONSTRAINT IF EXISTS workspace_settings_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.topics DROP CONSTRAINT IF EXISTS topics_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.todos DROP CONSTRAINT IF EXISTS todos_user_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.tags DROP CONSTRAINT IF EXISTS tags_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.sources DROP CONSTRAINT IF EXISTS sources_workspace_id_fkey;
@@ -50,14 +52,19 @@ ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_from_not
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.conversations DROP CONSTRAINT IF EXISTS conversations_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concepts DROP CONSTRAINT IF EXISTS concepts_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_topic_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_concept_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.accounts DROP CONSTRAINT IF EXISTS "accounts_userId_fkey";
+DROP INDEX IF EXISTS public.topics_workspace_name_normalized_unique;
 DROP INDEX IF EXISTS public.tags_workspace_name_normalized_unique;
 DROP INDEX IF EXISTS public.sources_note_url_normalized_unique;
 DROP INDEX IF EXISTS public.notes_workspace_path_unique;
 DROP INDEX IF EXISTS public.mentions_chunk_concept_unique;
 DROP INDEX IF EXISTS public.memberships_user_workspace_unique;
+DROP INDEX IF EXISTS public.idx_topics_embedding_hnsw;
 DROP INDEX IF EXISTS public.idx_todos_user_id;
 DROP INDEX IF EXISTS public.idx_todos_created_at;
 DROP INDEX IF EXISTS public.idx_todos_completed;
@@ -78,9 +85,11 @@ DROP INDEX IF EXISTS public.idx_chunks_embedding_hnsw;
 DROP INDEX IF EXISTS public.folders_workspace_path_unique;
 DROP INDEX IF EXISTS public.concepts_workspace_name_normalized_unique;
 ALTER TABLE IF EXISTS ONLY public.workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
+ALTER TABLE IF EXISTS ONLY public.workspace_settings DROP CONSTRAINT IF EXISTS workspace_settings_pkey;
 ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_pkey;
 ALTER TABLE IF EXISTS ONLY public.users DROP CONSTRAINT IF EXISTS users_email_key;
 ALTER TABLE IF EXISTS ONLY public.user_verifications DROP CONSTRAINT IF EXISTS user_verifications_pkey;
+ALTER TABLE IF EXISTS ONLY public.topics DROP CONSTRAINT IF EXISTS topics_pkey;
 ALTER TABLE IF EXISTS ONLY public.todos DROP CONSTRAINT IF EXISTS todos_pkey;
 ALTER TABLE IF EXISTS ONLY public.tags DROP CONSTRAINT IF EXISTS tags_pkey;
 ALTER TABLE IF EXISTS ONLY public.sources DROP CONSTRAINT IF EXISTS sources_pkey;
@@ -101,6 +110,7 @@ ALTER TABLE IF EXISTS ONLY public.kysely_migration_lock DROP CONSTRAINT IF EXIST
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_pkey;
 ALTER TABLE IF EXISTS ONLY public.conversations DROP CONSTRAINT IF EXISTS conversations_pkey;
 ALTER TABLE IF EXISTS ONLY public.concepts DROP CONSTRAINT IF EXISTS concepts_pkey;
+ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_pkey;
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_pkey;
 ALTER TABLE IF EXISTS ONLY public.accounts DROP CONSTRAINT IF EXISTS accounts_pkey;
 ALTER TABLE IF EXISTS ONLY notes_graph._ag_label_vertex DROP CONSTRAINT IF EXISTS _ag_label_vertex_pkey;
@@ -111,8 +121,10 @@ ALTER TABLE IF EXISTS public.notifications ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE IF EXISTS notes_graph._ag_label_vertex ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE IF EXISTS notes_graph._ag_label_edge ALTER COLUMN id DROP DEFAULT;
 DROP TABLE IF EXISTS public.workspaces;
+DROP TABLE IF EXISTS public.workspace_settings;
 DROP TABLE IF EXISTS public.users;
 DROP TABLE IF EXISTS public.user_verifications;
+DROP TABLE IF EXISTS public.topics;
 DROP SEQUENCE IF EXISTS public.todos_id_seq;
 DROP TABLE IF EXISTS public.todos;
 DROP TABLE IF EXISTS public.tags;
@@ -135,6 +147,7 @@ DROP TABLE IF EXISTS public.kysely_migration;
 DROP TABLE IF EXISTS public.folders;
 DROP TABLE IF EXISTS public.conversations;
 DROP TABLE IF EXISTS public.concepts;
+DROP TABLE IF EXISTS public.concept_topics;
 DROP TABLE IF EXISTS public.chunks;
 DROP TABLE IF EXISTS public.accounts;
 DROP SEQUENCE IF EXISTS notes_graph._label_id_seq;
@@ -299,6 +312,17 @@ CREATE TABLE public.chunks (
     embedding public.halfvec(2048),
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: concept_topics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.concept_topics (
+    workspace_id uuid NOT NULL,
+    concept_id uuid NOT NULL,
+    topic_id uuid NOT NULL
 );
 
 
@@ -484,7 +508,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-26 18:11:14.398956'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-28 02:12:54.992439'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -517,7 +541,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-26 18:11:14.398956'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-28 02:12:54.992439'::timestamp without time zone NOT NULL
 );
 
 
@@ -640,6 +664,22 @@ ALTER SEQUENCE public.todos_id_seq OWNED BY public.todos.id;
 
 
 --
+-- Name: topics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.topics (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    name character varying NOT NULL,
+    name_normalized character varying NOT NULL,
+    description text,
+    embedding public.halfvec(2048),
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: user_verifications; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -665,6 +705,18 @@ CREATE TABLE public.users (
     image text,
     "createdAt" timestamp without time zone NOT NULL,
     "updatedAt" timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: workspace_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.workspace_settings (
+    workspace_id uuid NOT NULL,
+    key character varying NOT NULL,
+    value jsonb NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -745,6 +797,14 @@ ALTER TABLE ONLY public.accounts
 
 ALTER TABLE ONLY public.chunks
     ADD CONSTRAINT chunks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: concept_topics concept_topics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.concept_topics
+    ADD CONSTRAINT concept_topics_pkey PRIMARY KEY (concept_id, topic_id);
 
 
 --
@@ -908,6 +968,14 @@ ALTER TABLE ONLY public.todos
 
 
 --
+-- Name: topics topics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.topics
+    ADD CONSTRAINT topics_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: user_verifications user_verifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -929,6 +997,14 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: workspace_settings workspace_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workspace_settings
+    ADD CONSTRAINT workspace_settings_pkey PRIMARY KEY (workspace_id, key);
 
 
 --
@@ -1073,6 +1149,13 @@ CREATE INDEX idx_todos_user_id ON public.todos USING btree (user_id);
 
 
 --
+-- Name: idx_topics_embedding_hnsw; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_topics_embedding_hnsw ON public.topics USING hnsw (embedding public.halfvec_cosine_ops);
+
+
+--
 -- Name: memberships_user_workspace_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1108,6 +1191,13 @@ CREATE UNIQUE INDEX tags_workspace_name_normalized_unique ON public.tags USING b
 
 
 --
+-- Name: topics_workspace_name_normalized_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX topics_workspace_name_normalized_unique ON public.topics USING btree (workspace_id, name_normalized);
+
+
+--
 -- Name: accounts accounts_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1129,6 +1219,30 @@ ALTER TABLE ONLY public.chunks
 
 ALTER TABLE ONLY public.chunks
     ADD CONSTRAINT chunks_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: concept_topics concept_topics_concept_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.concept_topics
+    ADD CONSTRAINT concept_topics_concept_id_fkey FOREIGN KEY (concept_id) REFERENCES public.concepts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: concept_topics concept_topics_topic_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.concept_topics
+    ADD CONSTRAINT concept_topics_topic_id_fkey FOREIGN KEY (topic_id) REFERENCES public.topics(id) ON DELETE CASCADE;
+
+
+--
+-- Name: concept_topics concept_topics_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.concept_topics
+    ADD CONSTRAINT concept_topics_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
@@ -1388,8 +1502,24 @@ ALTER TABLE ONLY public.todos
 
 
 --
+-- Name: topics topics_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.topics
+    ADD CONSTRAINT topics_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: workspace_settings workspace_settings_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workspace_settings
+    ADD CONSTRAINT workspace_settings_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict dNpLUEndZQiOElcNCdyUowd5pK6e2YuEVxSB2M7yEHksLKJ1LR8H34ZhWgZ9Wy8
+\unrestrict tYWduGEeqn8EaACEcoc0lQ7WkaGVTTLjjtSOkZ9icKSS5BTcmQS0OCzxZ2Tbe8S
 

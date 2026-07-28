@@ -116,7 +116,16 @@ interface VocabularyStrategy {
 
 ## Build order
 
-- **M1 — Schema**: `topics`, `concept_topics`, `workspace_settings`, HNSW indexes. Regenerate types + schema dump.
+- **M1 — Schema**: `topics`, `concept_topics`, `workspace_settings`, HNSW indexes. Regenerate types + schema dump. **DONE (2026-07-28)** — migration `1785200000000_topics_concepts_settings.ts`, spec `apps/web/test/e2e/notes-schema.spec.ts` (15 tests, 4 new). Notes below.
+
+### M1 implementation notes (divergences & decisions)
+
+- **`topics` mirrors `concepts`**: `id` uuid default `gen_random_uuid()`, `workspace_id` FK cascade, `name`, `name_normalized`, nullable `description`, nullable `embedding halfvec(2048)`, `created_at`/`updated_at`. Unique `(workspace_id, name_normalized)`. HNSW index `idx_topics_embedding_hnsw` using `halfvec_cosine_ops`, same pattern as `concepts`/`chunks`.
+- **`concept_topics` is workspace-scoped** — the plan's column list omitted `workspace_id`, but the join table follows the `note_tags` precedent (blanket tenant rule): `workspace_id` FK cascade + `concept_id`/`topic_id` FKs cascade, composite PK `(concept_id, topic_id)`, no surrogate id, no timestamps. This makes the table independently multi-tenant-filterable and lets workspace deletion cascade directly.
+- **`workspace_settings` uses composite PK `(workspace_id, key)`**, `value jsonb NOT NULL`, and a single `updated_at` timestamp (no `created_at`), matching the plan's column list exactly. The e2e spec verifies the PK rejects duplicate keys and that `ON CONFLICT` upsert works.
+- **Types and schema dump regenerated**: `packages/shared/types.d.ts` now includes `Topics`, `ConceptTopics`, and `WorkspaceSettings`; `apps/web/db/schema.sql` updated.
+- **Full suite green**: 330 passed, 4 skipped; lint clean.
+
 - **M2 — Extraction seam + strategies**: `VocabularyStrategy` interface + registry, topic schema + prompt rules, top-K retrieval via chunk-embedding centroid, blind-merge vocabulary omission, settings resolution (workspace setting → code default), tolerant topic parsing, unit + stage specs.
 - **M3 — Store-graph**: topic resolution/embed/upsert, `concept_topics`, blind-merge similarity pass with audit logging, AGE mirror helpers, atomic transaction extended.
 - **M4 — Settings UI**: `/api/settings` GET/PATCH, `/settings` page + navbar link, strategy select + threshold input.

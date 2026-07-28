@@ -77,6 +77,12 @@ export interface Concepts {
   workspace_id: string;
 }
 
+export interface ConceptTopics {
+  concept_id: string;
+  topic_id: string;
+  workspace_id: string;
+}
+
 export interface Conversations {
   archived_at: Timestamp | null;
   created_at: Generated<Timestamp>;
@@ -247,6 +253,17 @@ export interface Todos {
   user_id: string;
 }
 
+export interface Topics {
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  embedding: string | null;
+  id: Generated<string>;
+  name: string;
+  name_normalized: string;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
 export interface Users {
   createdAt: Timestamp;
   email: string;
@@ -273,11 +290,19 @@ export interface Workspaces {
   updated_at: Generated<Timestamp>;
 }
 
+export interface WorkspaceSettings {
+  key: string;
+  updated_at: Generated<Timestamp>;
+  value: Json;
+  workspace_id: string;
+}
+
 export interface DB {
   accounts: Accounts;
   "ag_catalog.ag_graph": AgCatalogAgGraph;
   "ag_catalog.ag_label": AgCatalogAgLabel;
   chunks: Chunks;
+  concept_topics: ConceptTopics;
   concepts: Concepts;
   conversations: Conversations;
   folders: Folders;
@@ -297,7 +322,9 @@ export interface DB {
   sources: Sources;
   tags: Tags;
   todos: Todos;
+  topics: Topics;
   user_verifications: UserVerifications;
   users: Users;
+  workspace_settings: WorkspaceSettings;
   workspaces: Workspaces;
 }

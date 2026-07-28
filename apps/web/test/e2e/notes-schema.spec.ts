@@ -24,6 +24,9 @@ const NOTES_DOMAIN_TABLES = [
   'sources',
   'conversations',
   'messages',
+  'topics',
+  'concept_topics',
+  'workspace_settings',
 ] as const
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
@@ -40,6 +43,9 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   sources: ['id', 'workspace_id', 'note_id', 'url', 'url_normalized', 'title', 'type', 'created_at', 'updated_at'],
   conversations: ['id', 'workspace_id', 'title', 'created_at', 'updated_at'],
   messages: ['id', 'workspace_id', 'conversation_id', 'role', 'content', 'tool_calls', 'tool_call_id', 'created_at'],
+  topics: ['id', 'workspace_id', 'name', 'name_normalized', 'description', 'embedding', 'created_at', 'updated_at'],
+  concept_topics: ['workspace_id', 'concept_id', 'topic_id'],
+  workspace_settings: ['workspace_id', 'key', 'value', 'updated_at'],
 }
 
 async function columnMap(trx: any) {
@@ -118,6 +124,52 @@ async function givenConcept(trx: any, workspaceId: string, name: string): Promis
   return row.id
 }
 
+async function givenTopic(trx: any, workspaceId: string, name: string): Promise<string> {
+  const row = await trx
+    .insertInto('topics')
+    .values({ workspace_id: workspaceId, name, name_normalized: name.toLowerCase() })
+    .returning('id')
+    .executeTakeFirstOrThrow()
+  return row.id
+}
+
+async function givenConceptTopic(trx: any, workspaceId: string, conceptId: string, topicId: string): Promise<void> {
+  await sql`
+    INSERT INTO concept_topics (workspace_id, concept_id, topic_id)
+    VALUES (${workspaceId}, ${conceptId}, ${topicId})
+  `.execute(trx)
+}
+
+async function givenWorkspaceSetting(trx: any, workspaceId: string, key: string, value: Record<string, unknown>): Promise<void> {
+  await sql`
+    INSERT INTO workspace_settings (workspace_id, key, value)
+    VALUES (${workspaceId}, ${key}, ${JSON.stringify(value)}::jsonb)
+  `.execute(trx)
+}
+
+async function updateWorkspaceSetting(trx: any, workspaceId: string, key: string, value: Record<string, unknown>): Promise<void> {
+  await sql`
+    INSERT INTO workspace_settings (workspace_id, key, value)
+    VALUES (${workspaceId}, ${key}, ${JSON.stringify(value)}::jsonb)
+    ON CONFLICT (workspace_id, key) DO UPDATE SET value = EXCLUDED.value
+  `.execute(trx)
+}
+
+async function selectWorkspaceSettingValue(trx: any, workspaceId: string, key: string): Promise<Record<string, unknown>> {
+  const { rows } = await sql<{ value: Record<string, unknown> }>`
+    SELECT value FROM workspace_settings WHERE workspace_id = ${workspaceId} AND key = ${key}
+  `.execute(trx)
+  return rows[0]!.value
+}
+
+async function expectUniqueViolation(trx: any, workspaceId: string, key: string, value: Record<string, unknown>): Promise<void> {
+  await expectDbError(trx, () =>
+    sql`
+      INSERT INTO workspace_settings (workspace_id, key, value)
+      VALUES (${workspaceId}, ${key}, ${JSON.stringify(value)}::jsonb)
+    `.execute(trx))
+}
+
 describe('notes domain schema (M1)', () => {
   test('all notes-domain tables exist with expected columns', async ({ trx }) => {
     const map = await columnMap(trx)
@@ -130,7 +182,7 @@ describe('notes domain schema (M1)', () => {
   })
 
   test('embedding columns are halfvec(2048)', async ({ trx }) => {
-    for (const table of ['chunks', 'concepts'] as const) {
+    for (const table of ['chunks', 'concepts', 'topics'] as const) {
       const { rows } = await sql<{ formatted: string }>`
         SELECT format_type(a.atttypid, a.atttypmod) AS formatted
         FROM pg_attribute a
@@ -261,6 +313,7 @@ describe('notes domain schema (M1)', () => {
     await trx.insertInto('note_tag_dismissals').values({ workspace_id: workspaceId, note_id: noteId, tag_id: tag.id }).execute()
     await trx.insertInto('links').values({ workspace_id: workspaceId, from_note_id: noteId, to_note_id: null, raw_target: 'ghost' }).execute()
     await trx.insertInto('sources').values({ workspace_id: workspaceId, note_id: noteId, url: 'https://x.com', url_normalized: 'x.com' }).execute()
+    await givenWorkspaceSetting(trx, workspaceId, 'extraction.vocabulary_strategy', { strategy: 'top-k' })
     const conversation = await trx
       .insertInto('conversations')
       .values({ workspace_id: workspaceId, title: 'chat' })
@@ -288,12 +341,66 @@ describe('notes domain schema (M1)', () => {
 
     expect(findIndex('chunks', /hnsw.*halfvec_cosine_ops/i), 'chunks embedding HNSW').toBeTruthy()
     expect(findIndex('concepts', /hnsw.*halfvec_cosine_ops/i), 'concepts embedding HNSW').toBeTruthy()
+    expect(findIndex('topics', /hnsw.*halfvec_cosine_ops/i), 'topics embedding HNSW').toBeTruthy()
     expect(findIndex('notes', /\(status, updated_at\)/), 'notes sweeper index').toBeTruthy()
     expect(findIndex('chunks', /\(note_id\)/), 'chunks(note_id)').toBeTruthy()
     expect(findIndex('mentions', /\(concept_id\)/), 'mentions(concept_id)').toBeTruthy()
     expect(findIndex('links', /\(from_note_id\)/), 'links(from_note_id)').toBeTruthy()
     expect(findIndex('links', /\(to_note_id\)/), 'links(to_note_id)').toBeTruthy()
     expect(findIndex('messages', /\(conversation_id\)/), 'messages(conversation_id)').toBeTruthy()
+  })
+
+  test('topics.name_normalized is unique per workspace but reusable across workspaces', async ({ trx }) => {
+    const wsA = await givenWorkspace(trx, 'ws-a')
+    const wsB = await givenWorkspace(trx, 'ws-b')
+
+    await givenTopic(trx, wsA, 'Billing')
+    await expectDbError(trx, () => givenTopic(trx, wsA, 'billing'))
+
+    const other = await givenTopic(trx, wsB, 'billing')
+    expect(other).toBeTruthy()
+  })
+
+  test('concept_topics cascades on concept delete', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'cascade-concept')
+    const conceptId = await givenConcept(trx, workspaceId, 'Paddle')
+    const topicId = await givenTopic(trx, workspaceId, 'Payments')
+
+    await givenConceptTopic(trx, workspaceId, conceptId, topicId)
+    expect(await rowCount(trx, 'concept_topics')).toBe(1)
+
+    await trx.deleteFrom('concepts').where('id', '=', conceptId).execute()
+    expect(await rowCount(trx, 'concept_topics')).toBe(0)
+    expect(await rowCount(trx, 'topics')).toBe(1)
+  })
+
+  test('concept_topics cascades on topic delete', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'cascade-topic')
+    const conceptId = await givenConcept(trx, workspaceId, 'Stripe')
+    const topicId = await givenTopic(trx, workspaceId, 'Payments')
+
+    await givenConceptTopic(trx, workspaceId, conceptId, topicId)
+    expect(await rowCount(trx, 'concept_topics')).toBe(1)
+
+    await trx.deleteFrom('topics').where('id', '=', topicId).execute()
+    expect(await rowCount(trx, 'concept_topics')).toBe(0)
+    expect(await rowCount(trx, 'concepts')).toBe(1)
+  })
+
+  test('workspace_settings stores jsonb and supports upsert by (workspace_id, key)', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'settings')
+
+    await givenWorkspaceSetting(trx, workspaceId, 'extraction.vocabulary_strategy', { strategy: 'top-k' })
+
+    const first = await selectWorkspaceSettingValue(trx, workspaceId, 'extraction.vocabulary_strategy')
+    expect(first).toEqual({ strategy: 'top-k' })
+
+    await expectUniqueViolation(trx, workspaceId, 'extraction.vocabulary_strategy', { strategy: 'blind-merge' })
+
+    await updateWorkspaceSetting(trx, workspaceId, 'extraction.vocabulary_strategy', { strategy: 'blind-merge' })
+
+    const second = await selectWorkspaceSettingValue(trx, workspaceId, 'extraction.vocabulary_strategy')
+    expect(second).toEqual({ strategy: 'blind-merge' })
   })
 
   test('AGE graph notes_graph exists', async ({ trx }) => {
