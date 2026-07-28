@@ -17,7 +17,7 @@ _Avoid_: Organization, vault, space
 ### Notes & Content
 
 **Note**:
-A file written or uploaded by the User, usually Markdown. A Note belongs to exactly one Folder.
+A file written or uploaded by the User — Markdown, plain text, PDF, anything. A Note belongs to exactly one Folder.
 _Avoid_: Document, page, file
 
 **Folder**:
@@ -25,7 +25,7 @@ A directory containing Notes and optionally a Folder Cover. Folders can nest.
 _Avoid_: Directory, vault, collection
 
 **Folder Cover**:
-A special Note named `folder-cover.md` that describes the Folder it lives in.
+A special file named `__folder-cover.md` that describes the Folder it lives in.
 _Avoid_: Readme, index, about
 
 **Source**:
@@ -42,9 +42,13 @@ _Avoid_: Backlink, mention, reference
 
 ### Graph
 
+**Topic**:
+A high-level theme that groups related Concepts across the Workspace. AI-assigned during Ingestion and reused across Notes.
+_Avoid_: Category, subject
+
 **Concept**:
-An idea, entity, or topic extracted from Notes. Belongs to one Workspace.
-_Avoid_: Topic, entity, node
+A granular idea or entity extracted from Notes. Belongs to one Workspace and sits under one or more Topics.
+_Avoid_: Entity, node
 
 **Relation**:
 A typed link between two Concepts. Belongs to one Workspace.
