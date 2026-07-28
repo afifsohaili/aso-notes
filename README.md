@@ -8,6 +8,8 @@ Inspired by LightRAG, but retrieval is driven by an Agent with Tools rather than
 
 ## How it works
 
+![System overview](docs/assets/overview.png)
+
 - **Note-first.** Every Note is a file (Markdown primary) living inside a Folder. Notes can reference Sources (external material) and Link to other Notes.
 - **Sync.** Notes are ingested from a synced local folder, watched for changes with a 5-minute debounce plus a manual "Sync now". Renames are detected via content hash.
 - **Derived graph.** The system extracts Concepts, Relations, and Mentions from Notes into a read-only graph. You influence it via Links and Tags, not manual editing.
