@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GraphEdge, GraphNode } from '~/server/lib/graph/ui'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -11,22 +12,27 @@ const emit = defineEmits<{
   (e: 'selectNode', node: GraphNode): void
 }>()
 
+const { t } = useI18n()
+
 const containerRef = ref<HTMLDivElement | null>(null)
 let cy: any = null
 
+const nodeColorMap = {
+  Concept: '#4f46e5',
+  Topic: '#7c3aed',
+  Note: '#059669',
+  Tag: '#d97706',
+} as const
+
+const legendItems = computed(() => [
+  { label: t('graph.legend.topic'), colorClass: 'bg-[#7c3aed]' },
+  { label: t('graph.legend.concept'), colorClass: 'bg-[#4f46e5]' },
+  { label: t('graph.legend.note'), colorClass: 'bg-[#059669]' },
+  { label: t('graph.legend.tag'), colorClass: 'bg-[#d97706]' },
+])
+
 function nodeColor(label: GraphNode['label']): string {
-  switch (label) {
-    case 'Concept':
-      return '#4f46e5'
-    case 'Topic':
-      return '#7c3aed'
-    case 'Note':
-      return '#059669'
-    case 'Tag':
-      return '#d97706'
-    default:
-      return '#6b7280'
-  }
+  return nodeColorMap[label] ?? '#6b7280'
 }
 
 function buildElements() {
@@ -177,5 +183,18 @@ watch(() => props.selectedNodeId, () => {
 </script>
 
 <template>
-  <div ref="containerRef" class="w-full h-full bg-gray-50" />
+  <div class="relative w-full h-full bg-gray-50">
+    <div ref="containerRef" class="w-full h-full bg-gray-50" />
+    <div
+      data-testid="graph-legend"
+      class="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm border border-gray-200 px-3 py-2 text-xs"
+    >
+      <ul class="space-y-1.5">
+        <li v-for="item in legendItems" :key="item.label" class="flex items-center gap-2">
+          <span class="h-2.5 w-2.5 rounded-full" :class="item.colorClass" />
+          <span class="text-gray-600">{{ item.label }}</span>
+        </li>
+      </ul>
+    </div>
+  </div>
 </template>

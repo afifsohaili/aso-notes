@@ -21,7 +21,6 @@ definePageMeta({
 })
 
 const { t } = useI18n()
-const router = useRouter()
 
 const selectedConceptId = ref<string | null>(null)
 
@@ -40,16 +39,17 @@ function selectConcept(conceptId: string) {
 }
 
 function handleNodeClick(node: GraphNode) {
-  if (node.label === 'Concept') {
-    selectedConceptId.value = node.id
+  const action = resolveGraphNodeAction(node)
+  if (action.type === 'select-concept') {
+    selectedConceptId.value = action.conceptId
   }
-  else if (node.label === 'Note') {
-    router.push(`/notes`)
+  else if (action.type === 'navigate-note') {
+    navigateTo(`/notes${action.path}`)
   }
 }
 
 function openNote(path: string) {
-  router.push(`/notes${path}`)
+  navigateTo(`/notes${path}`)
 }
 </script>
 

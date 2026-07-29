@@ -45,4 +45,48 @@ describe('graph-concept-list', () => {
     expect(items).toHaveLength(1)
     expect(items[0]!.text()).toContain('Kysely')
   })
+
+  it('collapses and expands a topic group when its header is clicked', async () => {
+    const component = await mountSuspended(ConceptList, {
+      props: {
+        concepts: [
+          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2, topics: [] },
+          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1, topics: ['Databases'] },
+        ],
+        selectedConceptId: null,
+      },
+    })
+
+    const groups = component.findAll('[data-testid="topic-group"]')
+    expect(groups).toHaveLength(2)
+
+    const firstGroup = groups[0]!
+    const header = firstGroup.find('[data-testid="topic-header"]')
+    expect(firstGroup.find('[data-testid="topic-concepts"]').exists()).toBe(true)
+
+    await header.trigger('click')
+    expect(firstGroup.find('[data-testid="topic-concepts"]').exists()).toBe(false)
+
+    await header.trigger('click')
+    expect(firstGroup.find('[data-testid="topic-concepts"]').exists()).toBe(true)
+  })
+
+  it('keeps ungrouped bucket toggleable and last', async () => {
+    const component = await mountSuspended(ConceptList, {
+      props: {
+        concepts: [
+          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2, topics: [] },
+          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1, topics: ['Databases'] },
+        ],
+        selectedConceptId: null,
+      },
+    })
+
+    const groups = component.findAll('[data-testid="topic-group"]')
+    expect(groups[groups.length - 1]!.text()).toContain('Ungrouped')
+
+    const ungroupedHeader = groups[groups.length - 1]!.find('[data-testid="topic-header"]')
+    await ungroupedHeader.trigger('click')
+    expect(groups[groups.length - 1]!.find('[data-testid="topic-concepts"]').exists()).toBe(false)
+  })
 })

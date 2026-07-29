@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ConceptSummary } from '~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
+import ChevronDownIcon from '~icons/heroicons/chevron-down'
+import ChevronRightIcon from '~icons/heroicons/chevron-right'
 import SearchIcon from '~icons/heroicons/magnifying-glass'
 
 const props = defineProps<{
@@ -15,6 +17,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const query = ref('')
+const collapsedTopics = ref<Set<string>>(new Set())
 
 const filteredConcepts = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -24,6 +27,24 @@ const filteredConcepts = computed(() => {
 })
 
 const groups = computed(() => groupConceptsByTopic(filteredConcepts.value))
+
+function topicKey(group: { topic: string | null }): string {
+  return group.topic ?? '__ungrouped__'
+}
+
+function isCollapsed(group: { topic: string | null }): boolean {
+  return collapsedTopics.value.has(topicKey(group))
+}
+
+function toggleGroup(group: { topic: string | null }) {
+  const key = topicKey(group)
+  const next = new Set(collapsedTopics.value)
+  if (next.has(key))
+    next.delete(key)
+  else
+    next.add(key)
+  collapsedTopics.value = next
+}
 </script>
 
 <template>
@@ -45,12 +66,21 @@ const groups = computed(() => groupConceptsByTopic(filteredConcepts.value))
         <div
           v-for="group in groups"
           :key="group.topic ?? 'ungrouped'"
+          data-testid="topic-group"
           class="border-b border-gray-100 last:border-b-0"
         >
-          <h3 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">
-            {{ group.topic ?? t('graph.ungrouped') }}
-          </h3>
-          <ul class="divide-y divide-gray-200">
+          <button
+            type="button"
+            data-testid="topic-header"
+            class="w-full px-4 py-2 flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 hover:bg-gray-100"
+            :aria-label="isCollapsed(group) ? t('graph.expandGroup') : t('graph.collapseGroup')"
+            @click="toggleGroup(group)"
+          >
+            <span>{{ group.topic ?? t('graph.ungrouped') }}</span>
+            <ChevronDownIcon v-if="!isCollapsed(group)" class="h-4 w-4 text-gray-400" />
+            <ChevronRightIcon v-else class="h-4 w-4 text-gray-400" />
+          </button>
+          <ul v-if="!isCollapsed(group)" data-testid="topic-concepts" class="divide-y divide-gray-200">
             <li
               v-for="concept in group.concepts"
               :key="concept.id"

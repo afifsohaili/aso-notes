@@ -52,3 +52,23 @@ DONE — 2026-07-30
 ### Test counts
 
 Full suite: **515 passed, 4 skipped** (baseline 492 passed, 4 skipped).
+
+## G1 — Graph page UI improvements
+
+DONE — 2026-07-30
+
+- `app/components/graph/concept-list.vue`: topic groups are now toggleable via a clickable header with a chevron; `Ungrouped` stays last and is also toggleable; default state is expanded; state is kept in pure client-side reactive state.
+- `app/components/graph/graph-canvas.vue`: added an unobtrusive color legend overlay (top-right) with dots + labels for Topic, Concept, Note, and Tag using the canonical node colors.
+- `app/pages/graph/index.vue`: Note node taps now navigate to the canonical note URL `/notes/<note path>` using the note's `ref` field; Concept selection is preserved; Topic/Tag taps keep the existing no-op behavior.
+- Extracted pure `resolveGraphNodeAction(node)` in `app/utils/graph.ts` to decide the action per node label, with unit coverage.
+- Added i18n keys under `graph.legend.*`, `graph.collapseGroup`, and `graph.expandGroup`.
+- Tests: 2 new component specs for topic-group toggling, 1 new component spec for the graph legend, 4 new unit specs for `resolveGraphNodeAction`.
+
+### Divergences
+
+- Used `navigateTo` instead of `router.push` for graph note-node navigation and for the existing `openNote` helper, matching the rest of the Nuxt routing refactor.
+- The graph legend uses Tailwind arbitrary-value classes (`bg-[#7c3aed]`, etc.) so the legend dots match the exact Cytoscape node colors without inline styles.
+
+### Test counts
+
+Full suite: **522 passed, 4 skipped** (baseline 515 passed, 4 skipped).

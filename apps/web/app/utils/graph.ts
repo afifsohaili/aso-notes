@@ -11,6 +11,24 @@ export interface TopicGroup {
   concepts: GroupableConcept[]
 }
 
+export type GraphNodeAction
+  = { type: 'select-concept', conceptId: string }
+    | { type: 'navigate-note', path: string }
+    | { type: 'noop' }
+
+export function resolveGraphNodeAction(node: { id: string, label: 'Concept' | 'Note' | 'Tag' | 'Topic', name: string, ref: string }): GraphNodeAction {
+  switch (node.label) {
+    case 'Concept':
+      return { type: 'select-concept', conceptId: node.id }
+    case 'Note': {
+      const path = node.ref.startsWith('/') ? node.ref : `/${node.ref}`
+      return { type: 'navigate-note', path }
+    }
+    default:
+      return { type: 'noop' }
+  }
+}
+
 export function groupConceptsByTopic(concepts: GroupableConcept[]): TopicGroup[] {
   const byTopic = new Map<string, GroupableConcept[]>()
   const ungrouped: GroupableConcept[] = []
