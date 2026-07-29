@@ -176,7 +176,19 @@ interface VocabularyStrategy {
 - **Concept detail shows topic pills** under the concept header using a violet badge style.
 - **Tests**: 6 new/updated tests (1 unit for topics in `toConceptSummaries`, 1 e2e workspace-isolation test for topics, 4 e2e assertions updated for topics/GROUPED_UNDER). Full suite: 383 passed, 4 skipped.
 
-- **M6 — Mention-gap report**: script + report output.
+- **M6 — Mention-gap report**: script + report output. **DONE (2026-07-29)** — full suite 406 passed, 4 skipped when run complete; one pre-existing watcher test is flaky in full-suite runs (passes in isolation). Lint clean. Notes below.
+
+### M6 implementation notes (divergences & decisions)
+
+- **Script**: `apps/web/scripts/mention-gap-report.ts`, run via `pnpm --filter web report:mention-gaps`. Reads `DATABASE_URL` / `NUXT_DATABASE_URL` from `.env.local`.
+- **CLI**: positional workspace id or name (default all workspaces); `--json`; `--threshold <gap-count>`; `--limit <rows>`. UUID positional resolves by `workspaces.id`, otherwise by case-insensitive `name` match.
+- **Pure core**: `server/lib/mention-gap.ts` is fully unit-testable without a DB. Exports `generateConceptVariants`, `extractTextTokens`, `textMatchesConcept`, and `findMentionGaps`.
+- **Variant generation**: single-word concepts produce one lowercase token variant (matched by whole token, so `Paddle` matches `paddle_id` and `PaddleBillingService` but not `paddling`). Multi-word concepts produce phrase variants: lowercase space-separated, snake_case, kebab-case, camelCase, and compact (alphanumeric only). Phrases match as substrings in lowercased chunk text.
+- **Gap definition**: a positive gap = number of distinct notes whose chunk text matches a concept variant but have no mention row linking that chunk to that concept.
+- **Output shape**: console table `concept | matching notes | mentioned notes | gap` sorted by gap desc, then concept name; followed by per-note gaps. Always also written to `apps/web/tmp-mention-gap.md`. `--json` emits the same `conceptSummaries` + `noteGaps` structure.
+- **Divergence from plan**: the plan mentioned "word-boundary" matching; implementation uses token equality for single-word concepts and substring matching for multi-word phrases. This avoids `paddling` false positives while still catching `paddle_id`/`paddleId`. `--threshold` operates on gap count (not a score).
+- **Tests**: 21 unit tests in `test/unit/mention-gap.spec.ts` (variants, tokenization, matching, gap aggregation, workspace isolation, sorting), 3 e2e tests in `test/e2e/mention-gap.spec.ts` using the in-process transactional harness to verify DB-fed gap detection and mention suppression.
+
 - **M7 — Rebuild + comparison + live verification**: wipe, run comparison protocol (flip strategy via Settings between rebuilds), psql cypher count parity, browser check of `/graph` and `/settings`, findings recorded below.
 
 ## Deferred / open

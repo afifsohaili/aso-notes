@@ -26,3 +26,6 @@ logs
 # Personal notes synced by the app (NUXT_NOTES_DIR)
 notes/*
 !notes/aso-notes/
+
+# Generated reports
+apps/web/tmp-mention-gap.md
