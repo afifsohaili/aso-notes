@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { useI18n } from 'vue-i18n'
 import CogIcon from '~icons/heroicons/cog'
+import QueueListIcon from '~icons/heroicons/queue-list'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -9,6 +10,7 @@ const { session } = await useSession()
 const links = [
   { to: '/chat', label: () => t('chat.title') },
   { to: '/notes', label: () => t('notes.title') },
+  { to: '/notes/queue', label: () => t('queue.title'), icon: QueueListIcon },
   { to: '/graph', label: () => t('graph.title') },
   { to: '/settings', label: () => t('settings.title'), icon: CogIcon },
 ]

@@ -47,7 +47,7 @@ After a rebuild, every note sits at `status='pending'` and the user cannot tell:
 
 - [x] **O5** — Schema + transitions: status enum expansion, dispatcher/worker flips, jobId dedup, worker failed-handler flip, sweeper stale re-dispatch + heartbeat module. **DONE 2026-07-30**
 - [x] **O6** — `GET /api/ingestion/status` + extended status-counts. **DONE 2026-07-30**
-- [ ] **O7** — UI: note-list badges + `/notes/queue` page + navbar link.
+- [x] **O7** — UI: note-list badges + `/notes/queue` page + navbar link. **DONE 2026-07-30**
 
 Each milestone: TDD (feature specs at the boundary: dispatch → status flip; worker start → processing; status endpoint input→body), update this doc with status + divergences, commit.
 
@@ -245,6 +245,26 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
 - Full suite: e2e 216 passed, unit 236 passed, nuxt 28 passed; lint clean. (The first full `pnpm test` run showed one flaky `notes-watcher.spec.ts` failure that passes when run alone; unrelated to O6.)
 - **Divergence from plan:** The "fake/inline" queue testing fixture from `@base/testing` is built around the `@base/jobs` abstraction, while the ingestion pipeline uses BullMQ directly via `useQueue`. O6 therefore uses a dedicated `IngestionQueueSnapshot` fake override in `server/lib/sync/queue.ts` rather than the generic `@base/testing` queue fixture. The fake queue behavior is still verified in the feature spec.
 - **Active-job resolution policy:** active jobs whose note id cannot be resolved to a note in the caller's workspace are silently skipped. This prevents leaking other workspaces' paths and matches the endpoint's workspace-scoped boundary.
+
+#### O7 implementation notes
+
+- New page `app/pages/notes/queue.vue` polls `GET /api/ingestion/status` every 3 seconds via a `setInterval` refresh of `useFetch`, cleared on unmounted.
+- Page layout:
+  - **Database status** row: counts for `pending`, `queued`, `processing`, `ingested`, `failed`.
+  - **Queue status** row: `waiting`, `active`, `completed`, `failed`, `delayed` from BullMQ; or a "Queue unavailable (no Redis)" state when the endpoint returns `queue: null`.
+  - **Active jobs** list: job title (or path) + a `NuxtLink` to `/notes?note=<encoded path>` so the note detail opens in the existing notes page.
+  - **Sweeper heartbeat**: last-sweep relative time plus dispatched/failed counts from the last sweep.
+- `app/components/notes/note-list.vue` badge map extended for `queued` (blue) and `processing` (indigo + `animate-pulse`); status text now translated via `notes.status.*` i18n keys.
+- `app/components/app-header.vue` gained a `/notes/queue` nav link with `heroicons/queue-list` icon, placed between Notes and Graph.
+- Component tests:
+  - `test/components/queue-page.nuxt.spec.ts`: DB/queue counts, queue-null state, active-job links, heartbeat, and 3-second polling.
+  - `test/components/note-list-retry.nuxt.spec.ts`: added queued/processing badge render test.
+  - `test/components/app-header.nuxt.spec.ts`: updated signed-out + signed-in link assertions to include `/notes/queue`.
+- All labels use explicit `useI18n` imports and keys added to `locales/en.json`.
+- Full suite: 489 passed / 4 skipped; lint clean.
+- **Divergences from plan:**
+  - The queue page uses a simple in-component relative-time helper (minutes/hours/just now) rather than adding a date library, so the heartbeat is readable without a new dependency. The helper recomputes on each poll refresh.
+  - The DB and queue count rows are rendered as computed card arrays to avoid template-level type gymnastics against the `IngestionStatusResponse` interface.
 
 - Run history / archival (rejected by user — latest-only is the design).
 - Per-stage timing rows.

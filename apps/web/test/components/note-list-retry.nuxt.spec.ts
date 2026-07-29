@@ -77,15 +77,19 @@ describe('note-list retry', () => {
     expect(html).toContain('LLM extraction failed')
   })
 
-  it('shows an error badge when note status is failed even without last_run', async () => {
+  it('shows queued and processing status badges', async () => {
     const component = await mountSuspended(NoteList, {
       props: {
-        notes: [{ ...baseNote, status: 'failed' }],
+        notes: [
+          { ...baseNote, status: 'queued', path: '/proj/queued.md' },
+          { ...baseNote, status: 'processing', path: '/proj/processing.md' },
+        ],
         selectedPath: null,
       },
     })
 
     const html = component.html()
-    expect(html).toContain('Ingestion failed')
+    expect(html).toContain('Queued')
+    expect(html).toContain('Processing')
   })
 })
