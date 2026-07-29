@@ -1,3 +1,5 @@
+import type { PipelineContext } from './context'
+
 /**
  * Fixed schema for `notes.last_run` (plan-004).
  *
@@ -91,6 +93,42 @@ function isExtraction(value: unknown): value is NonNullable<LastRun['extraction'
     && isString(value.model)
     && isString(value.response)
     && isCounts(value.counts)
+}
+
+export interface BuildLastRunOptions {
+  status: 'succeeded' | 'failed'
+  error?: unknown
+  worker?: { attemptsMade?: number, jobId?: string | null } | null
+}
+
+function serializeError(error: unknown): LastRun['error'] {
+  if (error === undefined || error === null)
+    return null
+  if (error instanceof Error)
+    return { name: error.name, message: error.message, stack: error.stack }
+  return { name: 'Error', message: String(error) }
+}
+
+/** Build a {@link LastRun} record from a completed pipeline run. */
+export function buildLastRun(ctx: PipelineContext, options: BuildLastRunOptions): LastRun {
+  const finishedAt = new Date()
+  const startedAt = ctx.startedAt
+  const durationMs = Math.max(0, finishedAt.getTime() - startedAt.getTime())
+  const worker = options.worker ?? null
+
+  return {
+    pipeline: ctx.note.pipeline,
+    status: options.status,
+    failed_stage: options.status === 'failed' ? ctx.currentStage : null,
+    error: serializeError(options.error),
+    attempt: worker?.attemptsMade ?? 0,
+    job_id: worker?.jobId ?? null,
+    started_at: startedAt.toISOString(),
+    finished_at: finishedAt.toISOString(),
+    duration_ms: durationMs,
+    chunks: ctx.chunksCount,
+    extraction: ctx.extractionRecord,
+  }
 }
 
 /** Validates and narrows an unknown value to a {@link LastRun}. */

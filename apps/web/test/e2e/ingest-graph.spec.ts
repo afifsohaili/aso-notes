@@ -19,6 +19,7 @@ import {
   wipeNoteEdges,
 } from '../../server/lib/graph'
 import { PIPELINES } from '../../server/lib/pipeline/ids'
+import { parseLastRun } from '../../server/lib/pipeline/last-run'
 import { createStageRegistry } from '../../server/lib/pipeline/singleton'
 import { StoreGraphStage } from '../../server/lib/pipeline/stages/store-graph'
 import { ingestNote } from '../../server/lib/sync/ingest'
@@ -127,11 +128,11 @@ async function givenNote(trx: any, workspaceId: string, path: string, content: s
     .executeTakeFirstOrThrow()
 }
 
-async function ingest(trx: any, noteId: string, extraction: object) {
+async function ingest(trx: any, noteId: string, extraction: object, worker?: { attemptsMade?: number, jobId?: string }) {
   const embedding = stubEmbeddingProvider()
   const llm = stubLLM(extraction)
   const registry = createStageRegistry({ llmProvider: llm.provider, embeddingProvider: embedding.provider })
-  await ingestNote({ db: trx, noteId, options: { registry, pipelines: PIPELINES } })
+  await ingestNote({ db: trx, noteId, options: { registry, pipelines: PIPELINES }, worker })
   return { embeddingCalls: embedding.calls, llmRequests: llm.requests }
 }
 
@@ -255,6 +256,61 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
       .executeTakeFirstOrThrow()
     expect(after.status).toBe('ingested')
     expect(after.ingested_hash).toBe(note.content_hash)
+  })
+
+  test('records a successful LastRun on the notes row after ingestion', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm4-lastrun-ok')
+    await ensureNotesGraphCatalog(trx)
+    const note = await givenNote(trx, workspaceId, '/proj/main.md', NOTE_CONTENT)
+    const { llmRequests } = await ingest(trx, note.id, EXTRACTION)
+
+    expect(llmRequests).toHaveLength(1)
+    const after = await trx
+      .selectFrom('notes')
+      .select(['status', 'last_run'])
+      .where('id', '=', note.id)
+      .executeTakeFirstOrThrow()
+
+    expect(after.status).toBe('ingested')
+    const lastRun = parseLastRun(after.last_run)
+    expect(lastRun).not.toBeNull()
+    expect(lastRun!.status).toBe('succeeded')
+    expect(lastRun!.pipeline).toBe('markdown-note-with-links')
+    expect(lastRun!.failed_stage).toBeNull()
+    expect(lastRun!.error).toBeNull()
+    expect(lastRun!.attempt).toBe(0)
+    expect(lastRun!.job_id).toBeNull()
+    expect(lastRun!.chunks).toBe(2)
+    expect(lastRun!.duration_ms).toBeGreaterThan(0)
+    expect(lastRun!.extraction).toMatchObject({
+      strategy: 'top-k',
+      model: 'unknown',
+      usage: null,
+      response: JSON.stringify(EXTRACTION),
+      counts: { concepts: 2, relations: 1, mentions: 2, tags: 1 },
+    })
+    expect(lastRun!.extraction!.messages).toHaveLength(2)
+    expect(lastRun!.extraction!.messages[0]!.role).toBe('system')
+    expect(lastRun!.extraction!.messages[1]!.role).toBe('user')
+  })
+
+  test('records worker attempt and job id when provided', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm4-lastrun-worker')
+    await ensureNotesGraphCatalog(trx)
+    const note = await givenNote(trx, workspaceId, '/proj/main.md', NOTE_CONTENT)
+
+    await ingest(trx, note.id, EXTRACTION, { attemptsMade: 3, jobId: 'job-99' })
+
+    const after = await trx
+      .selectFrom('notes')
+      .select('last_run')
+      .where('id', '=', note.id)
+      .executeTakeFirstOrThrow()
+    const lastRun = parseLastRun(after.last_run)
+    expect(lastRun).not.toBeNull()
+    expect(lastRun!.status).toBe('succeeded')
+    expect(lastRun!.attempt).toBe(3)
+    expect(lastRun!.job_id).toBe('job-99')
   })
 
   test('mirrors nodes and edges into AGE in the same run', async ({ trx }) => {
@@ -472,10 +528,21 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
 
     const after = await trx
       .selectFrom('notes')
-      .select('status')
+      .select(['status', 'last_run'])
       .where('id', '=', note.id)
       .executeTakeFirstOrThrow()
     expect(after.status).toBe('failed')
+
+    const lastRun = parseLastRun(after.last_run)
+    expect(lastRun).not.toBeNull()
+    expect(lastRun!.status).toBe('failed')
+    expect(lastRun!.failed_stage).toBe('extract-graph')
+    expect(lastRun!.error).toMatchObject({ name: 'Error', message: 'openrouter is down' })
+    expect(lastRun!.error!.stack).toContain('openrouter is down')
+    expect(lastRun!.attempt).toBe(0)
+    expect(lastRun!.job_id).toBeNull()
+    expect(lastRun!.duration_ms).toBeGreaterThanOrEqual(0)
+    expect(lastRun!.extraction).toBeNull()
   })
 
   test('a failure inside the store-graph transaction rolls back every relational write (atomicity)', async ({ trx }) => {
@@ -515,10 +582,18 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
 
     const after = await trx
       .selectFrom('notes')
-      .select('status')
+      .select(['status', 'last_run'])
       .where('id', '=', note.id)
       .executeTakeFirstOrThrow()
     expect(after.status).toBe('failed')
+
+    const lastRun = parseLastRun(after.last_run)
+    expect(lastRun).not.toBeNull()
+    expect(lastRun!.status).toBe('failed')
+    expect(lastRun!.failed_stage).toBe('store-graph')
+    expect(lastRun!.error).toMatchObject({ name: 'Error', message: 'age exploded' })
+    expect(lastRun!.extraction).not.toBeNull()
+    expect(lastRun!.extraction!.counts).toEqual({ concepts: 2, relations: 1, mentions: 2, tags: 1 })
   })
 })
 

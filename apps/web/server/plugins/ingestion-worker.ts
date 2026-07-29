@@ -27,7 +27,14 @@ export default defineNitroPlugin(() => {
     INGESTION_QUEUE_NAME,
     async (job: Job<IngestNoteJobData>) => {
       const db = useDatabase({ databaseUrl: config.databaseUrl })
-      await ingestNote({ db, noteId: job.data.noteId })
+      await ingestNote({
+        db,
+        noteId: job.data.noteId,
+        worker: {
+          attemptsMade: job.attemptsMade,
+          jobId: job.id ?? null,
+        },
+      })
     },
     {
       concurrency: 2,

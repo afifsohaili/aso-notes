@@ -81,7 +81,7 @@ interface LastRun {
 
 - [x] **O1** — Migration (`notes.last_run` jsonb) + types.d.ts + schema dump + schema/TS type + schema test. **DONE 2026-07-29**
 - [x] **O2** — Pipeline capture: context accumulation, run-pipeline stage tracking, extract-graph payload capture, LLM usage surface. **DONE 2026-07-29**
-- **O3** — `ingest.ts` success/failure LastRun writes + worker attempt/job-id plumbing.
+- [x] **O3** — `ingest.ts` success/failure LastRun writes + worker attempt/job-id plumbing. **DONE 2026-07-29**
 - **O4** — Notes API serialization (list=summary, detail=full) + note UI badge/panel.
 
 Each milestone: TDD (feature specs: ingest a note → verify `last_run` row content; failure case → verify `failed_stage` + error), update this doc with status + divergences, commit.
@@ -112,6 +112,21 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
   - `test/e2e/pipeline-runner.spec.ts`: end-to-end pipeline with real chunk + extract stages, asserting `currentStage`, `chunksCount`, and full extraction payload.
 - Full suite: 425 passed / 4 skipped; lint clean.
 - **Divergence from plan:** `PipelineContext` names the capture slot `extractionRecord` (not `extraction`) to avoid shadowing the existing parsed `ctx.extraction: GraphExtraction`. The model is returned from `complete()` rather than threading it through `ExtractGraphStage`'s constructor, which keeps the provider interface as the seam and avoids changing `createStageRegistry`.
+
+### O3 implementation notes
+
+- `server/lib/pipeline/last-run.ts`: added `buildLastRun(ctx, options)` helper and `serializeError` to turn a completed/failed run into a validated `LastRun` object. It records `status` ('succeeded'/'failed'), `failed_stage` (current stage on failure), `error` (Error → name/message/stack; non-Error → `Error`/`String(e)`), `attempt`/`job_id` from optional worker metadata, timing, chunks count, and the extraction payload.
+- `server/lib/sync/ingest.ts`: `ingestNote` now creates the `PipelineContext` before the try/catch so the catch path can build a failure record. After `runPipeline` succeeds it writes `last_run` to the notes row (the status flip is already committed by `store-graph`). On failure it writes `status='failed'` and `last_run` before rethrowing, so every completed run leaves a record even when a stage throws mid-pipeline. The success record is written after the pipeline returns, outside the store-graph transaction, matching the accepted crash-gap trade-off in the plan.
+- `server/plugins/ingestion-worker.ts`: the BullMQ worker passes `attemptsMade` and `job.id` through as `worker` metadata; manual/API callers (inline dispatcher, `process.post`, `retry.post`) leave `worker` undefined, so `attempt` is 0 and `job_id` is null.
+- `server/lib/sync/process.ts`, `server/api/notes/process.post.ts`, `server/api/notes/retry.post.ts`: unchanged — they flow through the dispatcher and never construct a `worker` object, so their runs record `attempt: 0` / `job_id: null`.
+- Tests:
+  - `test/unit/last-run-assembly.spec.ts` (new): `buildLastRun` edge cases — success/failure shape, non-Error throws, missing extraction, worker metadata, non-negative duration.
+  - `test/e2e/ingest-graph.spec.ts`: added success last_run assertions (status, pipeline, chunks, duration, extraction payload); extended the LLM-failure and store-graph-atomicity tests to assert `last_run.status='failed'`, failing stage, error shape, and extraction null vs. present; added a worker test that passes `attemptsMade`/`jobId` and asserts they are recorded.
+- Full suite: 433 passed / 4 skipped; lint clean.
+- **Divergences from plan:**
+  - The stored status value is `'succeeded'` (matching the existing `LastRun` enum and validator), not `'success'` as used in the prompt.
+  - Note path/title/content_hash are **not** duplicated inside `last_run` because the fixed `LastRun` schema does not include them; they remain available on the `notes` row.
+  - The worker plumbing uses the BullMQ field names `attemptsMade`/`jobId` internally and maps them to the `LastRun` fields `attempt`/`job_id` at write time.
 
 ## Deferred / rejected
 
