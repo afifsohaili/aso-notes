@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import ChevronDownIcon from '~icons/heroicons/chevron-down'
 import ChevronRightIcon from '~icons/heroicons/chevron-right'
 import DocumentIcon from '~icons/heroicons/document'
 import FolderIcon from '~icons/heroicons/folder'
+import { useExpandedFolders } from '~/composables/use-expanded-folders'
 
 export interface FolderNode {
   name: string
@@ -22,19 +22,14 @@ const emit = defineEmits<{
   (e: 'select', path: string): void
 }>()
 
-const expanded = ref<Set<string>>(new Set())
+const { isExpanded: isExpandedPath, toggle: togglePath } = useExpandedFolders()
 
 function toggle(folder: FolderNode) {
-  if (expanded.value.has(folder.path)) {
-    expanded.value.delete(folder.path)
-  }
-  else {
-    expanded.value.add(folder.path)
-  }
+  togglePath(folder.path, props.selectedPath)
 }
 
 function isExpanded(folder: FolderNode): boolean {
-  return expanded.value.has(folder.path)
+  return isExpandedPath(folder.path, props.selectedPath)
 }
 
 function isSelected(folder: FolderNode): boolean {
