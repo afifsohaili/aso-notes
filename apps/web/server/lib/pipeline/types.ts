@@ -19,11 +19,12 @@ export interface PipelineNote {
 
 /**
  * Structured graph extraction produced by the extract-graph stage (M4).
- * Shape locked in the plan: concepts, relations, chunk-level mentions, plus
- * suggested tag names.
+ * Shape locked in the plan: topics, concepts (each assigned to 1–3 topics),
+ * relations, chunk-level mentions, plus suggested tag names.
  */
 export interface GraphExtraction {
-  concepts: { name: string, description: string }[]
+  topics: { name: string, description: string }[]
+  concepts: { name: string, description: string, topics: string[] }[]
   relations: { from: string, to: string, type: string, description?: string }[]
   mentions: { concept: string, chunkRefs: number[] }[]
   tags: string[]

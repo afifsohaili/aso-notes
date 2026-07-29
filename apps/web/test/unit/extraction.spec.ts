@@ -32,6 +32,10 @@ describe('buildExtractionMessages', () => {
         { name: 'Kysely', description: 'type-safe SQL' },
       ],
       existingTags: ['databases', 'ai'],
+      existingTopics: [
+        { name: 'Engineering', description: 'building software' },
+      ],
+      strategyLabel: 'existing vocabulary',
     })
 
     expect(messages).toHaveLength(2)
@@ -45,6 +49,9 @@ describe('buildExtractionMessages', () => {
     expect(user).toContain('Kysely')
     expect(user).toContain('databases')
     expect(user).toContain('ai')
+    expect(user).toContain('## Existing topics (reuse these when they fit)')
+    expect(user).toContain('Engineering')
+    expect(user).toContain('building software')
     // chunks are enumerated so the model can reference them by index
     expect(user).toContain('[chunk 0]')
     expect(user).toContain('[chunk 1]')
@@ -58,10 +65,13 @@ describe('buildExtractionMessages', () => {
       chunks,
       existingConcepts: [],
       existingTags: [],
+      existingTopics: [],
+      strategyLabel: 'existing vocabulary',
     })
     const user = messages[1]!.content as string
     expect(user).toMatch(/no existing concepts/i)
     expect(user).toMatch(/no existing tags/i)
+    expect(user).toMatch(/no existing topics/i)
   })
 
   it('omits the folder-context section when there is no cover chain', () => {
@@ -71,28 +81,45 @@ describe('buildExtractionMessages', () => {
       chunks,
       existingConcepts: [],
       existingTags: [],
+      existingTopics: [],
+      strategyLabel: 'existing vocabulary',
     })[1]!.content as string
     expect(withCover).not.toContain('Folder context')
+  })
+
+  it('labels the concepts section as top relevant when strategyLabel is provided', () => {
+    const user = buildExtractionMessages({
+      noteTitle: 'n',
+      notePath: '/n.md',
+      chunks,
+      existingConcepts: [{ name: 'A', description: 'a' }],
+      existingTags: [],
+      existingTopics: [],
+      strategyLabel: 'top relevant',
+    })[1]!.content as string
+    expect(user).toContain('## Existing concepts (top relevant, reuse these when they match)')
   })
 })
 
 describe('parseExtraction', () => {
   it('parses a well-formed payload verbatim', () => {
     const parsed = parseExtraction(JSON.stringify({
-      concepts: [{ name: 'Alpha', description: 'first' }],
+      concepts: [{ name: 'Alpha', description: 'first', topics: ['Engineering'] }],
       relations: [{ from: 'Alpha', to: 'Beta', type: 'enables', description: 'x' }],
       mentions: [{ concept: 'Alpha', chunkRefs: [0, 1] }],
       tags: ['databases'],
+      topics: [{ name: 'Engineering', description: 'systems' }],
     }), 2)
-    expect(parsed.concepts).toEqual([{ name: 'Alpha', description: 'first' }])
+    expect(parsed.concepts).toEqual([{ name: 'Alpha', description: 'first', topics: ['Engineering'] }])
     expect(parsed.relations).toEqual([{ from: 'Alpha', to: 'Beta', type: 'enables', description: 'x' }])
     expect(parsed.mentions).toEqual([{ concept: 'Alpha', chunkRefs: [0, 1] }])
     expect(parsed.tags).toEqual(['databases'])
+    expect(parsed.topics).toEqual([{ name: 'Engineering', description: 'systems' }])
   })
 
   it('tolerates missing fields, defaulting them to empty lists', () => {
     const parsed = parseExtraction('{}', 3)
-    expect(parsed).toEqual({ concepts: [], relations: [], mentions: [], tags: [] })
+    expect(parsed).toEqual({ concepts: [], relations: [], mentions: [], tags: [], topics: [] })
   })
 
   it('drops chunk refs outside the chunk range and non-integers', () => {
@@ -126,7 +153,7 @@ describe('parseExtraction', () => {
       ],
       tags: ['good', 42, '', null],
     }), 1)
-    expect(parsed.concepts).toEqual([{ name: 'Good', description: 'ok' }])
+    expect(parsed.concepts).toEqual([{ name: 'Good', description: 'ok', topics: [] }])
     expect(parsed.relations).toEqual([{ from: 'A', to: 'B', type: 'x' }])
     expect(parsed.tags).toEqual(['good'])
   })

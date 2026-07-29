@@ -1,6 +1,8 @@
 import type { LLMProvider } from '../../ai/types'
 import type { PipelineContext } from '../context'
 import type { PipelineDb, Stage } from '../types'
+import type { EmbeddedChunk, Vocabulary, VocabularyStrategy } from '../vocabulary/types'
+import { resolveVocabularyStrategy } from '../../settings'
 import {
   buildExtractionMessages,
   EXTRACTION_SCHEMA,
@@ -9,39 +11,16 @@ import {
 } from '../extraction'
 import { EXTRACT_GRAPH_STAGE } from '../ids'
 
-export interface ExtractionVocabulary {
-  concepts: { name: string, description: string | null }[]
-  tags: string[]
-}
-
-export type VocabularyLoader = (db: PipelineDb, workspaceId: string) => Promise<ExtractionVocabulary>
-
 /**
- * Default vocabulary: the workspace's full existing concept list (name +
- * description, for dedup) and tag names (vocabulary hints) — plan
- * §extract-graph.
+ * Resolver that selects the vocabulary strategy for a workspace. The default
+ * reads `extraction.vocabulary_strategy` from workspace_settings and falls
+ * back to the code default.
  */
-export const loadExtractionVocabulary: VocabularyLoader = async (db, workspaceId) => {
-  const [concepts, tags] = await Promise.all([
-    db
-      .selectFrom('concepts')
-      .select(['name', 'description'])
-      .where('workspace_id', '=', workspaceId)
-      .orderBy('name')
-      .execute(),
-    db
-      .selectFrom('tags')
-      .select('name')
-      .where('workspace_id', '=', workspaceId)
-      .orderBy('name')
-      .execute(),
-  ])
-  return { concepts, tags: tags.map(t => t.name) }
-}
+export type VocabularyStrategyResolver = (db: PipelineDb, workspaceId: string) => Promise<VocabularyStrategy>
 
 /**
  * Whole-note structured extraction (plan §extract-graph): one LLM call with a
- * json_schema response format returning concepts, relations, chunk-level
+ * json_schema response format returning topics, concepts, relations, chunk-level
  * mentions, and suggested tags. The result lands on ctx.extraction; nothing
  * persists until store-graph.
  */
@@ -50,11 +29,16 @@ export class ExtractGraphStage implements Stage {
 
   constructor(
     private readonly llmProvider: LLMProvider,
-    private readonly loadVocabulary: VocabularyLoader = loadExtractionVocabulary,
+    private readonly resolveStrategy: VocabularyStrategyResolver = resolveVocabularyStrategy,
   ) {}
 
   async invoke(ctx: PipelineContext): Promise<void> {
-    const vocabulary = await this.loadVocabulary(ctx.db, ctx.workspaceId)
+    const strategy = await this.resolveStrategy(ctx.db, ctx.workspaceId)
+    const vocabulary = await strategy.loadVocabulary(ctx.db, ctx.workspaceId, this.embeddedChunks(ctx))
+
+    ctx.vocabularyStrategy = { id: strategy.id, mergeOnStore: strategy.mergeOnStore }
+    ctx.existingTopics = vocabulary.topics
+
     const chunks = ctx.chunks ?? []
 
     const result = await this.llmProvider.complete({
@@ -65,6 +49,8 @@ export class ExtractGraphStage implements Stage {
         chunks,
         existingConcepts: vocabulary.concepts,
         existingTags: vocabulary.tags,
+        existingTopics: vocabulary.topics,
+        strategyLabel: strategy.id === 'full' ? undefined : 'top relevant',
       }),
       responseFormat: {
         type: 'json_schema',
@@ -77,5 +63,27 @@ export class ExtractGraphStage implements Stage {
       throw new Error('extract-graph: LLM returned no content')
 
     ctx.extraction = parseExtraction(content, chunks.length)
+  }
+
+  private embeddedChunks(ctx: PipelineContext): EmbeddedChunk[] {
+    if (ctx.embeddedChunks && ctx.embeddedChunks.length > 0)
+      return ctx.embeddedChunks
+    return (ctx.chunks ?? []).filter((c): c is EmbeddedChunk => Array.isArray(c.embedding))
+  }
+}
+
+/**
+ * Backwards-compatible vocabulary loader that ignores the embedded-chunks input.
+ * Useful for tests and callers that only care about the full workspace vocab.
+ */
+export function vocabularyLoaderToStrategy(
+  loadVocabulary: (db: PipelineDb, workspaceId: string) => Promise<Vocabulary>,
+): VocabularyStrategy {
+  return {
+    id: 'test-loader',
+    async loadVocabulary(db, workspaceId) {
+      return loadVocabulary(db, workspaceId)
+    },
+    mergeOnStore: false,
   }
 }

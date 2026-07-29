@@ -126,7 +126,17 @@ interface VocabularyStrategy {
 - **Types and schema dump regenerated**: `packages/shared/types.d.ts` now includes `Topics`, `ConceptTopics`, and `WorkspaceSettings`; `apps/web/db/schema.sql` updated.
 - **Full suite green**: 330 passed, 4 skipped; lint clean.
 
-- **M2 — Extraction seam + strategies**: `VocabularyStrategy` interface + registry, topic schema + prompt rules, top-K retrieval via chunk-embedding centroid, blind-merge vocabulary omission, settings resolution (workspace setting → code default), tolerant topic parsing, unit + stage specs.
+- **M2 — Extraction seam + strategies**: `VocabularyStrategy` interface + registry, topic schema + prompt rules, top-K retrieval via chunk-embedding centroid, blind-merge vocabulary omission, settings resolution (workspace setting → code default), tolerant topic parsing, unit + stage specs. **DONE (2026-07-29)** — full suite 341 passed, 4 skipped; lint clean. Notes below.
+
+### M2 implementation notes (divergences & decisions)
+
+- **Strategy seam at `server/lib/pipeline/vocabulary/`**: `types.ts` (`VocabularyStrategy = { id, loadVocabulary(db, workspaceId, embeddedChunks), mergeOnStore }`, `Vocabulary = { concepts, tags, topics }`), `index.ts` registry (`full`, `top-k`, `blind-merge`; unknown id throws), one file per strategy. Default = `top-k`.
+- **Settings reader at `server/lib/settings.ts`**: `getWorkspaceSetting` + `resolveVocabularyStrategy` reading `extraction.vocabulary_strategy` from `workspace_settings`, fallback to hardcoded `'top-k'`. No env vars, per plan.
+- **Extraction schema gains required `topics: [{name, description}]`** (note-level) and per-concept optional `topics: string[]` references. System prompt instructs 1–3 topics per note, reuse-first, concepts assigned to 1–3 topics. Prompt labels the concepts section "existing" vs "top relevant" via `strategyLabel`.
+- **top-K retrieval**: centroid = mean of the note's embedded chunk embeddings (embed-chunks runs before extract-graph; context now carries embedded chunks). K=50 default. Concepts without embeddings are excluded from ranking (rare; only legacy rows).
+- **blind-merge** returns empty concepts list (tags + topics still injected) and sets `mergeOnStore: true`; flag is exposed on pipeline context for M3's store-graph similarity pass.
+- **Concepts without embeddings excluded from top-K ranking** — noted as accepted divergence.
+- **Tests**: unit specs for all three strategies + registry + settings reader (`test/unit/pipeline/vocabulary.spec.ts`, `test/unit/settings.spec.ts`), e2e stage spec (`test/e2e/extract-graph-stage.spec.ts`) with stubbed LLM verifying prompt vocabulary sections per strategy and schema `topics` requirement; existing extraction/ingest specs updated for the new required field.
 - **M3 — Store-graph**: topic resolution/embed/upsert, `concept_topics`, blind-merge similarity pass with audit logging, AGE mirror helpers, atomic transaction extended.
 - **M4 — Settings UI**: `/api/settings` GET/PATCH, `/settings` page + navbar link, strategy select + threshold input.
 - **M5 — Graph API + UI**: Topic nodes/color, topic-grouped list panel, concept detail updates.

@@ -2,7 +2,7 @@ import type { CompletionRequest, LLMProvider } from '../../server/lib/ai/types'
 import type { PipelineNote } from '../../server/lib/pipeline/types'
 import { describe, expect, it } from 'vitest'
 import { PipelineContext } from '../../server/lib/pipeline/context'
-import { ExtractGraphStage } from '../../server/lib/pipeline/stages/extract-graph'
+import { ExtractGraphStage, vocabularyLoaderToStrategy } from '../../server/lib/pipeline/stages/extract-graph'
 
 function fakeNote(overrides: Partial<PipelineNote> = {}): PipelineNote {
   return {
@@ -31,7 +31,7 @@ function stubLLM(payload: string | null, seen?: CompletionRequest[]): LLMProvide
   }
 }
 
-const noVocab = async () => ({ concepts: [], tags: [] })
+const noVocab = () => vocabularyLoaderToStrategy(async () => ({ concepts: [], tags: [], topics: [] }))
 
 describe('extractGraphStage', () => {
   it('requests structured output with the extraction json schema', async () => {
@@ -46,6 +46,7 @@ describe('extractGraphStage', () => {
     expect(format?.type).toBe('json_schema')
     if (format?.type === 'json_schema') {
       expect(format.jsonSchema.name).toBe('graph_extraction')
+      expect(format.jsonSchema.schema).toHaveProperty('properties.topics')
       expect(format.jsonSchema.schema).toHaveProperty('properties.concepts')
       expect(format.jsonSchema.schema).toHaveProperty('properties.mentions')
       expect(format.jsonSchema.schema).toHaveProperty('properties.tags')
@@ -58,11 +59,12 @@ describe('extractGraphStage', () => {
     ctx.coverChain = 'cover context'
     ctx.chunks = [{ index: 0, text: 'about kysely', tokenCount: 3, headingPath: ['DB'] }]
 
-    const vocab = async () => ({
-      concepts: [{ name: 'Kysely', description: 'type-safe SQL' }],
+    const strategy = vocabularyLoaderToStrategy(async () => ({
+      concepts: [{ id: 'c1', name: 'Kysely', description: 'type-safe SQL' }],
       tags: ['databases'],
-    })
-    await new ExtractGraphStage(stubLLM('{}', seen), vocab).invoke(ctx)
+      topics: [],
+    }))
+    await new ExtractGraphStage(stubLLM('{}', seen), () => Promise.resolve(strategy)).invoke(ctx)
 
     const user = seen[0]!.messages[1]!.content as string
     expect(user).toContain('cover context')
@@ -70,6 +72,7 @@ describe('extractGraphStage', () => {
     expect(user).toContain('about kysely')
     expect(user).toContain('Kysely')
     expect(user).toContain('databases')
+    expect(ctx.vocabularyStrategy).toEqual({ id: 'test-loader', mergeOnStore: false })
   })
 
   it('parses the model payload into ctx.extraction, dropping refs beyond ctx.chunks', async () => {
@@ -83,7 +86,7 @@ describe('extractGraphStage', () => {
 
     await new ExtractGraphStage(stubLLM(payload), noVocab).invoke(ctx)
 
-    expect(ctx.extraction?.concepts).toEqual([{ name: 'Alpha', description: 'first' }])
+    expect(ctx.extraction?.concepts).toEqual([{ name: 'Alpha', description: 'first', topics: [] }])
     expect(ctx.extraction?.mentions).toEqual([{ concept: 'Alpha', chunkRefs: [0] }])
     expect(ctx.extraction?.tags).toEqual(['t'])
   })

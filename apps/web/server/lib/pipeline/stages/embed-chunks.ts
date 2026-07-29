@@ -2,6 +2,7 @@ import type { EmbeddingProvider } from '../../ai/types'
 import type { PipelineChunk } from '../chunker'
 import type { PipelineContext } from '../context'
 import type { Stage } from '../types'
+import type { EmbeddedChunk } from '../vocabulary/types'
 import { EMBEDDING_DIMENSIONS } from '../../ai'
 import { EMBED_CHUNKS_STAGE } from '../ids'
 
@@ -49,5 +50,7 @@ export class EmbedChunksStage implements Stage {
         batch[i]!.embedding = embedding
       }
     }
+
+    ctx.embeddedChunks = chunks.filter((c): c is EmbeddedChunk => Array.isArray(c.embedding))
   }
 }

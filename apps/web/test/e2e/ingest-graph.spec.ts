@@ -41,8 +41,8 @@ const NOTE_CONTENT = [
 
 const EXTRACTION = {
   concepts: [
-    { name: 'Graph RAG', description: 'retrieval over a knowledge graph' },
-    { name: 'Kysely', description: 'type-safe SQL builder' },
+    { name: 'Graph RAG', description: 'retrieval over a knowledge graph', topics: ['Engineering'] },
+    { name: 'Kysely', description: 'type-safe SQL builder', topics: ['Engineering'] },
   ],
   relations: [{ from: 'Graph RAG', to: 'Kysely', type: 'implemented-with' }],
   mentions: [
@@ -50,6 +50,7 @@ const EXTRACTION = {
     { concept: 'Kysely', chunkRefs: [1] },
   ],
   tags: ['databases'],
+  topics: [{ name: 'Engineering', description: 'software engineering topics' }],
 }
 
 function stubEmbeddingProvider() {
@@ -287,12 +288,13 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
     await ingest(trx, first.id, EXTRACTION)
     const secondRun = await ingest(trx, second.id, {
       concepts: [
-        { name: 'graph  RAG!', description: 'a different description' },
-        { name: 'Postgres', description: 'the database' },
+        { name: 'graph  RAG!', description: 'a different description', topics: ['Engineering'] },
+        { name: 'Postgres', description: 'the database', topics: ['Engineering'] },
       ],
       relations: [],
       mentions: [{ concept: 'Graph RAG', chunkRefs: [0] }],
       tags: [],
+      topics: [],
     })
 
     // concept reused despite different spelling; description NOT overwritten
@@ -359,12 +361,13 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
     // re-ingest with a changed extraction that re-suggests the dismissed tag
     await ingest(trx, note.id, {
       concepts: [
-        { name: 'Graph RAG', description: 'retrieval over a knowledge graph' },
-        { name: 'Postgres', description: 'the database' },
+        { name: 'Graph RAG', description: 'retrieval over a knowledge graph', topics: ['Engineering'] },
+        { name: 'Postgres', description: 'the database', topics: ['Engineering'] },
       ],
       relations: [],
       mentions: [{ concept: 'Postgres', chunkRefs: [1] }],
       tags: ['databases', 'search'],
+      topics: [],
     })
 
     // no duplicate note-derived rows

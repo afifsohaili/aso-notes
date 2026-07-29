@@ -11,7 +11,7 @@ import type { GraphExtraction } from './types'
 export const EXTRACTION_SCHEMA_NAME = 'graph_extraction'
 
 /**
- * Normalization for concept/tag dedup keys (`name_normalized`, plan §data
+ * Normalization for concept/tag/topic dedup keys (`name_normalized`, plan §data
  * model): lowercase, collapse whitespace/punctuation runs to single spaces.
  */
 export function normalizeGraphName(name: string): string {
@@ -25,6 +25,18 @@ export function normalizeGraphName(name: string): string {
 export const EXTRACTION_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
+    topics: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+        },
+        required: ['name', 'description'],
+        additionalProperties: false,
+      },
+    },
     concepts: {
       type: 'array',
       items: {
@@ -32,6 +44,7 @@ export const EXTRACTION_SCHEMA: Record<string, unknown> = {
         properties: {
           name: { type: 'string' },
           description: { type: 'string' },
+          topics: { type: 'array', items: { type: 'string' } },
         },
         required: ['name', 'description'],
         additionalProperties: false,
@@ -65,7 +78,7 @@ export const EXTRACTION_SCHEMA: Record<string, unknown> = {
     },
     tags: { type: 'array', items: { type: 'string' } },
   },
-  required: ['concepts', 'relations', 'mentions', 'tags'],
+  required: ['topics', 'concepts', 'relations', 'mentions', 'tags'],
   additionalProperties: false,
 }
 
@@ -75,16 +88,24 @@ export interface ExtractionPromptInput {
   /** Merged folder-cover chain (root→leaf) when the note sits under covers. */
   coverChain?: string
   chunks: { index: number, text: string, headingPath: string[] }[]
-  /** Every concept already known in the workspace — the dedup vocabulary. */
+  /** Concepts to inject as existing vocabulary (empty for blind-merge). */
   existingConcepts: { name: string, description: string | null }[]
   /** Every tag name already used in the workspace — vocabulary hints. */
   existingTags: string[]
+  /** Every topic already used in the workspace — vocabulary hints. */
+  existingTopics: { name: string, description: string | null }[]
+  /**
+   * Label for the existing-concepts section header, e.g. 'existing' for full or
+   * 'top relevant' for top-k. Omit to use the default 'existing' label.
+   */
+  strategyLabel?: string
 }
 
 const SYSTEM_PROMPT = [
   'You are a knowledge-graph extractor for a personal notes system.',
   'Given one note (presented as enumerated chunks), extract:',
-  '- concepts: the salient ideas, entities, and topics, each with a one-sentence description.',
+  '- topics: a small set of high-level themes (1–3 per note). Reuse existing topic names whenever they fit; coin new topics sparingly — the workspace should have a handful of stable topics, not one per note.',
+  '- concepts: the salient ideas, entities, and topics, each with a one-sentence description. Assign each concept to 1–3 topics from the extracted topics list.',
   '- relations: typed links between extracted or existing concepts (from, to, a short free-text type).',
   '- mentions: for each concept, the indices of the chunks where it appears (chunkRefs).',
   '- tags: a small set of suggested tag names for the note.',
@@ -114,10 +135,16 @@ export function buildExtractionMessages(input: ExtractionPromptInput): ChatMessa
   })
   sections.push(`## Chunks\n${chunkLines.join('\n\n')}`)
 
+  const label = input.strategyLabel ? ` (${input.strategyLabel}, reuse these when they match)` : ' (reuse these when they match)'
   const conceptLines = input.existingConcepts.length > 0
     ? input.existingConcepts.map(c => `- ${c.name}: ${c.description ?? ''}`.trimEnd()).join('\n')
     : '(no existing concepts yet)'
-  sections.push(`## Existing concepts (reuse these when they match)\n${conceptLines}`)
+  sections.push(`## Existing concepts${label}\n${conceptLines}`)
+
+  const topicLines = input.existingTopics.length > 0
+    ? input.existingTopics.map(t => `- ${t.name}: ${t.description ?? ''}`.trimEnd()).join('\n')
+    : '(no existing topics yet)'
+  sections.push(`## Existing topics (reuse these when they fit)\n${topicLines}`)
 
   const tagLine = input.existingTags.length > 0
     ? input.existingTags.join(', ')
@@ -138,6 +165,14 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value))
+    return []
+  return value
+    .map((entry): string | null => asNonEmptyString(entry))
+    .filter((entry): entry is string => entry !== null)
+}
+
 /**
  * Parse the model's structured output tolerantly (plan §failure model:
  * hallucinated chunk refs are dropped). Malformed entries are skipped rather
@@ -147,6 +182,21 @@ function asNonEmptyString(value: unknown): string | null {
 export function parseExtraction(raw: string, chunkCount: number): GraphExtraction {
   const payload: unknown = JSON.parse(raw)
   const root = isRecord(payload) ? payload : {}
+
+  const topics: GraphExtraction['topics'] = []
+  if (Array.isArray(root.topics)) {
+    for (const entry of root.topics) {
+      if (!isRecord(entry))
+        continue
+      const name = asNonEmptyString(entry.name)
+      if (!name)
+        continue
+      topics.push({
+        name,
+        description: typeof entry.description === 'string' ? entry.description : '',
+      })
+    }
+  }
 
   const concepts: GraphExtraction['concepts'] = []
   if (Array.isArray(root.concepts)) {
@@ -159,6 +209,7 @@ export function parseExtraction(raw: string, chunkCount: number): GraphExtractio
       concepts.push({
         name,
         description: typeof entry.description === 'string' ? entry.description : '',
+        topics: asStringArray(entry.topics),
       })
     }
   }
@@ -211,5 +262,5 @@ export function parseExtraction(raw: string, chunkCount: number): GraphExtractio
     }
   }
 
-  return { concepts, relations, mentions, tags }
+  return { topics, concepts, relations, mentions, tags }
 }

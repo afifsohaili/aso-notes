@@ -1,5 +1,6 @@
 import type { PipelineChunk } from './chunker'
 import type { GraphExtraction, PipelineDb, PipelineNote } from './types'
+import type { EmbeddedChunk } from './vocabulary/types'
 
 /**
  * Mutable bag passed through every stage of a pipeline run
@@ -14,7 +15,13 @@ export class PipelineContext {
   /** Merged folder-cover chain, root→leaf, joined with blank lines. */
   coverChain?: string
   chunks?: PipelineChunk[]
+  /** Chunks after embedding by embed-chunks; available to downstream stages. */
+  embeddedChunks?: EmbeddedChunk[]
   extraction?: GraphExtraction
+  /** Vocabulary strategy resolved for this workspace; consumed by store-graph (M3). */
+  vocabularyStrategy?: { id: string, mergeOnStore: boolean }
+  /** Existing topics loaded for extraction; consumed by store-graph (M3). */
+  existingTopics?: { id: string, name: string, description: string | null }[]
   /** Free-form named outputs written via setOutput (e.g. 'sources', 'links'). */
   readonly extra: Record<string, unknown> = {}
 
