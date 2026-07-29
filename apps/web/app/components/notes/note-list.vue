@@ -51,6 +51,7 @@ function isFailed(note: NoteListItem): boolean {
       <li
         v-for="note in props.notes"
         :key="note.path"
+        data-testid="note-list-item"
         class="px-4 py-3 hover:bg-gray-50 cursor-pointer"
         :class="selectedPath === note.path ? 'bg-indigo-50' : ''"
         @click="emit('select', note.path)"

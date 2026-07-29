@@ -49,7 +49,7 @@ function handleNodeClick(node: GraphNode) {
 }
 
 function openNote(path: string) {
-  router.push(`/notes?note=${encodeURIComponent(path)}`)
+  router.push(`/notes${path}`)
 }
 </script>
 

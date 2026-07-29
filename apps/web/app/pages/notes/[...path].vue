@@ -4,6 +4,20 @@ import type { NoteDetailNote } from '~/components/notes/note-detail.vue'
 import type { NoteListItem } from '~/components/notes/note-list.vue'
 import { useI18n } from 'vue-i18n'
 
+type ResolveResponse
+  = | { type: 'note', path: string, folder: string | null }
+    | { type: 'folder', path: string }
+    | { type: 'not_found' }
+
+interface PageData {
+  resolved: ResolveResponse
+  folders: FolderNode[]
+  notes: NoteListItem[]
+  note: NoteDetailNote | null
+  selectedFolderPath: string | null
+  selectedNotePath: string | null
+}
+
 definePageMeta({
   middleware: ['auth'],
   layout: 'default',
@@ -13,27 +27,48 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-// Redirect old ?note= URLs to the canonical path-based URL.
-if (typeof route.query.note === 'string' && route.query.note) {
-  await navigateTo(`/notes${route.query.note}`, { replace: true })
+const rawPath = computed(() => (route.params.path as string[]).join('/'))
+
+const { data: pageData, error, refresh } = await useAsyncData<PageData>(
+  () => `notes-page-${rawPath.value}`,
+  async () => {
+    const resolved = await $fetch<ResolveResponse>(
+      `/api/notes/resolve?path=${encodeURIComponent(rawPath.value)}`,
+    )
+
+    if (resolved.type === 'not_found') {
+      throw createError({ statusCode: 404, statusMessage: 'Not found' })
+    }
+
+    const folderPath = resolved.type === 'note' ? resolved.folder : resolved.path
+    const notePath = resolved.type === 'note' ? resolved.path : null
+
+    const [folders, notes, note] = await Promise.all([
+      $fetch<FolderNode[]>('/api/folders'),
+      $fetch<NoteListItem[]>(`/api/notes?folder=${encodeURIComponent(folderPath ?? '')}`),
+      notePath ? $fetch<NoteDetailNote>(`/api/notes${notePath}`) : Promise.resolve(null),
+    ])
+
+    return {
+      resolved,
+      folders,
+      notes,
+      note,
+      selectedFolderPath: folderPath,
+      selectedNotePath: notePath,
+    }
+  },
+  {
+    watch: [rawPath],
+  },
+)
+
+if (error.value) {
+  throw createError({ statusCode: 404, statusMessage: 'Not found' })
 }
 
-const { data: folders } = await useFetch<FolderNode[]>('/api/folders')
-
-const selectedFolderPath = ref<string | null>(null)
-const selectedNotePath = ref<string | null>(null)
-
-const { data: notes, refresh: refreshNotes } = await useFetch<NoteListItem[]>('/api/notes', {
-  query: computed(() => ({
-    folder: selectedFolderPath.value ?? '',
-  })),
-  watch: [selectedFolderPath],
-})
-
-const { data: note, refresh: refreshNote } = useFetch<NoteDetailNote>(() => selectedNotePath.value ? `/api/notes${selectedNotePath.value}` : null, {
-  key: computed(() => `note-${selectedNotePath.value ?? 'none'}`),
-  watch: [selectedNotePath],
-})
+const selectedFolderPath = computed(() => pageData.value?.selectedFolderPath ?? null)
+const selectedNotePath = computed(() => pageData.value?.selectedNotePath ?? null)
 
 const processing = ref(false)
 const processMessage = ref('')
@@ -45,8 +80,7 @@ async function saveNote(content: string) {
     method: 'PUT',
     body: { content },
   })
-  await refreshNote()
-  await refreshNotes()
+  await refresh()
 }
 
 async function addTag(name: string) {
@@ -56,8 +90,7 @@ async function addTag(name: string) {
     method: 'POST',
     body: { name },
   })
-  await refreshNote()
-  await refreshNotes()
+  await refresh()
 }
 
 async function removeTag(tagId: string) {
@@ -66,8 +99,7 @@ async function removeTag(tagId: string) {
   await $fetch(`/api/notes${selectedNotePath.value}/tags/${tagId}`, {
     method: 'DELETE',
   })
-  await refreshNote()
-  await refreshNotes()
+  await refresh()
 }
 
 async function retryNote(path: string) {
@@ -82,8 +114,7 @@ async function retryNote(path: string) {
   catch {
     processMessage.value = t('notes.processError')
   }
-  await refreshNotes()
-  await refreshNote()
+  await refresh()
 }
 
 async function createNote(path: string) {
@@ -103,7 +134,7 @@ async function processFolder(folder: string) {
       body: { folder },
     })
     processMessage.value = t('notes.processDispatched', { count: res.dispatched })
-    await refreshNotes()
+    await refresh()
   }
   catch {
     processMessage.value = t('notes.processError')
@@ -130,11 +161,11 @@ function selectNote(path: string) {
 
 <template>
   <notes-layout
-    :folders="folders ?? []"
+    :folders="pageData?.folders ?? []"
     :selected-folder-path="selectedFolderPath"
     :selected-note-path="selectedNotePath"
-    :notes="notes ?? []"
-    :note="note ?? null"
+    :notes="pageData?.notes ?? []"
+    :note="pageData?.note ?? null"
     :processing="processing"
     :process-message="processMessage"
     :start-editing="route.query.edit === '1'"

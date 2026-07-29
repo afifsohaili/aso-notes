@@ -29,7 +29,7 @@ describe('chat-thread', () => {
 
     const link = component.find('a')
     expect(link.exists()).toBe(true)
-    expect(link.attributes('href')).toBe('/notes?note=%2Fproject-a%2Fplan.md')
+    expect(link.attributes('href')).toBe('/notes/project-a/plan.md')
     expect(link.text()).toContain('/project-a/plan.md')
   })
 

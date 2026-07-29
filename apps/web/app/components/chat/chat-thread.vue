@@ -15,7 +15,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 function noteHref(path: string): string {
-  return `/notes?note=${encodeURIComponent(path)}`
+  return `/notes${path}`
 }
 </script>
 

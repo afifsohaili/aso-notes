@@ -48,11 +48,13 @@ function isSelected(folder: FolderNode): boolean {
       <li
         v-for="folder in folders"
         :key="folder.path"
+        data-testid="folder-tree-item"
       >
         <div class="group">
           <div
             class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer"
             :class="isSelected(folder) ? 'bg-indigo-50 text-indigo-900' : 'text-gray-700'"
+            data-testid="folder-tree-row"
             @click="emit('select', folder.path)"
           >
             <button

@@ -83,7 +83,7 @@ describe('queue page', () => {
     const component = await mountSuspended(QueuePage)
     const links = component.findAll('a').map(a => a.attributes('href'))
 
-    expect(links).toContain('/notes?note=%2Fproj%2Factive.md')
+    expect(links).toContain('/notes/proj/active.md')
   })
 
   it('renders the sweeper heartbeat', async () => {

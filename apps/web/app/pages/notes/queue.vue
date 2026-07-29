@@ -55,7 +55,7 @@ const queueCards = computed<CountCard[]>(() => {
 const activeJobs = computed(() => status.value?.activeJobs ?? [])
 
 function noteLink(path: string): string {
-  return `/notes?note=${encodeURIComponent(path)}`
+  return `/notes${path}`
 }
 
 function formatRelative(iso: string | null): string {

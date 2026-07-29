@@ -28,6 +28,27 @@ export function parseNoteRouteSegments(segments: string[]): string {
   return parseNoteRoutePath(segments.join('/'))
 }
 
+export type ResolvedRouteType = 'note' | 'folder' | 'not_found'
+
+/**
+ * Resolve a route path (already URL-decoded, relative to the workspace root) to
+ * one of the known route types. Trailing slashes are ignored. Paths are matched
+ * exactly against the canonical folder/note paths returned by the database.
+ */
+export function resolveNotesRoutePath(
+  rawPath: string,
+  knownFolders: string[],
+  knownNotes: string[],
+): ResolvedRouteType {
+  const normalized = `/${rawPath}`.replace(/\/+$/, '') || '/'
+
+  if (knownNotes.includes(normalized))
+    return 'note'
+  if (knownFolders.includes(normalized))
+    return 'folder'
+  return 'not_found'
+}
+
 /** True when the slug segments target the tags collection of a note path. */
 export function isTagsRoute(segments: string[]): boolean {
   return segments.length > 0 && segments[segments.length - 1] === 'tags'
