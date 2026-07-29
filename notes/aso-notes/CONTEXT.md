@@ -97,3 +97,7 @@ _Avoid_: Watch, import, poll
 **Ingestion**:
 The overall pipeline of bringing Notes into the system and extracting the graph.
 _Avoid_: Import, processing
+
+**Ingestion Run**:
+A single execution of the Ingestion pipeline for one Note. Only the latest Run is recorded (on the Note itself); no Run history is kept.
+_Avoid_: Extraction job, outbox entry, attempt log
