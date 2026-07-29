@@ -147,6 +147,7 @@ export interface Notes {
   folder_id: string | null;
   id: Generated<string>;
   ingested_hash: string | null;
+  last_run: Json | null;
   path: string;
   pipeline: Generated<string>;
   status: Generated<string>;

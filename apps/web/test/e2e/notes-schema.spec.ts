@@ -31,7 +31,7 @@ const NOTES_DOMAIN_TABLES = [
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
   folders: ['id', 'workspace_id', 'path', 'cover_content', 'cover_hash', 'created_at', 'updated_at'],
-  notes: ['id', 'workspace_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'ingested_hash', 'status', 'pipeline', 'created_at', 'updated_at'],
+  notes: ['id', 'workspace_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'ingested_hash', 'status', 'pipeline', 'last_run', 'created_at', 'updated_at'],
   chunks: ['id', 'workspace_id', 'note_id', 'seq', 'text', 'token_count', 'embedding', 'created_at', 'updated_at'],
   concepts: ['id', 'workspace_id', 'name', 'name_normalized', 'description', 'embedding', 'created_at', 'updated_at'],
   relations: ['id', 'workspace_id', 'from_concept_id', 'to_concept_id', 'type', 'description', 'created_at', 'updated_at'],
@@ -401,6 +401,43 @@ describe('notes domain schema (M1)', () => {
 
     const second = await selectWorkspaceSettingValue(trx, workspaceId, 'extraction.vocabulary_strategy')
     expect(second).toEqual({ strategy: 'blind-merge' })
+  })
+
+  test('notes.last_run stores jsonb and is nullable', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'last-run')
+    const noteId = await givenNote(trx, workspaceId, '/lr.md')
+
+    const before = await trx
+      .selectFrom('notes')
+      .select('last_run')
+      .where('id', '=', noteId)
+      .executeTakeFirstOrThrow()
+    expect(before.last_run).toBeNull()
+
+    const payload = {
+      pipeline: 'markdown-note-with-links',
+      status: 'succeeded',
+      failed_stage: null,
+      error: null,
+      attempt: 1,
+      job_id: null,
+      started_at: '2026-07-29T10:00:00.000Z',
+      finished_at: '2026-07-29T10:00:01.000Z',
+      duration_ms: 1000,
+      chunks: 2,
+      extraction: null,
+    }
+
+    await sql`
+      UPDATE notes SET last_run = ${JSON.stringify(payload)}::jsonb WHERE id = ${noteId}
+    `.execute(trx)
+
+    const after = await trx
+      .selectFrom('notes')
+      .select('last_run')
+      .where('id', '=', noteId)
+      .executeTakeFirstOrThrow()
+    expect(after.last_run).toEqual(payload)
   })
 
   test('AGE graph notes_graph exists', async ({ trx }) => {

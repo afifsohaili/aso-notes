@@ -79,12 +79,23 @@ interface LastRun {
 
 ## Build order
 
-- **O1** — Migration (`notes.last_run` jsonb) + types.d.ts + schema dump + zod schema/TS type + schema test.
+- [x] **O1** — Migration (`notes.last_run` jsonb) + types.d.ts + schema dump + schema/TS type + schema test. **DONE 2026-07-29**
 - **O2** — Pipeline capture: context accumulation, run-pipeline stage tracking, extract-graph payload capture, LLM usage surface.
 - **O3** — `ingest.ts` success/failure LastRun writes + worker attempt/job-id plumbing.
 - **O4** — Notes API serialization (list=summary, detail=full) + note UI badge/panel.
 
 Each milestone: TDD (feature specs: ingest a note → verify `last_run` row content; failure case → verify `failed_stage` + error), update this doc with status + divergences, commit.
+
+### O1 implementation notes
+
+- Migration `1785200000001_add_last_run_to_notes.ts` adds `notes.last_run jsonb NULL` (no default).
+- Regenerated `packages/shared/types.d.ts` and `apps/web/db/schema.sql` via `pnpm db:migrate:generate` / `pnpm db:schema:dump`.
+- Created `server/lib/pipeline/last-run.ts` with the exact `LastRun` interface and a hand-rolled `parseLastRun(json)` validator returning `null` on invalid/missing input.
+- **Divergence from plan:** the repo does not depend on zod and no validation library is present, so O1 uses a hand-rolled validator instead of adding a zod dependency. The interface and validation semantics match the fixed schema in the plan.
+- Tests:
+  - `test/e2e/notes-schema.spec.ts`: asserts `last_run` column exists, is nullable, and accepts a valid JSONB round-trip.
+  - `test/unit/last-run.spec.ts`: covers `parseLastRun` — valid full record, null/garbage/missing fields, `extraction: null`, status enum, `error: null` on success, and invalid nested shapes.
+- Full suite: 419 passed / 4 skipped; lint clean.
 
 ## Deferred / rejected
 
