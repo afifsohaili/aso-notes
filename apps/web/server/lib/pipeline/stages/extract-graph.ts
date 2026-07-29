@@ -41,17 +41,19 @@ export class ExtractGraphStage implements Stage {
 
     const chunks = ctx.chunks ?? []
 
+    const messages = buildExtractionMessages({
+      noteTitle: ctx.note.title,
+      notePath: ctx.note.path,
+      coverChain: ctx.coverChain,
+      chunks,
+      existingConcepts: vocabulary.concepts,
+      existingTags: vocabulary.tags,
+      existingTopics: vocabulary.topics,
+      strategyLabel: strategy.id === 'full' ? undefined : 'top relevant',
+    })
+
     const result = await this.llmProvider.complete({
-      messages: buildExtractionMessages({
-        noteTitle: ctx.note.title,
-        notePath: ctx.note.path,
-        coverChain: ctx.coverChain,
-        chunks,
-        existingConcepts: vocabulary.concepts,
-        existingTags: vocabulary.tags,
-        existingTopics: vocabulary.topics,
-        strategyLabel: strategy.id === 'full' ? undefined : 'top relevant',
-      }),
+      messages,
       responseFormat: {
         type: 'json_schema',
         jsonSchema: { name: EXTRACTION_SCHEMA_NAME, schema: EXTRACTION_SCHEMA, strict: true },
@@ -63,6 +65,21 @@ export class ExtractGraphStage implements Stage {
       throw new Error('extract-graph: LLM returned no content')
 
     ctx.extraction = parseExtraction(content, chunks.length)
+    ctx.extractionRecord = {
+      strategy: strategy.id,
+      model: result.model ?? 'unknown',
+      messages: messages.map(m => ({ role: m.role, content: m.content ?? '' })),
+      response: content,
+      usage: result.usage
+        ? { prompt_tokens: result.usage.promptTokens, completion_tokens: result.usage.completionTokens }
+        : null,
+      counts: {
+        concepts: ctx.extraction.concepts.length,
+        relations: ctx.extraction.relations.length,
+        mentions: ctx.extraction.mentions.length,
+        tags: ctx.extraction.tags.length,
+      },
+    }
   }
 
   private embeddedChunks(ctx: PipelineContext): EmbeddedChunk[] {

@@ -55,6 +55,8 @@ export interface CompletionRequest {
 
 export interface CompletionResult {
   message: ChatMessage
+  /** Model that produced this completion, when known by the provider. */
+  model?: string
   usage?: {
     promptTokens: number
     completionTokens: number

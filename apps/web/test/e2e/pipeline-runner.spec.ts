@@ -1,9 +1,12 @@
+import type { CompletionRequest, LLMProvider } from '../../server/lib/ai/types'
 import type { Stage } from '../../server/lib/pipeline/types'
 import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
 import { PipelineContext } from '../../server/lib/pipeline/context'
 import { StageRegistry } from '../../server/lib/pipeline/registry'
 import { runPipeline } from '../../server/lib/pipeline/run-pipeline'
+import { ChunkMarkdownAwareStage } from '../../server/lib/pipeline/stages/chunk-markdown-aware'
+import { ExtractGraphStage, vocabularyLoaderToStrategy } from '../../server/lib/pipeline/stages/extract-graph'
 
 /**
  * M2 feature spec for the pipeline executor: runPipeline drives registered
@@ -90,5 +93,68 @@ describe('runPipeline executor', () => {
       runPipeline('p', ctx, { registry, pipelines: { p: ['ok', 'bad', 'never'] } }),
     ).rejects.toThrow('bad failed')
     expect(calls).toEqual(['ok'])
+  })
+
+  test('accumulates last-run capture fields across real stages', async ({ trx }) => {
+    const workspace = await trx
+      .insertInto('workspaces')
+      .values({ name: 'pipeline-capture' })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+    const note = await givenNote(trx, workspace.id, '/capture.md')
+
+    const seenStages: string[] = []
+    const registry = new StageRegistry()
+    registry.register(new ChunkMarkdownAwareStage())
+    registry.register({
+      id: 'spy',
+      async invoke(ctx) {
+        seenStages.push(ctx.currentStage!)
+      },
+    })
+
+    const llmResponse = JSON.stringify({
+      concepts: [{ name: 'Hello', description: 'greeting' }],
+      relations: [],
+      mentions: [{ concept: 'Hello', chunkRefs: [0] }],
+      tags: ['demo'],
+      topics: [{ name: 'Greetings', description: 'hellos' }],
+    })
+    const fakeLLM: LLMProvider = {
+      async complete(_request: CompletionRequest) {
+        return {
+          message: { role: 'assistant', content: llmResponse },
+          model: 'fake-extraction-model',
+          usage: { promptTokens: 100, completionTokens: 50 },
+        }
+      },
+    }
+    registry.register(new ExtractGraphStage(fakeLLM, async () => vocabularyLoaderToStrategy(async () => ({
+      concepts: [],
+      tags: [],
+      topics: [],
+    }))))
+
+    const ctx = new PipelineContext({ note, workspaceId: workspace.id, db: trx })
+    await runPipeline('capture-pipeline', ctx, {
+      registry,
+      pipelines: { 'capture-pipeline': ['chunk-markdown-aware', 'spy', 'extract-graph'] },
+    })
+
+    expect(ctx.startedAt).toBeInstanceOf(Date)
+    expect(seenStages).toEqual(['spy'])
+    expect(ctx.currentStage).toBe('extract-graph')
+    expect(ctx.chunksCount).toBe(ctx.chunks!.length)
+    expect(ctx.extractionRecord).toMatchObject({
+      strategy: 'test-loader',
+      model: 'fake-extraction-model',
+      usage: { prompt_tokens: 100, completion_tokens: 50 },
+      response: llmResponse,
+      counts: { concepts: 1, relations: 0, mentions: 1, tags: 1 },
+    })
+    expect(ctx.extractionRecord!.messages).toHaveLength(2)
+    expect(ctx.extractionRecord!.messages[0]!.role).toBe('system')
+    expect(ctx.extractionRecord!.messages[1]!.role).toBe('user')
+    expect(ctx.extractionRecord!.response).toBe(llmResponse)
   })
 })

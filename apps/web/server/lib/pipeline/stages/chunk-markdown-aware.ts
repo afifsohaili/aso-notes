@@ -9,5 +9,6 @@ export class ChunkMarkdownAwareStage implements Stage {
 
   async invoke(ctx: PipelineContext): Promise<void> {
     ctx.chunks = chunkMarkdown(ctx.note.content ?? '')
+    ctx.chunksCount = ctx.chunks.length
   }
 }

@@ -26,8 +26,12 @@ export async function runPipeline(
   if (!stageIds)
     throw new Error(`unknown pipeline: '${pipelineId}'`)
 
-  for (const stageId of stageIds)
+  ctx.startedAt = new Date()
+
+  for (const stageId of stageIds) {
+    ctx.currentStage = stageId
     await registry.get(stageId).invoke(ctx)
+  }
 
   return ctx
 }

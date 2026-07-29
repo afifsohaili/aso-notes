@@ -49,6 +49,14 @@ describe('pipelineContext', () => {
     expect(ctx.getOutput('sources')).toEqual([{ url: 'https://x.com' }])
     expect(ctx.extra.sources).toEqual([{ url: 'https://x.com' }])
   })
+
+  it('initialises last-run capture fields to their defaults', () => {
+    const ctx = fakeCtx()
+    expect(ctx.startedAt).toBeInstanceOf(Date)
+    expect(ctx.currentStage).toBeNull()
+    expect(ctx.chunksCount).toBeNull()
+    expect(ctx.extractionRecord).toBeNull()
+  })
 })
 
 describe('stageRegistry', () => {
@@ -121,6 +129,34 @@ describe('runPipeline', () => {
     await runPipeline('p', ctx, { registry, pipelines })
 
     expect(calls).toEqual(['a', 'b'])
+  })
+
+  it('records startedAt and currentStage before each stage invoke', async () => {
+    const seenStages: string[] = []
+    const registry = new StageRegistry()
+    registry.register({
+      id: 'a',
+      async invoke(ctx) {
+        seenStages.push(ctx.currentStage!)
+        expect(ctx.startedAt).toBeInstanceOf(Date)
+      },
+    })
+    registry.register({
+      id: 'b',
+      async invoke(ctx) {
+        seenStages.push(ctx.currentStage!)
+      },
+    })
+
+    const before = Date.now()
+    const ctx = fakeCtx()
+    await runPipeline('p', ctx, { registry, pipelines: { p: ['a', 'b'] } })
+    const after = Date.now()
+
+    expect(ctx.startedAt.getTime()).toBeGreaterThanOrEqual(before)
+    expect(ctx.startedAt.getTime()).toBeLessThanOrEqual(after)
+    expect(seenStages).toEqual(['a', 'b'])
+    expect(ctx.currentStage).toBe('b')
   })
 
   it('throws for an unknown pipeline id', async () => {

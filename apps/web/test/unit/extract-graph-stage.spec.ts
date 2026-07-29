@@ -22,11 +22,11 @@ function fakeCtx(note: PipelineNote): PipelineContext {
   return new PipelineContext({ note, workspaceId: note.workspace_id, db: null as never })
 }
 
-function stubLLM(payload: string | null, seen?: CompletionRequest[]): LLMProvider {
+function stubLLM(payload: string | null, seen?: CompletionRequest[], extras?: { model?: string, usage?: { promptTokens: number, completionTokens: number } }): LLMProvider {
   return {
     async complete(request) {
       seen?.push(request)
-      return { message: { role: 'assistant', content: payload } }
+      return { message: { role: 'assistant', content: payload }, ...extras }
     },
   }
 }
@@ -73,6 +73,42 @@ describe('extractGraphStage', () => {
     expect(user).toContain('Kysely')
     expect(user).toContain('databases')
     expect(ctx.vocabularyStrategy).toEqual({ id: 'test-loader', mergeOnStore: false })
+  })
+
+  it('records the full extraction payload on the context for last_run observability', async () => {
+    const payload = JSON.stringify({
+      concepts: [{ name: 'Alpha', description: 'first' }],
+      relations: [{ from: 'Alpha', to: 'Beta', type: 'relates' }],
+      mentions: [{ concept: 'Alpha', chunkRefs: [0] }],
+      tags: ['t1', 't2'],
+      topics: [{ name: 'T', description: 'topic' }],
+    })
+    const ctx = fakeCtx(fakeNote({ title: 'Capture Me', path: '/capture.md' }))
+    ctx.coverChain = 'cover line'
+    ctx.chunks = [{ index: 0, text: 'body', tokenCount: 1, headingPath: [] }]
+
+    const strategy = vocabularyLoaderToStrategy(async () => ({
+      concepts: [{ id: 'c1', name: 'Beta', description: 'second' }],
+      tags: ['existing'],
+      topics: [{ id: 't1', name: 'T', description: 'topic' }],
+    }))
+
+    await new ExtractGraphStage(
+      stubLLM(payload, undefined, { model: 'test-model', usage: { promptTokens: 10, completionTokens: 5 } }),
+      () => Promise.resolve(strategy),
+    ).invoke(ctx)
+
+    expect(ctx.extractionRecord).toMatchObject({
+      strategy: 'test-loader',
+      model: 'test-model',
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+      counts: { concepts: 1, relations: 1, mentions: 1, tags: 2 },
+    })
+    expect(ctx.extractionRecord!.messages).toHaveLength(2)
+    expect(ctx.extractionRecord!.messages[0]!.role).toBe('system')
+    expect(ctx.extractionRecord!.messages[1]!.role).toBe('user')
+    expect(ctx.extractionRecord!.messages[1]!.content).toContain('Capture Me')
+    expect(ctx.extractionRecord!.response).toBe(payload)
   })
 
   it('parses the model payload into ctx.extraction, dropping refs beyond ctx.chunks', async () => {

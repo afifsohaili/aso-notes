@@ -1,4 +1,5 @@
 import type { PipelineChunk } from './chunker'
+import type { LastRun } from './last-run'
 import type { GraphExtraction, PipelineDb, PipelineNote } from './types'
 import type { EmbeddedChunk } from './vocabulary/types'
 
@@ -25,10 +26,20 @@ export class PipelineContext {
   /** Free-form named outputs written via setOutput (e.g. 'sources', 'links'). */
   readonly extra: Record<string, unknown> = {}
 
+  /** When the run started; set by run-pipeline at run start. */
+  startedAt: Date
+  /** Stage currently being executed; set before each invoke by run-pipeline. */
+  currentStage: string | null = null
+  /** Number of chunks produced by the chunk-markdown-aware stage. */
+  chunksCount: number | null = null
+  /** Full extraction payload captured for last_run observability (plan-004). */
+  extractionRecord: LastRun['extraction'] | null = null
+
   constructor(init: { note: PipelineNote, workspaceId: string, db: PipelineDb }) {
     this.note = init.note
     this.workspaceId = init.workspaceId
     this.db = init.db
+    this.startedAt = new Date()
   }
 
   setOutput<T>(key: string, value: T): void {

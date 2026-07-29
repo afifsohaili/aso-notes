@@ -98,6 +98,7 @@ export class OllamaLLMProvider implements LLMProvider {
       throw new Error('Ollama /api/chat response contained no message')
 
     return {
+      model: this.model,
       message: {
         role: 'assistant',
         content: payload.message.content,

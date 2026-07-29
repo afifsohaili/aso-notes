@@ -107,6 +107,7 @@ export class OpenRouterLLMProvider implements LLMProvider {
       throw new Error('OpenRouter chat/completions response contained no choices')
 
     return {
+      model: this.model,
       message: {
         role: 'assistant',
         content: message.content,

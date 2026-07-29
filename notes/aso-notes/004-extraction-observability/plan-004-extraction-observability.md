@@ -1,6 +1,6 @@
 # Plan 004 — Extraction Observability (Last Run)
 
-Status: decisions locked, not yet implemented.
+Status: O1 and O2 done, O3 and O4 pending.
 Created: 2026-07-29.
 
 ## Problem
@@ -80,7 +80,7 @@ interface LastRun {
 ## Build order
 
 - [x] **O1** — Migration (`notes.last_run` jsonb) + types.d.ts + schema dump + schema/TS type + schema test. **DONE 2026-07-29**
-- **O2** — Pipeline capture: context accumulation, run-pipeline stage tracking, extract-graph payload capture, LLM usage surface.
+- [x] **O2** — Pipeline capture: context accumulation, run-pipeline stage tracking, extract-graph payload capture, LLM usage surface. **DONE 2026-07-29**
 - **O3** — `ingest.ts` success/failure LastRun writes + worker attempt/job-id plumbing.
 - **O4** — Notes API serialization (list=summary, detail=full) + note UI badge/panel.
 
@@ -96,6 +96,22 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
   - `test/e2e/notes-schema.spec.ts`: asserts `last_run` column exists, is nullable, and accepts a valid JSONB round-trip.
   - `test/unit/last-run.spec.ts`: covers `parseLastRun` — valid full record, null/garbage/missing fields, `extraction: null`, status enum, `error: null` on success, and invalid nested shapes.
 - Full suite: 419 passed / 4 skipped; lint clean.
+
+### O2 implementation notes
+
+- `server/lib/pipeline/context.ts`: added `startedAt` (set in constructor and overwritten by `runPipeline` at run start), `currentStage`, `chunksCount`, and `extractionRecord: LastRun['extraction'] | null` for accumulation.
+- `server/lib/pipeline/run-pipeline.ts`: sets `ctx.startedAt = new Date()` at run start and `ctx.currentStage = stageId` before each stage invoke, so the failing stage id is observable on failure.
+- `server/lib/pipeline/stages/chunk-markdown-aware.ts`: records `ctx.chunksCount = ctx.chunks.length` after chunking.
+- `server/lib/pipeline/stages/extract-graph.ts`: captures the strategy id, model, verbatim system+user messages, raw LLM response text, token usage, and parsed counts on `ctx.extractionRecord`.
+- `server/lib/ai/types.ts`: `CompletionResult` already exposed `usage`; added optional `model` so callers (extract-graph) can record which model answered without plumbing model through the constructor.
+- `server/lib/ai/openrouter-llm.ts` / `ollama.ts`: both now return `model` in `CompletionResult`; usage was already surfaced, Ollama returns `null` when its response lacks eval counts.
+- Tests:
+  - `test/unit/pipeline-framework.spec.ts`: context defaults + runPipeline `startedAt`/`currentStage` assertions.
+  - `test/unit/chunk-markdown-aware-stage.spec.ts`: chunk count accumulation.
+  - `test/unit/extract-graph-stage.spec.ts`: extraction payload (messages, response, usage, model, counts) recorded on ctx.
+  - `test/e2e/pipeline-runner.spec.ts`: end-to-end pipeline with real chunk + extract stages, asserting `currentStage`, `chunksCount`, and full extraction payload.
+- Full suite: 425 passed / 4 skipped; lint clean.
+- **Divergence from plan:** `PipelineContext` names the capture slot `extractionRecord` (not `extraction`) to avoid shadowing the existing parsed `ctx.extraction: GraphExtraction`. The model is returned from `complete()` rather than threading it through `ExtractGraphStage`'s constructor, which keeps the provider interface as the seam and avoids changing `createStageRegistry`.
 
 ## Deferred / rejected
 
