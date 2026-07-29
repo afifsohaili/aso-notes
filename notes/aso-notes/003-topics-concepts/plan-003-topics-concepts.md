@@ -191,6 +191,18 @@ interface VocabularyStrategy {
 
 - **M7 — Rebuild + comparison + live verification**: wipe, run comparison protocol (flip strategy via Settings between rebuilds), psql cypher count parity, browser check of `/graph` and `/settings`, findings recorded below.
 
+### M7 implementation notes (divergences & decisions)
+
+- **Danger zone built instead of a manual rebuild script.** The rebuild procedure from the plan is now exposed as a user-facing feature on `/settings`:
+  - `POST /api/settings/rebuild` truncates graph-derived relational rows for the caller's workspace (`mentions`, `relations`, `concept_topics`, `concepts`, `topics`, `chunks`, `links`, `sources`) plus AI-origin `note_tags` only (`origin = 'ai'`), preserving user tags and `note_tag_dismissals`.
+  - It drops + recreates the shared Apache AGE graph `notes_graph` so the mirror starts empty.
+  - It sets every note in the workspace to `status='pending'` without enqueueing jobs; the existing sweeper picks them up later.
+  - Returns a summary JSON with per-table wiped counts and the number of notes reset.
+- **Workspace isolation:** relational deletes are scoped to the caller's workspace. Because the MVP uses a single shared AGE graph, dropping/recreating it affects all workspaces; this matches the plan's "single graph for the MVP" decision and is acceptable for now.
+- **Progress visibility:** `GET /api/notes/status-counts` returns `{ pending, ingested, failed }` for the workspace; the settings page polls it every 3 seconds while any notes are pending.
+- **UI guard:** the dialog requires typing the exact string `REBUILD` (case-sensitive) before the confirm button enables.
+- **No jobs enqueued** by the endpoint, per locked decision.
+
 ## Deferred / open
 
 - Mention recall mechanism (aliases, deterministic backfill) — gated on M5 report + comparison.

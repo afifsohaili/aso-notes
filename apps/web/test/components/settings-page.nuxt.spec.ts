@@ -1,19 +1,42 @@
 import type { Ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import SettingsPage from '../../app/pages/settings.vue'
 
-const { useFetchMock } = vi.hoisted(() => ({
+const { useFetchMock, $fetchMock } = vi.hoisted(() => ({
   useFetchMock: vi.fn(),
+  $fetchMock: vi.fn(),
 }))
 
 mockNuxtImport('useFetch', () => useFetchMock)
 
-function mockSettingsResponse(settings: Record<string, { value: string | number, source: 'workspace' | 'default' }>) {
-  useFetchMock.mockReturnValue({
-    data: ref({ settings }) as Ref<{ settings: typeof settings }>,
+vi.stubGlobal('$fetch', $fetchMock)
+
+function mockUseFetch(url: string) {
+  if (url === '/api/notes/status-counts') {
+    return {
+      data: ref({ pending: 0, ingested: 0, failed: 0 }) as Ref<{ pending: number, ingested: number, failed: number }>,
+      pending: ref(false),
+      refresh: vi.fn(),
+    }
+  }
+  return {
+    data: ref(null) as Ref<unknown>,
     pending: ref(false),
     refresh: vi.fn(),
+  }
+}
+
+function mockSettingsResponse(settings: Record<string, { value: string | number, source: 'workspace' | 'default' }>) {
+  useFetchMock.mockImplementation((url: string) => {
+    if (url === '/api/notes/status-counts')
+      return mockUseFetch(url)
+    return {
+      data: ref({ settings }) as Ref<{ settings: typeof settings }>,
+      pending: ref(false),
+      refresh: vi.fn(),
+    }
   })
 }
 
@@ -36,5 +59,46 @@ describe('settings page', () => {
 
     const component = await mountSuspended(SettingsPage)
     expect(component.find('input#merge-threshold').exists()).toBe(true)
+  })
+
+  it('keeps the rebuild confirm button disabled until REBUILD is typed', async () => {
+    mockSettingsResponse({
+      'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
+      'extraction.blind_merge_threshold': { value: 0.85, source: 'default' },
+    })
+
+    const component = await mountSuspended(SettingsPage)
+    await component.find('[data-testid="rebuild-open-button"]').trigger('click')
+
+    const confirmButton = component.find('[data-testid="rebuild-confirm-button"]')
+    const input = component.find('[data-testid="rebuild-confirm-input"]')
+    expect(confirmButton.attributes('disabled')).toBeDefined()
+
+    await input.setValue('rebuild')
+    expect(confirmButton.attributes('disabled')).toBeDefined()
+
+    await input.setValue('REBUILD')
+    expect(confirmButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('shows success feedback after a confirmed rebuild POST', async () => {
+    $fetchMock.mockResolvedValue({ ok: true })
+    mockSettingsResponse({
+      'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
+      'extraction.blind_merge_threshold': { value: 0.85, source: 'default' },
+    })
+
+    const component = await mountSuspended(SettingsPage)
+    await component.find('[data-testid="rebuild-open-button"]').trigger('click')
+
+    const input = component.find('[data-testid="rebuild-confirm-input"]')
+    await input.setValue('REBUILD')
+
+    const confirmButton = component.find('[data-testid="rebuild-confirm-button"]')
+    await confirmButton.trigger('click')
+    await flushPromises()
+
+    expect($fetchMock).toHaveBeenCalledWith('/api/settings/rebuild', { method: 'POST' })
+    expect(component.find('p[role="status"]').exists()).toBe(true)
   })
 })
