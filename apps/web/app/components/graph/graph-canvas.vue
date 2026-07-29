@@ -18,6 +18,8 @@ function nodeColor(label: GraphNode['label']): string {
   switch (label) {
     case 'Concept':
       return '#4f46e5'
+    case 'Topic':
+      return '#7c3aed'
     case 'Note':
       return '#059669'
     case 'Tag':
@@ -113,6 +115,13 @@ async function initCytoscape() {
           style: {
             'border-width': 3,
             'border-color': '#111827',
+          },
+        },
+        {
+          selector: 'node[label = "Topic"]',
+          style: {
+            width: 40,
+            height: 40,
           },
         },
       ],

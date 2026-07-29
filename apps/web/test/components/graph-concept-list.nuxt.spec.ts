@@ -7,8 +7,8 @@ describe('graph-concept-list', () => {
     const component = await mountSuspended(ConceptList, {
       props: {
         concepts: [
-          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2 },
-          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1 },
+          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2, topics: [] },
+          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1, topics: ['Databases'] },
         ],
         selectedConceptId: null,
       },
@@ -22,7 +22,7 @@ describe('graph-concept-list', () => {
     const items = component.findAll('li')
     expect(items).toHaveLength(2)
 
-    await items[1]!.trigger('click')
+    await items[0]!.trigger('click')
     expect(component.emitted('select')).toHaveLength(1)
     expect(component.emitted('select')![0]).toEqual(['c2'])
   })
@@ -31,8 +31,8 @@ describe('graph-concept-list', () => {
     const component = await mountSuspended(ConceptList, {
       props: {
         concepts: [
-          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2 },
-          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1 },
+          { id: 'c1', name: 'Graph RAG', description: 'retrieval', mentionCount: 2, topics: [] },
+          { id: 'c2', name: 'Kysely', description: 'SQL builder', mentionCount: 1, topics: ['Databases'] },
         ],
         selectedConceptId: null,
       },

@@ -3,7 +3,7 @@ import { agLiteral, parseAgtype, queryCypher } from './age'
 
 export interface GraphNode {
   id: string
-  label: 'Concept' | 'Note' | 'Tag'
+  label: 'Concept' | 'Note' | 'Tag' | 'Topic'
   name: string
   ref: string
 }
@@ -11,7 +11,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: string
   target: string
-  type: 'RELATES_TO' | 'MENTIONS' | 'TAGGED' | 'LINKS'
+  type: 'RELATES_TO' | 'MENTIONS' | 'TAGGED' | 'LINKS' | 'GROUPED_UNDER'
   edgeType?: string
 }
 
@@ -20,6 +20,7 @@ export interface ConceptSummary {
   name: string
   description: string | null
   mentionCount: number
+  topics: string[]
 }
 
 export interface ConceptNeighbor {
@@ -39,6 +40,7 @@ export interface ConceptDetail {
     id: string
     name: string
     description: string | null
+    topics: string[]
   }
   neighbors: ConceptNeighbor[]
   mentionedIn: MentionedNote[]
@@ -68,6 +70,12 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
     'id ag_catalog.agtype, name ag_catalog.agtype',
   )
 
+  const topicRows = await queryCypher<{ id: unknown, name: unknown }>(
+    db,
+    `MATCH (n:Topic) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
+    'id ag_catalog.agtype, name ag_catalog.agtype',
+  )
+
   const relatesToRows = await queryCypher<{ source: unknown, target: unknown, type: unknown }>(
     db,
     `MATCH (a)-[r:RELATES_TO]->(b) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target, r.type AS type`,
@@ -89,6 +97,12 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
   const linksEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
     db,
     `MATCH (a:Note)-[r:LINKS]->(b:Note) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
+    'source ag_catalog.agtype, target ag_catalog.agtype',
+  )
+
+  const groupedUnderEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
+    db,
+    `MATCH (a:Concept)-[r:GROUPED_UNDER]->(b:Topic) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
     'source ag_catalog.agtype, target ag_catalog.agtype',
   )
 
@@ -130,6 +144,13 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
     ref: String(parseAgtype(row.id)),
   }))
 
+  const topicNodes: GraphNode[] = topicRows.map(row => ({
+    id: String(parseAgtype(row.id)),
+    label: 'Topic',
+    name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)),
+    ref: String(parseAgtype(row.id)),
+  }))
+
   const edges: GraphEdge[] = [
     ...relatesToRows.map(row => ({
       source: String(parseAgtype(row.source)),
@@ -152,16 +173,21 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
       target: String(parseAgtype(row.target)),
       type: 'LINKS' as const,
     })),
+    ...groupedUnderEdgeRows.map(row => ({
+      source: String(parseAgtype(row.source)),
+      target: String(parseAgtype(row.target)),
+      type: 'GROUPED_UNDER' as const,
+    })),
   ]
 
   return {
-    nodes: [...conceptNodes, ...noteNodes, ...tagNodes],
+    nodes: [...conceptNodes, ...noteNodes, ...tagNodes, ...topicNodes],
     edges,
   }
 }
 
 export function toConceptSummaries(
-  rows: Array<{ id: string, name: string, description: string | null, mention_count: string | number | bigint }>,
+  rows: Array<{ id: string, name: string, description: string | null, mention_count: string | number | bigint, topics?: string[] | null }>,
 ): ConceptSummary[] {
   return rows
     .map(row => ({
@@ -169,6 +195,7 @@ export function toConceptSummaries(
       name: row.name,
       description: row.description ?? null,
       mentionCount: Number(row.mention_count),
+      topics: row.topics ?? [],
     }))
     .sort((a, b) => b.mentionCount - a.mentionCount || a.name.localeCompare(b.name))
 }
@@ -187,7 +214,33 @@ export async function getConceptList(db: GraphDb, workspaceId: string): Promise<
     .groupBy(['concepts.id', 'concepts.name', 'concepts.description'])
     .execute()
 
-  return toConceptSummaries(rows)
+  if (rows.length === 0) {
+    return []
+  }
+
+  const conceptIds = rows.map(r => r.id)
+  const topicRows = await db
+    .selectFrom('concept_topics')
+    .innerJoin('topics', 'topics.id', 'concept_topics.topic_id')
+    .select(['concept_topics.concept_id', 'topics.name'])
+    .where('concept_topics.workspace_id', '=', workspaceId)
+    .where('concept_topics.concept_id', 'in', conceptIds)
+    .orderBy('topics.name', 'asc')
+    .execute()
+
+  const topicsByConcept = new Map<string, string[]>()
+  for (const row of topicRows) {
+    const list = topicsByConcept.get(row.concept_id) ?? []
+    list.push(row.name)
+    topicsByConcept.set(row.concept_id, list)
+  }
+
+  return toConceptSummaries(
+    rows.map(row => ({
+      ...row,
+      topics: topicsByConcept.get(row.id) ?? [],
+    })),
+  )
 }
 
 export async function getConceptDetail(
@@ -239,11 +292,21 @@ export async function getConceptDetail(
     .groupBy(['notes.id', 'notes.path', 'notes.title'])
     .execute()
 
+  const topics = await db
+    .selectFrom('concept_topics')
+    .innerJoin('topics', 'topics.id', 'concept_topics.topic_id')
+    .select('topics.name')
+    .where('concept_topics.workspace_id', '=', workspaceId)
+    .where('concept_topics.concept_id', '=', conceptId)
+    .orderBy('topics.name', 'asc')
+    .execute()
+
   return {
     concept: {
       id: concept.id,
       name: concept.name,
       description: concept.description ?? null,
+      topics: topics.map(t => t.name),
     },
     neighbors: relations.map((r) => {
       const neighborId = r.from_concept_id === conceptId ? r.to_concept_id : r.from_concept_id

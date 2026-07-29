@@ -165,7 +165,17 @@ interface VocabularyStrategy {
 - **Tests added**: 8 e2e tests in `test/e2e/settings-api.spec.ts` (auth, defaults, persistence, unknown key, invalid strategy, out-of-range threshold, valid threshold); 13 unit tests in `test/unit/settings.spec.ts` (resolution, key validation, value normalization); 2 component tests in `test/components/settings-page.nuxt.spec.ts`; 1 updated app-header component test.
 - **Typecheck**: `pnpm --filter web exec nuxt typecheck` currently fails before reaching project types due to a pre-existing `vue@^3.5.28` override conflict with npm (EOVERRIDE); lint and the full test suite are green.
 
-- **M5 — Graph API + UI**: Topic nodes/color, topic-grouped list panel, concept detail updates.
+- **M5 — Graph API + UI**: Topic nodes/color, topic-grouped list panel, concept detail updates. **DONE (2026-07-29)** — full suite 383 passed, 4 skipped; lint clean. Notes below.
+
+### M5 implementation notes (divergences & decisions)
+
+- **GraphNode label union extended with `Topic`**, **GraphEdge type union extended with `GROUPED_UNDER`** (Concept→Topic). `getFullGraph` now queries AGE `:Topic` vertices and `[:GROUPED_UNDER]` edges workspace-scoped, same pattern as existing Concept/Note/Tag reads.
+- **ConceptSummary and ConceptDetail.concept carry `topics: string[]`** (topic names, alphabetically sorted). `getConceptList` joins `concept_topics` + `topics` in a separate lookup and maps names per concept; `getConceptDetail` queries topics directly. Response shapes are backward compatible — only the new `topics` field is added.
+- **Topic nodes are violet `#7c3aed`** and rendered at **40px** while other nodes stay 32px, so topics read as grouping anchors on the canvas. Implemented via a Cytoscape selector rather than per-node data to keep `buildElements` simple.
+- **Left panel is topic-grouped**: `concept-list.vue` uses `groupConceptsByTopic` (app/utils/graph.ts) to split concepts into alphabetically sorted topic buckets with an ungrouped bucket last; multi-topic concepts appear under each topic. New i18n keys `graph.topics` and `graph.ungrouped`.
+- **Concept detail shows topic pills** under the concept header using a violet badge style.
+- **Tests**: 6 new/updated tests (1 unit for topics in `toConceptSummaries`, 1 e2e workspace-isolation test for topics, 4 e2e assertions updated for topics/GROUPED_UNDER). Full suite: 383 passed, 4 skipped.
+
 - **M6 — Mention-gap report**: script + report output.
 - **M7 — Rebuild + comparison + live verification**: wipe, run comparison protocol (flip strategy via Settings between rebuilds), psql cypher count parity, browser check of `/graph` and `/settings`, findings recorded below.
 

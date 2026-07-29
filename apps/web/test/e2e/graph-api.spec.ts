@@ -3,11 +3,13 @@ import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
 import {
   mergeConceptNode,
+  mergeGroupedUnderEdge,
   mergeMentionsEdge,
   mergeNoteNode,
   mergeRelatesToEdge,
   mergeTaggedEdge,
   mergeTagNode,
+  mergeTopicNode,
 } from '../../server/lib/graph/helpers'
 import { ensureNotesGraphCatalog } from './age-catalog'
 
@@ -141,7 +143,36 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
   await mergeMentionsEdge(trx, { noteId: note.id, conceptId: conceptB.id, workspaceId })
   await mergeTaggedEdge(trx, { noteId: note.id, tagId: tag.id, workspaceId })
 
-  return { conceptA, conceptB, conceptC, note, tag }
+  const topicAi = await trx
+    .insertInto('topics')
+    .values({ workspace_id: workspaceId, name: 'AI Engineering', name_normalized: 'ai engineering', description: 'AI-related engineering topics' })
+    .returning(['id', 'name'])
+    .executeTakeFirstOrThrow()
+
+  const topicDb = await trx
+    .insertInto('topics')
+    .values({ workspace_id: workspaceId, name: 'Databases', name_normalized: 'databases', description: 'Database systems' })
+    .returning(['id', 'name'])
+    .executeTakeFirstOrThrow()
+
+  await trx
+    .insertInto('concept_topics')
+    .values([
+      { workspace_id: workspaceId, concept_id: conceptA.id, topic_id: topicAi.id },
+      { workspace_id: workspaceId, concept_id: conceptA.id, topic_id: topicDb.id },
+      { workspace_id: workspaceId, concept_id: conceptB.id, topic_id: topicDb.id },
+      { workspace_id: workspaceId, concept_id: conceptC.id, topic_id: topicAi.id },
+    ])
+    .execute()
+
+  await mergeTopicNode(trx, { id: topicAi.id, workspaceId, name: topicAi.name })
+  await mergeTopicNode(trx, { id: topicDb.id, workspaceId, name: topicDb.name })
+  await mergeGroupedUnderEdge(trx, { conceptId: conceptA.id, topicId: topicAi.id, workspaceId })
+  await mergeGroupedUnderEdge(trx, { conceptId: conceptA.id, topicId: topicDb.id, workspaceId })
+  await mergeGroupedUnderEdge(trx, { conceptId: conceptB.id, topicId: topicDb.id, workspaceId })
+  await mergeGroupedUnderEdge(trx, { conceptId: conceptC.id, topicId: topicAi.id, workspaceId })
+
+  return { conceptA, conceptB, conceptC, note, tag, topicAi, topicDb }
 }
 
 describe('graph API', () => {
@@ -160,12 +191,14 @@ describe('graph API', () => {
       expect(nodeIds.has(seeded.conceptC.id)).toBe(true)
       expect(nodeIds.has(seeded.note.id)).toBe(true)
       expect(nodeIds.has(seeded.tag.id)).toBe(true)
+      expect(nodeIds.has(seeded.topicAi.id)).toBe(true)
+      expect(nodeIds.has(seeded.topicDb.id)).toBe(true)
 
-      expect(body.nodes).toHaveLength(5)
+      expect(body.nodes).toHaveLength(7)
       for (const node of body.nodes) {
         expect(node).toHaveProperty('id')
         expect(node).toHaveProperty('label')
-        expect(['Concept', 'Note', 'Tag']).toContain(node.label)
+        expect(['Concept', 'Note', 'Tag', 'Topic']).toContain(node.label)
         expect(node).toHaveProperty('name')
         expect(node).toHaveProperty('ref')
       }
@@ -179,7 +212,13 @@ describe('graph API', () => {
       const tagNode = body.nodes.find((n: any) => n.id === seeded.tag.id)
       expect(tagNode).toMatchObject({ label: 'Tag', name: 'AI', ref: seeded.tag.id })
 
-      expect(body.edges.length).toBeGreaterThanOrEqual(5)
+      const topicNodeAi = body.nodes.find((n: any) => n.id === seeded.topicAi.id)
+      expect(topicNodeAi).toMatchObject({ label: 'Topic', name: 'AI Engineering', ref: seeded.topicAi.id })
+
+      const topicNodeDb = body.nodes.find((n: any) => n.id === seeded.topicDb.id)
+      expect(topicNodeDb).toMatchObject({ label: 'Topic', name: 'Databases', ref: seeded.topicDb.id })
+
+      expect(body.edges.length).toBeGreaterThanOrEqual(9)
       const relatesEdge = body.edges.find(
         (e: any) => e.source === seeded.conceptA.id && e.target === seeded.conceptB.id && e.type === 'RELATES_TO',
       )
@@ -195,6 +234,11 @@ describe('graph API', () => {
         (e: any) => e.source === seeded.note.id && e.target === seeded.tag.id && e.type === 'TAGGED',
       )
       expect(taggedEdge).toBeTruthy()
+
+      const groupedUnderEdge = body.edges.find(
+        (e: any) => e.source === seeded.conceptA.id && e.target === seeded.topicAi.id && e.type === 'GROUPED_UNDER',
+      )
+      expect(groupedUnderEdge).toBeTruthy()
     })
 
     test('returns empty graph when workspace has no graph data', async ({ server, trx }) => {
@@ -234,16 +278,19 @@ describe('graph API', () => {
         name: 'Kysely',
         description: 'type-safe SQL builder',
         mentionCount: 2,
+        topics: ['Databases'],
       })
       expect(body[1]).toMatchObject({
         id: seeded.conceptA.id,
         name: 'Graph RAG',
         mentionCount: 1,
+        topics: ['AI Engineering', 'Databases'],
       })
       expect(body[2]).toMatchObject({
         id: seeded.conceptC.id,
         name: 'Embeddings',
         mentionCount: 0,
+        topics: ['AI Engineering'],
       })
 
       for (const concept of body) {
@@ -252,7 +299,24 @@ describe('graph API', () => {
         expect(concept).toHaveProperty('description')
         expect(concept).toHaveProperty('mentionCount')
         expect(typeof concept.mentionCount).toBe('number')
+        expect(concept).toHaveProperty('topics')
+        expect(Array.isArray(concept.topics)).toBe(true)
       }
+    })
+
+    test('does not leak other workspaces concept topics', async ({ server, trx }) => {
+      const { cookies } = await givenVerifiedUser()
+      const other = await givenVerifiedUser()
+      const seeded = await seedGraphDomain(trx, other.workspace.id)
+
+      const res = await server('/api/graph/concepts', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body).toHaveLength(0)
+
+      const detailRes = await server(`/api/graph/concepts/${seeded.conceptA.id}`, { headers: { cookie: cookies } })
+      expect(detailRes.status).toBe(404)
     })
   })
 
@@ -269,6 +333,7 @@ describe('graph API', () => {
         id: seeded.conceptA.id,
         name: 'Graph RAG',
         description: 'retrieval over a knowledge graph',
+        topics: ['AI Engineering', 'Databases'],
       })
 
       const neighborIds = body.neighbors.map((n: any) => n.id)

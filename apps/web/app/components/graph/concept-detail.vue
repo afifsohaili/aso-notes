@@ -16,6 +16,7 @@ const { t } = useI18n()
 const concept = computed(() => props.detail?.concept ?? null)
 const neighbors = computed(() => props.detail?.neighbors ?? [])
 const mentionedIn = computed(() => props.detail?.mentionedIn ?? [])
+const topics = computed(() => props.detail?.concept.topics ?? [])
 </script>
 
 <template>
@@ -31,6 +32,21 @@ const mentionedIn = computed(() => props.detail?.mentionedIn ?? [])
             {{ concept.description }}
           </p>
         </div>
+      </div>
+
+      <div v-if="topics.length > 0" class="mb-4">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          {{ t('graph.topics') }}
+        </h3>
+        <ul class="flex flex-wrap gap-2">
+          <li
+            v-for="topic in topics"
+            :key="topic"
+            class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-violet-100 text-violet-800"
+          >
+            {{ topic }}
+          </li>
+        </ul>
       </div>
 
       <div v-if="neighbors.length > 0" class="mb-6">

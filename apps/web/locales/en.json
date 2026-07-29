@@ -26,6 +26,8 @@
   "graph.empty": "No concepts yet. Ingest some notes to see the graph.",
   "graph.neighbors": "Neighbors",
   "graph.mentionedIn": "Mentioned in",
+  "graph.topics": "Topics",
+  "graph.ungrouped": "Ungrouped",
   "graph.noSelection": "Select a concept to explore its neighborhood.",
   "chat.title": "Chat",
   "settings.title": "Settings",

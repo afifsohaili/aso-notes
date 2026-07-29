@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { groupConceptsByTopic } from '../../app/utils/graph'
 import { parseOptionalString, toConceptSummaries } from '../../server/lib/graph/ui'
 
 describe('graph/ui response shaping', () => {
@@ -25,9 +26,9 @@ describe('graph/ui response shaping', () => {
       ]
 
       expect(toConceptSummaries(rows)).toEqual([
-        { id: 'c2', name: 'Banana', description: 'desc2', mentionCount: 3 },
-        { id: 'c1', name: 'Apple', description: 'desc1', mentionCount: 1 },
-        { id: 'c3', name: 'Cherry', description: null, mentionCount: 0 },
+        { id: 'c2', name: 'Banana', description: 'desc2', mentionCount: 3, topics: [] },
+        { id: 'c1', name: 'Apple', description: 'desc1', mentionCount: 1, topics: [] },
+        { id: 'c3', name: 'Cherry', description: null, mentionCount: 0, topics: [] },
       ])
     })
 
@@ -40,6 +41,61 @@ describe('graph/ui response shaping', () => {
       const result = toConceptSummaries(rows)
       expect(result[0]!.mentionCount).toBe(5)
       expect(result[1]!.mentionCount).toBe(2)
+    })
+
+    it('carries topic names through', () => {
+      const rows = [
+        { id: 'c1', name: 'Paddle', description: null, mention_count: 5, topics: ['Billing', 'Engineering'] },
+        { id: 'c2', name: 'Kysely', description: null, mention_count: 3, topics: ['Engineering'] },
+        { id: 'c3', name: 'Ghost', description: null, mention_count: 1, topics: [] },
+      ]
+
+      expect(toConceptSummaries(rows)).toEqual([
+        { id: 'c1', name: 'Paddle', description: null, mentionCount: 5, topics: ['Billing', 'Engineering'] },
+        { id: 'c2', name: 'Kysely', description: null, mentionCount: 3, topics: ['Engineering'] },
+        { id: 'c3', name: 'Ghost', description: null, mentionCount: 1, topics: [] },
+      ])
+    })
+  })
+
+  describe('groupConceptsByTopic', () => {
+    it('groups concepts under each of their topics and collects ungrouped', () => {
+      const concepts = [
+        { id: 'c1', name: 'Paddle', description: null, mentionCount: 5, topics: ['Billing', 'Engineering'] },
+        { id: 'c2', name: 'Kysely', description: null, mentionCount: 3, topics: ['Engineering'] },
+        { id: 'c3', name: 'Ghost', description: null, mentionCount: 1, topics: [] },
+      ]
+
+      expect(groupConceptsByTopic(concepts)).toEqual([
+        { topic: 'Billing', concepts: [concepts[0]] },
+        { topic: 'Engineering', concepts: [concepts[0], concepts[1]] },
+        { topic: null, concepts: [concepts[2]] },
+      ])
+    })
+
+    it('sorts topics alphabetically and keeps ungrouped last', () => {
+      const concepts = [
+        { id: 'c1', name: 'A', description: null, mentionCount: 0, topics: ['Zebra'] },
+        { id: 'c2', name: 'B', description: null, mentionCount: 0, topics: ['Apple'] },
+        { id: 'c3', name: 'C', description: null, mentionCount: 0, topics: [] },
+      ]
+
+      const grouped = groupConceptsByTopic(concepts)
+      expect(grouped.map(g => g.topic)).toEqual(['Apple', 'Zebra', null])
+    })
+
+    it('returns only an ungrouped bucket when no concepts have topics', () => {
+      const concepts = [
+        { id: 'c1', name: 'A', description: null, mentionCount: 2, topics: [] },
+      ]
+
+      expect(groupConceptsByTopic(concepts)).toEqual([
+        { topic: null, concepts: [concepts[0]] },
+      ])
+    })
+
+    it('returns an empty array for empty input', () => {
+      expect(groupConceptsByTopic([])).toEqual([])
     })
   })
 })

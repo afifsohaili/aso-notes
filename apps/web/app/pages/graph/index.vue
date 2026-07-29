@@ -11,6 +11,7 @@ interface ConceptSummary {
   name: string
   description: string | null
   mentionCount: number
+  topics: string[]
 }
 
 definePageMeta({
