@@ -1,6 +1,11 @@
 import type { PipelineDb } from '../../server/lib/pipeline/types'
 import { describe, expect, it } from 'vitest'
-import { getWorkspaceSetting, resolveVocabularyStrategy } from '../../server/lib/settings'
+import {
+  DEFAULT_BLIND_MERGE_THRESHOLD,
+  getWorkspaceSetting,
+  resolveBlindMergeThreshold,
+  resolveVocabularyStrategy,
+} from '../../server/lib/settings'
 
 function fakeDb(rows: { workspace_id: string, key: string, value: unknown }[] = []): PipelineDb {
   const query = () => {
@@ -80,5 +85,31 @@ describe('resolveVocabularyStrategy', () => {
     const db = fakeDb([])
     const strategy = await resolveVocabularyStrategy(db, 'ws-1')
     expect(strategy.id).toBe('top-k')
+  })
+})
+
+describe('resolveBlindMergeThreshold', () => {
+  it('returns the stored number value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'extraction.blind_merge_threshold', value: 0.92 }])
+    const threshold = await resolveBlindMergeThreshold(db, 'ws-1')
+    expect(threshold).toBe(0.92)
+  })
+
+  it('parses a string value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'extraction.blind_merge_threshold', value: '0.72' }])
+    const threshold = await resolveBlindMergeThreshold(db, 'ws-1')
+    expect(threshold).toBe(0.72)
+  })
+
+  it('falls back to the code default when setting is absent', async () => {
+    const db = fakeDb([])
+    const threshold = await resolveBlindMergeThreshold(db, 'ws-1')
+    expect(threshold).toBe(DEFAULT_BLIND_MERGE_THRESHOLD)
+  })
+
+  it('falls back to the code default for out-of-range values', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'extraction.blind_merge_threshold', value: 1.5 }])
+    const threshold = await resolveBlindMergeThreshold(db, 'ws-1')
+    expect(threshold).toBe(DEFAULT_BLIND_MERGE_THRESHOLD)
   })
 })

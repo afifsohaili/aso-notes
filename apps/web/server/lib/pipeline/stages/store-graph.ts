@@ -5,20 +5,23 @@ import { sql } from 'kysely'
 import { EMBEDDING_DIMENSIONS } from '../../ai'
 import {
   mergeConceptNode,
+  mergeGroupedUnderEdge,
   mergeLinkEdge,
   mergeMentionsEdge,
   mergeNoteNode,
   mergeRelatesToEdge,
   mergeTaggedEdge,
   mergeTagNode,
+  mergeTopicNode,
   wipeNoteEdges,
 } from '../../graph'
+import { resolveBlindMergeThreshold } from '../../settings'
 import { normalizeGraphName } from '../extraction'
 import { STORE_GRAPH_STAGE } from '../ids'
 
 const CONCEPT_EMBED_BATCH_SIZE = 100
 
-const EMPTY_EXTRACTION: GraphExtraction = { concepts: [], relations: [], mentions: [], tags: [] }
+const EMPTY_EXTRACTION: GraphExtraction = { topics: [], concepts: [], relations: [], mentions: [], tags: [] }
 
 /**
  * The AGE-mirror operations store-graph performs inside its transaction —
@@ -29,7 +32,9 @@ export interface GraphMirror {
   wipeNoteEdges: typeof wipeNoteEdges
   mergeNoteNode: typeof mergeNoteNode
   mergeConceptNode: typeof mergeConceptNode
+  mergeTopicNode: typeof mergeTopicNode
   mergeRelatesToEdge: typeof mergeRelatesToEdge
+  mergeGroupedUnderEdge: typeof mergeGroupedUnderEdge
   mergeMentionsEdge: typeof mergeMentionsEdge
   mergeTagNode: typeof mergeTagNode
   mergeTaggedEdge: typeof mergeTaggedEdge
@@ -40,7 +45,9 @@ const realGraphMirror: GraphMirror = {
   wipeNoteEdges,
   mergeNoteNode,
   mergeConceptNode,
+  mergeTopicNode,
   mergeRelatesToEdge,
+  mergeGroupedUnderEdge,
   mergeMentionsEdge,
   mergeTagNode,
   mergeTaggedEdge,
@@ -54,28 +61,63 @@ interface ConceptRow {
   description: string | null
 }
 
-/** `"name: description"` per plan §store-graph phase 2. */
-function conceptEmbeddingInput(concept: { name: string, description: string }): string {
-  return `${concept.name}: ${concept.description}`
+interface TopicRow {
+  id: string
+  name: string
+  name_normalized: string
+  description: string | null
 }
 
-async function embedNewConcepts(
+/** `"name: description"` per plan §store-graph phase 2. */
+function graphItemEmbeddingInput(item: { name: string, description: string }): string {
+  return `${item.name}: ${item.description}`
+}
+
+export function topicEmbeddingInput(topic: { name: string, description: string }): string {
+  return graphItemEmbeddingInput(topic)
+}
+
+/**
+ * Collect every topic name referenced by the extraction: note-level topics plus
+ * per-concept topic refs. Dedupe by normalized name; note-level descriptions
+ * win over empty per-concept refs.
+ */
+export function collectTopicNames(extraction: GraphExtraction): Map<string, { name: string, description: string }> {
+  const names = new Map<string, { name: string, description: string }>()
+  for (const topic of extraction.topics) {
+    const normalized = normalizeGraphName(topic.name)
+    if (!normalized || names.has(normalized))
+      continue
+    names.set(normalized, { name: topic.name, description: topic.description || '' })
+  }
+  for (const concept of extraction.concepts) {
+    for (const topicName of concept.topics) {
+      const normalized = normalizeGraphName(topicName)
+      if (!normalized || names.has(normalized))
+        continue
+      names.set(normalized, { name: topicName, description: '' })
+    }
+  }
+  return names
+}
+
+async function embedGraphItems(
   provider: EmbeddingProvider,
-  concepts: { name: string, description: string }[],
+  items: { name: string, description: string }[],
 ): Promise<number[][]> {
   const embeddings: number[][] = []
-  for (let start = 0; start < concepts.length; start += CONCEPT_EMBED_BATCH_SIZE) {
-    const batch = concepts.slice(start, start + CONCEPT_EMBED_BATCH_SIZE)
-    const batchEmbeddings = await provider.embed(batch.map(conceptEmbeddingInput))
+  for (let start = 0; start < items.length; start += CONCEPT_EMBED_BATCH_SIZE) {
+    const batch = items.slice(start, start + CONCEPT_EMBED_BATCH_SIZE)
+    const batchEmbeddings = await provider.embed(batch.map(graphItemEmbeddingInput))
     if (batchEmbeddings.length !== batch.length) {
       throw new Error(
-        `embedding provider returned ${batchEmbeddings.length} embeddings for ${batch.length} concept inputs`,
+        `embedding provider returned ${batchEmbeddings.length} embeddings for ${batch.length} item inputs`,
       )
     }
     for (const embedding of batchEmbeddings) {
       if (embedding.length !== EMBEDDING_DIMENSIONS) {
         throw new Error(
-          `concept embedding has ${embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}`,
+          `item embedding has ${embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}`,
         )
       }
     }
@@ -140,17 +182,38 @@ export class StoreGraphStage implements Stage {
     // New concepts: extraction entries (deduped by normalized name) that
     // don't resolve to an existing row.
     const newConcepts: { name: string, name_normalized: string, description: string }[] = []
-    const seenNew = new Set<string>()
+    const seenNewConcept = new Set<string>()
     for (const concept of extraction.concepts) {
       const normalized = normalizeGraphName(concept.name)
-      if (!normalized || conceptByNormalized.has(normalized) || seenNew.has(normalized))
+      if (!normalized || conceptByNormalized.has(normalized) || seenNewConcept.has(normalized))
         continue
-      seenNew.add(normalized)
+      seenNewConcept.add(normalized)
       newConcepts.push({ name: concept.name, name_normalized: normalized, description: concept.description })
     }
 
-    // --- phase 2: batch-embed new concepts (outside the transaction) -----
-    const newEmbeddings = await embedNewConcepts(this.embeddingProvider, newConcepts)
+    // --- phase 1b: read-only topic resolution ----------------------------
+    // Topics are LLM-assigned at the note level and linked to concepts via
+    // concept_topics. Same normalized-name dedup discipline as concepts.
+    const topicNames = collectTopicNames(extraction)
+    const existingTopics: TopicRow[] = topicNames.size > 0
+      ? await ctx.db
+          .selectFrom('topics')
+          .select(['id', 'name', 'name_normalized', 'description'])
+          .where('workspace_id', '=', workspaceId)
+          .where('name_normalized', 'in', [...topicNames.keys()])
+          .execute()
+      : []
+    const topicByNormalized = new Map(existingTopics.map(t => [t.name_normalized, t]))
+
+    const newTopics = [...topicNames.entries()]
+      .filter(([normalized]) => !topicByNormalized.has(normalized))
+      .map(([normalized, { name, description }]) => ({ name, name_normalized: normalized, description }))
+
+    // --- phase 2: batch-embed new concepts and topics (outside tx) ------
+    const [newConceptEmbeddings, newTopicEmbeddings] = await Promise.all([
+      embedGraphItems(this.embeddingProvider, newConcepts),
+      embedGraphItems(this.embeddingProvider, newTopics),
+    ])
 
     // --- phase 3: the single final transaction ---------------------------
     // When the caller already runs inside a transaction (e2e harness,
@@ -167,10 +230,80 @@ export class StoreGraphStage implements Stage {
       await this.mirror.wipeNoteEdges(trx, noteId)
       await this.mirror.mergeNoteNode(trx, { id: noteId, workspaceId })
 
-      // (b) upsert concepts: insert new ones with embeddings; fill empty
+      // (t1) upsert topics: insert new ones with embeddings; fill empty
       // descriptions on existing rows (never overwrite a non-empty one)
+      for (let i = 0; i < newTopics.length; i++) {
+        const topic = newTopics[i]!
+        const inserted = await trx
+          .insertInto('topics')
+          .values({
+            workspace_id: workspaceId,
+            name: topic.name,
+            name_normalized: topic.name_normalized,
+            description: topic.description || null,
+            embedding: halfvecLiteral(newTopicEmbeddings[i]!),
+          })
+          .returning(['id', 'name', 'name_normalized', 'description'])
+          .executeTakeFirstOrThrow()
+        topicByNormalized.set(topic.name_normalized, inserted)
+      }
+      for (const topic of extraction.topics) {
+        const normalized = normalizeGraphName(topic.name)
+        const existing = topicByNormalized.get(normalized)
+        if (existing && !existing.description && topic.description) {
+          await trx
+            .updateTable('topics')
+            .set({ description: topic.description, updated_at: sql`now()` })
+            .where('id', '=', existing.id)
+            .execute()
+          existing.description = topic.description
+        }
+      }
+
+      // mirror every referenced topic node into AGE
+      for (const normalized of topicNames.keys()) {
+        const topic = topicByNormalized.get(normalized)
+        if (topic)
+          await this.mirror.mergeTopicNode(trx, { id: topic.id, workspaceId, name: topic.name })
+      }
+
+      // (c) blind-merge pass: when the active strategy says so, try to match
+      // each new concept to the nearest existing concept by embedding cosine
+      // similarity before inserting it as a new row.
+      if (ctx.vocabularyStrategy?.mergeOnStore) {
+        const threshold = await resolveBlindMergeThreshold(trx, workspaceId)
+        for (let i = 0; i < newConcepts.length; i++) {
+          const concept = newConcepts[i]!
+          // Only run for names that were not already resolved by exact match.
+          if (conceptByNormalized.has(concept.name_normalized))
+            continue
+          const nearest = await trx
+            .selectFrom('concepts')
+            .select(['id', 'name', 'name_normalized', 'description', sql<number>`embedding <=> ${halfvecLiteral(newConceptEmbeddings[i]!)}`.as('distance')])
+            .where('workspace_id', '=', workspaceId)
+            .where('embedding', 'is not', null)
+            .orderBy('distance')
+            .limit(1)
+            .executeTakeFirst()
+          if (!nearest)
+            continue
+          const score = 1 - nearest.distance
+          if (score >= threshold) {
+            console.warn('blind-merge: merged concept', { newName: concept.name, existingName: nearest.name, score })
+            conceptByNormalized.set(concept.name_normalized, nearest)
+          }
+        }
+      }
+
+      // (b) upsert concepts: insert remaining new ones with embeddings; fill
+      // empty descriptions on existing rows (never overwrite a non-empty one)
       for (let i = 0; i < newConcepts.length; i++) {
         const concept = newConcepts[i]!
+        const existing = conceptByNormalized.get(concept.name_normalized)
+        // If we already mapped this name to an existing row via blind-merge,
+        // skip the insert and reuse that row.
+        if (existing && existing.name_normalized !== concept.name_normalized)
+          continue
         const inserted = await trx
           .insertInto('concepts')
           .values({
@@ -178,7 +311,7 @@ export class StoreGraphStage implements Stage {
             name: concept.name,
             name_normalized: concept.name_normalized,
             description: concept.description || null,
-            embedding: halfvecLiteral(newEmbeddings[i]!),
+            embedding: halfvecLiteral(newConceptEmbeddings[i]!),
           })
           .returning(['id', 'name', 'name_normalized', 'description'])
           .executeTakeFirstOrThrow()
@@ -276,6 +409,32 @@ export class StoreGraphStage implements Stage {
       const mentionedConceptIds = new Set([...mentionPairs.values()].map(p => p.concept_id))
       for (const conceptId of mentionedConceptIds)
         await this.mirror.mergeMentionsEdge(trx, { noteId, conceptId, workspaceId })
+
+      // (t2) concept_topics: link each resolved concept to its assigned
+      // topics, workspace-scoped. Unknown topic names are dropped with a warning.
+      const conceptTopicPairs = new Map<string, { concept_id: string, topic_id: string }>()
+      for (const concept of extraction.concepts) {
+        const conceptRow = conceptByNormalized.get(normalizeGraphName(concept.name))
+        if (!conceptRow)
+          continue
+        for (const topicName of concept.topics) {
+          const topicRow = topicByNormalized.get(normalizeGraphName(topicName))
+          if (!topicRow) {
+            console.warn(`store-graph: dropping concept-topic link to unknown topic '${topicName}'`)
+            continue
+          }
+          conceptTopicPairs.set(`${conceptRow.id}:${topicRow.id}`, { concept_id: conceptRow.id, topic_id: topicRow.id })
+        }
+      }
+      if (conceptTopicPairs.size > 0) {
+        await trx
+          .insertInto('concept_topics')
+          .values([...conceptTopicPairs.values()].map(pair => ({ workspace_id: workspaceId, ...pair })))
+          .onConflict(oc => oc.columns(['concept_id', 'topic_id']).doNothing())
+          .execute()
+      }
+      for (const pair of conceptTopicPairs.values())
+        await this.mirror.mergeGroupedUnderEdge(trx, { conceptId: pair.concept_id, topicId: pair.topic_id, workspaceId })
 
       // (f) suggested ai tags: create tag rows as needed, respect
       // dismissals, never touch user-origin rows

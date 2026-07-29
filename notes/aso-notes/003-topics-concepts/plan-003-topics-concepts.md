@@ -137,7 +137,20 @@ interface VocabularyStrategy {
 - **blind-merge** returns empty concepts list (tags + topics still injected) and sets `mergeOnStore: true`; flag is exposed on pipeline context for M3's store-graph similarity pass.
 - **Concepts without embeddings excluded from top-K ranking** — noted as accepted divergence.
 - **Tests**: unit specs for all three strategies + registry + settings reader (`test/unit/pipeline/vocabulary.spec.ts`, `test/unit/settings.spec.ts`), e2e stage spec (`test/e2e/extract-graph-stage.spec.ts`) with stubbed LLM verifying prompt vocabulary sections per strategy and schema `topics` requirement; existing extraction/ingest specs updated for the new required field.
-- **M3 — Store-graph**: topic resolution/embed/upsert, `concept_topics`, blind-merge similarity pass with audit logging, AGE mirror helpers, atomic transaction extended.
+- **M3 — Store-graph**: topic resolution/embed/upsert, `concept_topics`, blind-merge similarity pass with audit logging, AGE mirror helpers, atomic transaction extended. **DONE (2026-07-29)** — full suite 353 passed, 4 skipped; lint clean. Notes below.
+
+### M3 implementation notes (divergences & decisions)
+
+- **Topic phase mirrors the concept phase**: note-level + per-concept topic names are collected, normalized, resolved against existing topics, batch-embedded as `"name: description"`, inserted, and then existing topics only get empty descriptions filled. Topic re-mention never overwrites a non-empty description.
+- **`concept_topics` is workspace-scoped and insert-if-absent** (composite PK on `concept_id, topic_id`). It is intentionally not wiped per-note: rows are concept-level links, so re-ingestion of a note that assigns a concept to new topics adds links, and existing links for that concept remain. This matches the plan's "concept-level — not wiped per-note" reasoning.
+- **Blind-merge pass applies to concepts only** in M3 scope. Each new concept that missed exact name resolution is embedded, its nearest existing concept by cosine similarity is queried (`embedding <=> halfvec(...)`), and if `1 - distance >= extraction.blind_merge_threshold` (default 0.85) the new name is mapped to the existing row. Relations, mentions, and concept_topics all resolve through the shared `conceptByNormalized` map.
+- **Threshold setting key** is `extraction.blind_merge_threshold` (the plan draft called it `extraction.merge_threshold`; the M3 spec uses the longer key). The `settings.ts` reader resolves it with the code default 0.85 and clamps to `[0, 1]`.
+- **Audit logging is a `console.warn` structured line** (`blind-merge: merged concept`, with new name, existing name, and score). No merge-audit table is persisted, per plan.
+- **AGE mirror additions**: `mergeTopicNode` and `mergeGroupedUnderEdge` helpers; `:Topic {id, workspace_id, name}` vertices and `[:GROUPED_UNDER {workspace_id}]` Concept→Topic edges are MERGEd in the same transaction. These edges are not wiped per-note because they are concept-level; MERGE idempotency handles duplicates.
+- **Tests added**: 4 e2e tests in `test/e2e/ingest-graph.spec.ts` (topic persistence + AGE mirror, topic reuse/description protection, above-threshold blind merge, below-threshold blind merge); 4 unit tests for `collectTopicNames`/`topicEmbeddingInput` in `test/unit/store-graph.spec.ts`; 4 unit tests for `resolveBlindMergeThreshold` in `test/unit/settings.spec.ts`.
+- **Unit test file location**: `vitest --project unit` only includes files directly under `test/unit/*.spec.ts`, so the store-graph unit spec lives at `test/unit/store-graph.spec.ts` rather than nested under `test/unit/pipeline/`.
+- **Existing e2e mirror object** updated to include the new `mergeTopicNode` and `mergeGroupedUnderEdge` helpers so the atomicity failure test continues to use real mirror functions for all new operations.
+
 - **M4 — Settings UI**: `/api/settings` GET/PATCH, `/settings` page + navbar link, strategy select + threshold input.
 - **M5 — Graph API + UI**: Topic nodes/color, topic-grouped list panel, concept detail updates.
 - **M6 — Mention-gap report**: script + report output.

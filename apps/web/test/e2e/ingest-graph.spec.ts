@@ -3,14 +3,17 @@ import type { GraphMirror } from '../../server/lib/pipeline/stages/store-graph'
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
 import { describe, expect } from 'vitest'
+import { halfvecLiteral } from '../../server/lib/agent/vector'
 import {
   conceptNeighbors,
   mergeConceptNode,
+  mergeGroupedUnderEdge,
   mergeMentionsEdge,
   mergeNoteNode,
   mergeRelatesToEdge,
   mergeTaggedEdge,
   mergeTagNode,
+  mergeTopicNode,
   parseAgtype,
   queryCypher,
   wipeNoteEdges,
@@ -64,6 +67,31 @@ function stubEmbeddingProvider() {
   return { calls, provider }
 }
 
+function unitVector(angleDegrees: number): number[] {
+  const rad = angleDegrees * Math.PI / 180
+  return Array.from({ length: 2048 }, (_, i) => {
+    if (i === 0)
+      return Math.cos(rad)
+    if (i === 1)
+      return Math.sin(rad)
+    return 0
+  })
+}
+
+function stubEmbeddingProviderForMerge(cases: { match: string, angle: number }[]) {
+  const calls: string[][] = []
+  const provider: EmbeddingProvider = {
+    async embed(texts) {
+      calls.push(texts)
+      return texts.map((text) => {
+        const match = cases.find(c => text.toLowerCase().includes(c.match.toLowerCase()))
+        return unitVector(match ? match.angle : 90)
+      })
+    },
+  }
+  return { calls, provider }
+}
+
 function stubLLM(payload: object) {
   const requests: CompletionRequest[] = []
   const provider: LLMProvider = {
@@ -105,6 +133,13 @@ async function ingest(trx: any, noteId: string, extraction: object) {
   const registry = createStageRegistry({ llmProvider: llm.provider, embeddingProvider: embedding.provider })
   await ingestNote({ db: trx, noteId, options: { registry, pipelines: PIPELINES } })
   return { embeddingCalls: embedding.calls, llmRequests: llm.requests }
+}
+
+async function ingestWithProvider(trx: any, noteId: string, extraction: object, embeddingProvider: EmbeddingProvider) {
+  const llm = stubLLM(extraction)
+  const registry = createStageRegistry({ llmProvider: llm.provider, embeddingProvider })
+  await ingestNote({ db: trx, noteId, options: { registry, pipelines: PIPELINES } })
+  return { llmRequests: llm.requests }
 }
 
 async function rowCount(trx: any, table: string, where?: (q: any) => any): Promise<number> {
@@ -459,7 +494,9 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
       wipeNoteEdges,
       mergeNoteNode,
       mergeConceptNode,
+      mergeTopicNode,
       mergeRelatesToEdge,
+      mergeGroupedUnderEdge,
       mergeMentionsEdge,
       mergeTagNode,
       mergeTaggedEdge,
@@ -482,5 +519,204 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
       .where('id', '=', note.id)
       .executeTakeFirstOrThrow()
     expect(after.status).toBe('failed')
+  })
+})
+
+describe('m3 store-graph topics and blind-merge', () => {
+  test('persists topics, concept_topics and mirrors them to AGE', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm3-topics')
+    await ensureNotesGraphCatalog(trx)
+    const note = await givenNote(trx, workspaceId, '/proj/topics.md', NOTE_CONTENT)
+    await ingest(trx, note.id, EXTRACTION)
+
+    const topics = await trx
+      .selectFrom('topics')
+      .select(['name', 'name_normalized', 'description', 'embedding'])
+      .where('workspace_id', '=', workspaceId)
+      .orderBy('name')
+      .execute()
+    expect(topics).toHaveLength(1)
+    expect(topics[0]!.name).toBe('Engineering')
+    expect(topics[0]!.description).toBe('software engineering topics')
+    expect(topics[0]!.embedding).not.toBeNull()
+
+    const conceptTopics = await trx
+      .selectFrom('concept_topics')
+      .innerJoin('concepts', 'concepts.id', 'concept_topics.concept_id')
+      .innerJoin('topics', 'topics.id', 'concept_topics.topic_id')
+      .select(['concepts.name as concept_name', 'topics.name as topic_name'])
+      .where('concept_topics.workspace_id', '=', workspaceId)
+      .orderBy(['concepts.name', 'topics.name'])
+      .execute()
+    expect(conceptTopics).toEqual([
+      { concept_name: 'Graph RAG', topic_name: 'Engineering' },
+      { concept_name: 'Kysely', topic_name: 'Engineering' },
+    ])
+
+    const topicNames = await cypherStrings(
+      trx,
+      `MATCH (t:Topic {workspace_id: '${workspaceId}'}) RETURN t.name ORDER BY t.name`,
+      'name',
+    )
+    expect(topicNames).toEqual(['Engineering'])
+
+    const groupedUnder = await cypherStrings(
+      trx,
+      `MATCH (c:Concept {workspace_id: '${workspaceId}'})-[:GROUPED_UNDER]->(t:Topic {name: 'Engineering'}) RETURN c.name ORDER BY c.name`,
+      'name',
+    )
+    expect(groupedUnder).toEqual(['Graph RAG', 'Kysely'])
+  })
+
+  test('reuses existing topics across notes and never overwrites descriptions', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm3-topic-reuse')
+    await ensureNotesGraphCatalog(trx)
+    const first = await givenNote(trx, workspaceId, '/proj/first.md', NOTE_CONTENT)
+    const second = await givenNote(trx, workspaceId, '/proj/second.md', `# Second\n\n${'gamma '.repeat(180)}`)
+
+    await ingest(trx, first.id, EXTRACTION)
+    await ingest(trx, second.id, {
+      concepts: [
+        { name: 'Postgres', description: 'the database', topics: ['Engineering'] },
+      ],
+      relations: [],
+      mentions: [{ concept: 'Postgres', chunkRefs: [0] }],
+      tags: [],
+      topics: [{ name: 'Engineering', description: 'changed description' }],
+    })
+
+    const topics = await trx
+      .selectFrom('topics')
+      .select(['name', 'description'])
+      .where('workspace_id', '=', workspaceId)
+      .where('name_normalized', '=', 'engineering')
+      .execute()
+    expect(topics).toHaveLength(1)
+    expect(topics[0]!.description).toBe('software engineering topics')
+
+    const topicRows = await trx
+      .selectFrom('topics')
+      .select(sql<number>`count(*)::int`.as('c'))
+      .where('workspace_id', '=', workspaceId)
+      .executeTakeFirstOrThrow()
+    expect(topicRows.c).toBe(1)
+  })
+
+  test('blind-merge merges a new concept into an existing concept when similarity >= threshold', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm3-blind-merge')
+    await ensureNotesGraphCatalog(trx)
+
+    await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspaceId,
+        name: 'Paddle',
+        name_normalized: 'paddle',
+        description: 'billing provider',
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .execute()
+
+    await sql`
+      INSERT INTO workspace_settings (workspace_id, key, value)
+      VALUES (${workspaceId}, 'extraction.vocabulary_strategy', ${JSON.stringify('blind-merge')}::jsonb)
+    `.execute(trx)
+
+    const note = await givenNote(trx, workspaceId, '/proj/paddle.md', `# Paddle\n\n${'alpha '.repeat(180)}`)
+
+    await ingestWithProvider(trx, note.id, {
+      concepts: [
+        { name: 'Paddle Payments', description: 'paddle payments product', topics: ['Engineering'] },
+        { name: 'Paddle Console', description: 'management ui', topics: ['Engineering'] },
+      ],
+      relations: [{ from: 'Paddle Payments', to: 'Paddle Console', type: 'has-product' }],
+      mentions: [
+        { concept: 'Paddle Payments', chunkRefs: [0] },
+        { concept: 'Paddle Console', chunkRefs: [0] },
+      ],
+      tags: [],
+      topics: [{ name: 'Engineering', description: 'software engineering' }],
+    }, stubEmbeddingProviderForMerge([
+      { match: 'paddle payments', angle: 0 },
+      { match: 'paddle console', angle: 60 },
+    ]).provider)
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select(['name', 'name_normalized'])
+      .where('workspace_id', '=', workspaceId)
+      .orderBy('name')
+      .execute()
+    expect(concepts).toEqual([
+      { name: 'Paddle', name_normalized: 'paddle' },
+      { name: 'Paddle Console', name_normalized: 'paddle console' },
+    ])
+
+    const relations = await trx
+      .selectFrom('relations')
+      .innerJoin('concepts as from_c', 'from_c.id', 'relations.from_concept_id')
+      .innerJoin('concepts as to_c', 'to_c.id', 'relations.to_concept_id')
+      .select(['from_c.name as from_name', 'to_c.name as to_name'])
+      .where('relations.workspace_id', '=', workspaceId)
+      .execute()
+    expect(relations).toEqual([{ from_name: 'Paddle', to_name: 'Paddle Console' }])
+
+    const mentions = await trx
+      .selectFrom('mentions')
+      .innerJoin('concepts', 'concepts.id', 'mentions.concept_id')
+      .select('concepts.name')
+      .where('mentions.workspace_id', '=', workspaceId)
+      .execute()
+    expect(mentions.map(m => m.name).sort()).toEqual(['Paddle', 'Paddle Console'])
+  })
+
+  test('blind-merge below threshold creates a new concept row', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'm3-blind-merge-miss')
+    await ensureNotesGraphCatalog(trx)
+
+    await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspaceId,
+        name: 'Paddle',
+        name_normalized: 'paddle',
+        description: 'billing provider',
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .execute()
+
+    await sql`
+      INSERT INTO workspace_settings (workspace_id, key, value)
+      VALUES (${workspaceId}, 'extraction.vocabulary_strategy', ${JSON.stringify('blind-merge')}::jsonb)
+    `.execute(trx)
+
+    const note = await givenNote(trx, workspaceId, '/proj/stripe.md', `# Stripe\n\n${'alpha '.repeat(180)}`)
+    await ingestWithProvider(trx, note.id, {
+      concepts: [
+        { name: 'Stripe Checkout', description: 'stripe checkout product', topics: ['Engineering'] },
+      ],
+      relations: [{ from: 'Stripe Checkout', to: 'Paddle', type: 'competes-with' }],
+      mentions: [{ concept: 'Stripe Checkout', chunkRefs: [0] }],
+      tags: [],
+      topics: [{ name: 'Engineering', description: 'software engineering' }],
+    }, stubEmbeddingProviderForMerge([{ match: 'stripe checkout', angle: 45 }]).provider)
+
+    const stripe = await trx
+      .selectFrom('concepts')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .where('name_normalized', '=', 'stripe checkout')
+      .execute()
+    expect(stripe).toHaveLength(1)
+    expect(stripe[0]!.name).toBe('Stripe Checkout')
+
+    const relations = await trx
+      .selectFrom('relations')
+      .innerJoin('concepts as from_c', 'from_c.id', 'relations.from_concept_id')
+      .innerJoin('concepts as to_c', 'to_c.id', 'relations.to_concept_id')
+      .select(['from_c.name as from_name', 'to_c.name as to_name'])
+      .where('relations.workspace_id', '=', workspaceId)
+      .execute()
+    expect(relations).toEqual([{ from_name: 'Stripe Checkout', to_name: 'Paddle' }])
   })
 })

@@ -46,3 +46,22 @@ export async function resolveVocabularyStrategy(db: PipelineDb, workspaceId: str
   const id = strategyIdFromSetting(raw) ?? topKStrategy().id
   return getVocabularyStrategy(id)
 }
+
+export const DEFAULT_BLIND_MERGE_THRESHOLD = 0.85
+
+/**
+ * Read the blind-merge cosine-similarity threshold for a workspace.
+ * Key: `extraction.blind_merge_threshold`. Falls back to the code default
+ * when the setting is missing or malformed.
+ */
+export async function resolveBlindMergeThreshold(db: PipelineDb, workspaceId: string): Promise<number> {
+  const raw = await getWorkspaceSetting<unknown>(db, workspaceId, 'extraction.blind_merge_threshold', null)
+  if (typeof raw === 'number' && raw >= 0 && raw <= 1)
+    return raw
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw)
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1)
+      return parsed
+  }
+  return DEFAULT_BLIND_MERGE_THRESHOLD
+}

@@ -21,7 +21,7 @@ function graphName(scope?: GraphScope): string {
 
 async function mergeVertex(
   db: GraphDb,
-  label: 'Concept' | 'Note' | 'Tag',
+  label: 'Concept' | 'Note' | 'Tag' | 'Topic',
   id: string,
   props: Record<string, AgPropertyValue>,
   scope?: GraphScope,
@@ -39,6 +39,18 @@ export function mergeConceptNode(
   scope?: GraphScope,
 ): Promise<void> {
   return mergeVertex(db, 'Concept', node.id, {
+    id: node.id,
+    workspace_id: node.workspaceId,
+    name: node.name,
+  }, scope)
+}
+
+export function mergeTopicNode(
+  db: GraphDb,
+  node: { id: string, workspaceId: string, name: string },
+  scope?: GraphScope,
+): Promise<void> {
+  return mergeVertex(db, 'Topic', node.id, {
     id: node.id,
     workspace_id: node.workspaceId,
     name: node.name,
@@ -69,7 +81,7 @@ async function mergeEdge(
   db: GraphDb,
   from: { label: string, id: string },
   to: { label: string, id: string },
-  type: 'RELATES_TO' | 'MENTIONS' | 'TAGGED' | 'LINKS',
+  type: 'RELATES_TO' | 'MENTIONS' | 'TAGGED' | 'LINKS' | 'GROUPED_UNDER',
   props: Record<string, AgPropertyValue>,
   scope?: GraphScope,
 ): Promise<void> {
@@ -101,6 +113,21 @@ export function mergeRelatesToEdge(
     { label: 'Concept', id: edge.toId },
     'RELATES_TO',
     { type: edge.type, workspace_id: edge.workspaceId },
+    scope,
+  )
+}
+
+export function mergeGroupedUnderEdge(
+  db: GraphDb,
+  edge: { conceptId: string, topicId: string, workspaceId: string },
+  scope?: GraphScope,
+): Promise<void> {
+  return mergeEdge(
+    db,
+    { label: 'Concept', id: edge.conceptId },
+    { label: 'Topic', id: edge.topicId },
+    'GROUPED_UNDER',
+    { workspace_id: edge.workspaceId },
     scope,
   )
 }
