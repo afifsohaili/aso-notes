@@ -2,11 +2,27 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import AppHeader from '../../app/components/app-header.vue'
 
-const { useSessionMock } = vi.hoisted(() => ({
-  useSessionMock: vi.fn(),
-}))
+const { useSessionMock, useRouteMock, makeRoute } = vi.hoisted(() => {
+  const makeRoute = (path = '/') => ({
+    path,
+    fullPath: path,
+    hash: '',
+    query: {},
+    params: {},
+    meta: {},
+    matched: [],
+    redirectedFrom: undefined,
+    name: undefined,
+  })
+  return {
+    useSessionMock: vi.fn(),
+    useRouteMock: vi.fn(() => makeRoute()),
+    makeRoute,
+  }
+})
 
 mockNuxtImport('useSession', () => useSessionMock)
+mockNuxtImport('useRoute', () => useRouteMock)
 
 describe('app-header', () => {
   it('renders the brand wordmark', async () => {
@@ -37,5 +53,27 @@ describe('app-header', () => {
     expect(hrefs).not.toContain('/notes/queue')
     expect(hrefs).not.toContain('/graph')
     expect(hrefs).not.toContain('/settings')
+  })
+
+  it('highlights only the queue link on /notes/queue, not the notes link', async () => {
+    useSessionMock.mockResolvedValue({ session: { user: { id: 'u1' } } })
+    useRouteMock.mockReturnValue(makeRoute('/notes/queue'))
+    const component = await mountSuspended(AppHeader)
+
+    const notesLink = component.findAll('a').find(a => a.attributes('href') === '/notes')
+    const queueLink = component.findAll('a').find(a => a.attributes('href') === '/notes/queue')
+    expect(notesLink?.classes()).not.toContain('underline')
+    expect(queueLink?.classes()).toContain('underline')
+  })
+
+  it('highlights the notes link on /notes', async () => {
+    useSessionMock.mockResolvedValue({ session: { user: { id: 'u1' } } })
+    useRouteMock.mockReturnValue(makeRoute('/notes'))
+    const component = await mountSuspended(AppHeader)
+
+    const notesLink = component.findAll('a').find(a => a.attributes('href') === '/notes')
+    const queueLink = component.findAll('a').find(a => a.attributes('href') === '/notes/queue')
+    expect(notesLink?.classes()).toContain('underline')
+    expect(queueLink?.classes()).not.toContain('underline')
   })
 })

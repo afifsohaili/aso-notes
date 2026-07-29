@@ -7,16 +7,16 @@ const { t } = useI18n()
 const route = useRoute()
 const { session } = await useSession()
 
-const links = [
+const links: { to: string, label: () => string, exact?: boolean, icon?: unknown }[] = [
   { to: '/chat', label: () => t('chat.title') },
-  { to: '/notes', label: () => t('notes.title') },
+  { to: '/notes', label: () => t('notes.title'), exact: true },
   { to: '/notes/queue', label: () => t('queue.title'), icon: QueueListIcon },
   { to: '/graph', label: () => t('graph.title') },
   { to: '/settings', label: () => t('settings.title'), icon: CogIcon },
 ]
 
-function isActive(to: string) {
-  return route.path === to || route.path.startsWith(`${to}/`)
+function isActive(to: string, exact = false) {
+  return route.path === to || (!exact && route.path.startsWith(`${to}/`))
 }
 </script>
 
@@ -33,7 +33,7 @@ function isActive(to: string) {
           :key="link.to"
           :to="link.to"
           class="px-3 py-2 rounded-md text-sm font-medium inline-flex items-center gap-1.5"
-          :class="isActive(link.to)
+          :class="isActive(link.to, link.exact)
             ? 'text-indigo-600 underline underline-offset-8 decoration-2'
             : 'text-gray-600 hover:text-gray-900'"
         >
