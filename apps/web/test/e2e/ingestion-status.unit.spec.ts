@@ -189,6 +189,32 @@ describe('buildIngestionStatus', () => {
     expect(result.activeJobs).toEqual([])
   })
 
+  test('resolves active jobs by noteId even when the BullMQ job id is numeric', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'status-numeric-jobid')
+    const noteId = await givenNote(trx, workspaceId, '/notes/active.md', 'processing')
+
+    const queue = fakeQueue({
+      counts: { active: 2 },
+      active: [
+        { id: '8630', noteId },
+        { id: '8631', noteId: '8631' },
+      ],
+    })
+
+    const result = await buildIngestionStatus({
+      db: trx,
+      workspaceId,
+      queue,
+      sweeperState: fakeSweeper(),
+    })
+
+    expect(result.activeJobs).toEqual([{
+      id: noteId,
+      path: '/notes/active.md',
+      title: '/notes/active.md',
+    }])
+  })
+
   test('returns the sweeper heartbeat unchanged', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'status-sweeper')
     const sweeper: SweeperState = {

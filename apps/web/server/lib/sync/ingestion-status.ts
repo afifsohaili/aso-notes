@@ -33,6 +33,8 @@ export interface BuildIngestionStatusArgs {
   sweeperState: SweeperState
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * Assemble the ingestion status payload for a workspace.
  *
@@ -70,7 +72,11 @@ export async function buildIngestionStatus(args: BuildIngestionStatusArgs): Prom
   if (queue) {
     queueCounts = await queue.getJobCounts()
     const active = await queue.getActiveJobs()
-    const activeNoteIds = active.map(job => job.id).filter(Boolean)
+    // Jobs enqueued before jobId=noteId (or by other producers) carry
+    // BullMQ-generated numeric ids; only uuid note ids can match notes.id.
+    const activeNoteIds = active
+      .map(job => job.noteId)
+      .filter(id => UUID_RE.test(id))
 
     if (activeNoteIds.length > 0) {
       const notes = await db
@@ -82,11 +88,11 @@ export async function buildIngestionStatus(args: BuildIngestionStatusArgs): Prom
       const noteById = new Map(notes.map(n => [n.id, n]))
 
       for (const job of active) {
-        const note = noteById.get(job.id)
+        const note = noteById.get(job.noteId)
         if (!note)
           continue
         activeJobs.push({
-          id: job.id,
+          id: note.id,
           path: note.path,
           title: note.title,
         })
