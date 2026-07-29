@@ -261,13 +261,15 @@ describe('settings rebuild API', () => {
       .insertInto('notes')
       .values([
         { workspace_id: workspace.id, path: '/a.md', title: 'A', content: '', content_hash: 'a', status: 'pending' },
-        { workspace_id: workspace.id, path: '/b.md', title: 'B', content: '', content_hash: 'b', status: 'ingested' },
-        { workspace_id: workspace.id, path: '/c.md', title: 'C', content: '', content_hash: 'c', status: 'failed' },
+        { workspace_id: workspace.id, path: '/b.md', title: 'B', content: '', content_hash: 'b', status: 'queued' },
+        { workspace_id: workspace.id, path: '/c.md', title: 'C', content: '', content_hash: 'c', status: 'processing' },
+        { workspace_id: workspace.id, path: '/d.md', title: 'D', content: '', content_hash: 'd', status: 'ingested' },
+        { workspace_id: workspace.id, path: '/e.md', title: 'E', content: '', content_hash: 'e', status: 'failed' },
       ])
       .execute()
 
     const res = await server('/api/notes/status-counts', { headers: { cookie: cookies } })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ pending: 1, ingested: 1, failed: 1 })
+    expect(await res.json()).toEqual({ pending: 1, queued: 1, processing: 1, ingested: 1, failed: 1 })
   })
 })

@@ -16,7 +16,7 @@ vi.stubGlobal('$fetch', $fetchMock)
 function mockUseFetch(url: string) {
   if (url === '/api/notes/status-counts') {
     return {
-      data: ref({ pending: 0, ingested: 0, failed: 0 }) as Ref<{ pending: number, ingested: number, failed: number }>,
+      data: ref({ pending: 0, queued: 0, processing: 0, ingested: 0, failed: 0 }) as Ref<{ pending: number, queued: number, processing: number, ingested: number, failed: number }>,
       pending: ref(false),
       refresh: vi.fn(),
     }

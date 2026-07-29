@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     .executeTakeFirst()
 
   if (!membership) {
-    return { pending: 0, ingested: 0, failed: 0 }
+    return { pending: 0, queued: 0, processing: 0, ingested: 0, failed: 0 }
   }
 
   const rows = await db
@@ -26,9 +26,9 @@ export default defineEventHandler(async (event) => {
     .groupBy('status')
     .execute()
 
-  const counts = { pending: 0, ingested: 0, failed: 0 }
+  const counts = { pending: 0, queued: 0, processing: 0, ingested: 0, failed: 0 }
   for (const row of rows) {
-    if (row.status === 'pending' || row.status === 'ingested' || row.status === 'failed')
+    if (row.status in counts)
       counts[row.status] = Number(row.c)
   }
 

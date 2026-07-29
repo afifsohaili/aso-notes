@@ -46,7 +46,7 @@ After a rebuild, every note sits at `status='pending'` and the user cannot tell:
 ### Build order
 
 - [x] **O5** — Schema + transitions: status enum expansion, dispatcher/worker flips, jobId dedup, worker failed-handler flip, sweeper stale re-dispatch + heartbeat module. **DONE 2026-07-30**
-- [ ] **O6** — `GET /api/ingestion/status` + extended status-counts.
+- [x] **O6** — `GET /api/ingestion/status` + extended status-counts. **DONE 2026-07-30**
 - [ ] **O7** — UI: note-list badges + `/notes/queue` page + navbar link.
 
 Each milestone: TDD (feature specs at the boundary: dispatch → status flip; worker start → processing; status endpoint input→body), update this doc with status + divergences, commit.
@@ -221,7 +221,30 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
   - The dispatcher update is `status IN ('pending', 'queued')` rather than strictly `status='pending'` so a stale-queued re-dispatch refreshes `updated_at` and avoids immediate re-dispatch loops.
   - The failed-handler logic was extracted to `server/lib/sync/worker-failed.ts` so it can be tested without importing the Nitro plugin module (which relies on `defineNitroPlugin`/`useWorker` auto-imports).
 
-### Phase 3 — Rejected / out of scope
+#### O6 implementation notes
+
+- **Response shape:** `GET /api/ingestion/status` returns a flat, typed payload:
+  ```ts
+  {
+    db: { pending, queued, processing, ingested, failed },
+    queue: { waiting, active, completed, failed, delayed } | null,
+    activeJobs: [{ id, path, title }],
+    sweeper: { lastSweepAt, lastDispatched, lastFailed }
+  }
+  ```
+- **Queue accessor:** new `server/lib/sync/queue.ts` wraps `useQueue` with a small `IngestionQueueSnapshot` interface (`getJobCounts`, `getActiveJobs`). It returns `null` when `NUXT_REDIS_URL` is unset, and exposes `setIngestionQueueOverride` / `clearIngestionQueueOverride` so tests can inject a fake queue without Redis.
+- **Status builder:** `server/lib/sync/ingestion-status.ts` holds the pure `buildIngestionStatus({ db, workspaceId, queue, sweeperState })` function used by the endpoint. It reads DB counts, resolves active job ids to note paths scoped to the workspace, and copies the sweeper heartbeat.
+- **Endpoint:** `server/api/ingestion/status.get.ts` follows the auth + workspace resolution pattern of `settings/rebuild.post.ts` and `notes/status-counts.get.ts`.
+- **No-Redis graceful path:** when `NUXT_REDIS_URL` is unset and no override is active, the endpoint returns `queue: null` and `activeJobs: []` without throwing.
+- **Status-counts extension:** `GET /api/notes/status-counts` now returns `{ pending, queued, processing, ingested, failed }`. Its e2e test and the `settings-page` component mock were updated to include the new counts.
+- **Tests:**
+  - `test/e2e/ingestion-status.get.spec.ts` (new): feature spec — seeds notes in all statuses, overrides the queue snapshot, asserts DB counts, queue counts, active job mapping, and heartbeat shape. Also verifies the no-Redis path returns `queue: null` and `activeJobs: []`.
+  - `test/e2e/ingestion-status.unit.spec.ts` (new): unit-style edge cases for `buildIngestionStatus` — zero counts, workspace scoping, queue counts + active job mapping, skipping jobs from other workspaces, skipping missing note ids, heartbeat passthrough. Runs in the `e2e` project because it needs the transactional DB fixture.
+  - `test/e2e/settings-rebuild.spec.ts`: updated status-counts assertions to include `queued`/`processing`.
+  - `test/components/settings-page.nuxt.spec.ts`: updated status-counts mock.
+- Full suite: e2e 216 passed, unit 236 passed, nuxt 28 passed; lint clean. (The first full `pnpm test` run showed one flaky `notes-watcher.spec.ts` failure that passes when run alone; unrelated to O6.)
+- **Divergence from plan:** The "fake/inline" queue testing fixture from `@base/testing` is built around the `@base/jobs` abstraction, while the ingestion pipeline uses BullMQ directly via `useQueue`. O6 therefore uses a dedicated `IngestionQueueSnapshot` fake override in `server/lib/sync/queue.ts` rather than the generic `@base/testing` queue fixture. The fake queue behavior is still verified in the feature spec.
+- **Active-job resolution policy:** active jobs whose note id cannot be resolved to a note in the caller's workspace are silently skipped. This prevents leaking other workspaces' paths and matches the endpoint's workspace-scoped boundary.
 
 - Run history / archival (rejected by user — latest-only is the design).
 - Per-stage timing rows.
