@@ -45,7 +45,7 @@ After a rebuild, every note sits at `status='pending'` and the user cannot tell:
 
 ### Build order
 
-- [ ] **O5** — Schema + transitions: status enum expansion, dispatcher/worker flips, jobId dedup, worker failed-handler flip, sweeper stale re-dispatch + heartbeat module.
+- [x] **O5** — Schema + transitions: status enum expansion, dispatcher/worker flips, jobId dedup, worker failed-handler flip, sweeper stale re-dispatch + heartbeat module. **DONE 2026-07-30**
 - [ ] **O6** — `GET /api/ingestion/status` + extended status-counts.
 - [ ] **O7** — UI: note-list badges + `/notes/queue` page + navbar link.
 
@@ -198,6 +198,30 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
   - The list summary strips `extraction.messages` and `extraction.response`; there is no separate `rawResponse` field in the stored schema.
   - The inner messages/response viewers use toggle buttons (`v-if`) rather than nested `<details>` elements, while the outer panel remains a native `<details>` collapsed by default.
   - Count labels are rendered as plain text (e.g. "3 concepts, 2 relations...") instead of a structured table.
+
+#### O5 implementation notes
+
+- **Migration:** `1785200000002_add_queued_processing_status_to_notes.ts` drops and recreates `notes_status_check` to include `queued` and `processing`. Regenerated `packages/shared/types.d.ts` and `apps/web/db/schema.sql` via `pnpm db:migrate:generate` / `pnpm db:schema:dump`.
+- **Dispatcher:** `server/lib/sync/dispatcher.ts` now requires `db` to flip `pending → queued` after a successful enqueue (BullMQ) or before the inline run. The BullMQ dispatcher uses `queue.add(..., { jobId: noteId })` for dedup; the update is guarded to `status IN ('pending', 'queued')` so an ingested/failed row is never rolled backwards. A queue failure leaves the note `pending`.
+- **Inline / no-Redis path:** `notes-sync.ts` and `server/lib/sync/process.ts` pass `db` into `createSyncDispatcher`. The inline dispatcher performs the same `pending → queued` flip so tests and the no-Redis path see the same state machine.
+- **Ingest run start:** `server/lib/sync/ingest.ts` flips `queued/pending → processing` at the start of `ingestNote`, guarded by `status IN ('queued', 'pending')`. This covers the normal BullMQ path (`queued`), inline/test paths (`pending`), and direct manual calls, while preventing a stale job from overwriting `ingested`/`failed`.
+- **Worker failed handler:** `server/lib/sync/worker-failed.ts` holds `handleFailedIngestionJob`; the plugin's `worker.on('failed')` calls it with the DB from `useDatabase`. The update is guarded to `status IN ('queued', 'processing')` so it cannot clobber a row that just succeeded. The catch block in `ingestNote` already records `last_run` and flips `failed` for in-handler errors; the event handler covers crashes and stalled-job exhaustion.
+- **Sweeper stale re-dispatch:** `server/lib/sync/sweeper.ts` `settledPendingNotesQuery` now selects `status IN ('pending', 'queued')` with `updated_at < now() - 5 minutes`. `processing` is intentionally excluded (BullMQ stalled recovery owns it). `runSweeperOnce` records the heartbeat.
+- **Heartbeat:** `server/lib/sync/sweeper-state.ts` is an in-memory singleton with `lastSweepAt`, `lastDispatched` (count), `lastFailed` (count), plus `resetSweeperState()` for tests. Single-process assumption is documented; a multi-process deployment would need a shared store.
+- **Tests:**
+  - `test/e2e/notes-schema.spec.ts`: updated status-constraint test to accept `queued`/`processing` and reject bogus.
+  - `test/e2e/notes-sweeper.spec.ts`: updated call sites to the new `createInlineDispatcher` signature; added stale-queued re-dispatch, fresh-queued skip, processing skip, and heartbeat assertions.
+  - `test/unit/notes-sync.spec.ts`: updated `createSyncDispatcher` and `settledPendingNotesQuery` expectations for the new signatures and SQL shape.
+  - `test/e2e/notes-dispatcher.spec.ts` (new): BullMQ enqueue with `jobId=noteId`, `pending → queued`, re-dispatch of stale queued, no backwards roll on ingested, enqueue failure leaves `pending`, inline flip before run.
+  - `test/e2e/notes-worker-failed.spec.ts` (new): `queued → failed`, `processing → failed`, guarded against `pending`/`ingested`, no-op for missing/undefined ids.
+- **Status-counts API:** intentionally left at the old three-value shape (`pending`, `ingested`, `failed`) for O6; no existing tests broke because the sweeper/ingest tests observe the DB directly.
+- **Domain glossary:** added `Note Status` to `notes/aso-notes/CONTEXT.md`.
+- Full suite: 473 passed / 4 skipped; lint clean.
+- **Divergences from plan:**
+  - The dispatcher update is `status IN ('pending', 'queued')` rather than strictly `status='pending'` so a stale-queued re-dispatch refreshes `updated_at` and avoids immediate re-dispatch loops.
+  - The failed-handler logic was extracted to `server/lib/sync/worker-failed.ts` so it can be tested without importing the Nitro plugin module (which relies on `defineNitroPlugin`/`useWorker` auto-imports).
+
+### Phase 3 — Rejected / out of scope
 
 - Run history / archival (rejected by user — latest-only is the design).
 - Per-stage timing rows.

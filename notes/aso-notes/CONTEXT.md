@@ -101,3 +101,7 @@ _Avoid_: Import, processing
 **Ingestion Run**:
 A single execution of the Ingestion pipeline for one Note. Only the latest Run is recorded (on the Note itself); no Run history is kept.
 _Avoid_: Extraction job, outbox entry, attempt log
+
+**Note Status**:
+Lifecycle state of a Note row: `pending` (settling, not yet queued), `queued` (dispatched to BullMQ, waiting for a worker), `processing` (a worker is actively running the Ingestion pipeline), `ingested` (pipeline succeeded), `failed` (pipeline failed or was declared failed by BullMQ after retries).
+_Avoid_: State, job state, stage

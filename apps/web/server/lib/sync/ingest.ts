@@ -37,6 +37,18 @@ export async function ingestNote(args: {
   if (!note)
     return
 
+  // Flip the note into the active-processing state. We accept both 'queued'
+  // (the normal BullMQ path) and 'pending' (inline/manual/test paths) so the
+  // status model stays consistent regardless of how the run was started.
+  // Guarded UPDATE prevents rolling an 'ingested' or 'failed' row backwards
+  // if a stale job somehow runs after a retry/rebuild.
+  await db
+    .updateTable('notes')
+    .set({ status: 'processing', updated_at: sql`now()` })
+    .where('id', '=', note.id)
+    .where('status', 'in', ['queued', 'pending'])
+    .execute()
+
   const ctx = new PipelineContext({ note, workspaceId: note.workspace_id, db })
 
   try {

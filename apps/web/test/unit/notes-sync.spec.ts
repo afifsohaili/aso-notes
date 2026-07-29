@@ -131,35 +131,54 @@ describe('decideUpsert (rename guard + skip rule)', () => {
 })
 
 describe('createSyncDispatcher', () => {
-  it('selects the BullMQ dispatcher when a Redis URL is present', async () => {
-    const added: { name: string, data: unknown }[] = []
+  function compileDb() {
+    return new Kysely<DB>({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createIntrospector: d => new PostgresIntrospector(d),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      },
+    })
+  }
+
+  it('selects the BullMQ dispatcher when a Redis URL is present and enqueues with jobId = noteId', async () => {
+    const added: { name: string, data: unknown, opts?: { jobId: string } }[] = []
+    const db = compileDb()
     const dispatcher = createSyncDispatcher({
+      db,
       redisUrl: 'redis://localhost:6379',
-      createQueue: () => ({ add: async (name, data) => { added.push({ name, data }) } }),
+      createQueue: () => ({ add: async (name, data, opts) => { added.push({ name, data, opts }) } }),
     })
     expect(dispatcher).not.toBeNull()
     await dispatcher!.dispatch('note-1')
-    expect(added).toEqual([{ name: 'ingest-note', data: { noteId: 'note-1' } }])
+    expect(added).toEqual([{ name: 'ingest-note', data: { noteId: 'note-1' }, opts: { jobId: 'note-1' } }])
+    await db.destroy()
   })
 
   it('selects the inline dispatcher when no Redis URL but an inline handler is given (tests)', async () => {
+    const db = compileDb()
     const ran: string[] = []
     const dispatcher = createSyncDispatcher({
+      db,
       redisUrl: undefined,
       inlineRun: async (noteId) => { ran.push(noteId) },
     })
     expect(dispatcher).not.toBeNull()
     await dispatcher!.dispatch('note-2')
     expect(ran).toEqual(['note-2'])
+    await db.destroy()
   })
 
   it('returns null when no Redis URL and no inline handler (sweeper disabled)', () => {
-    expect(createSyncDispatcher({ redisUrl: undefined })).toBeNull()
+    const db = compileDb()
+    expect(createSyncDispatcher({ db, redisUrl: undefined })).toBeNull()
+    return db.destroy()
   })
 })
 
 describe('settledPendingNotesQuery', () => {
-  it('selects pending notes settled for longer than the settle interval', () => {
+  it('selects pending notes and stale queued notes older than the settle interval', () => {
     // compile-only: no driver connection is opened
     const db = new Kysely<DB>({
       dialect: {
@@ -171,11 +190,14 @@ describe('settledPendingNotesQuery', () => {
     })
 
     const compiled = settledPendingNotesQuery(db, 'ws-1').compile()
-    expect(compiled.sql).toContain('"status" =')
+    expect(compiled.sql.toLowerCase()).toContain('status')
+    expect(compiled.sql.toLowerCase()).toContain(' in ($2, $3)')
     expect(compiled.sql).toContain(`interval '${PENDING_SETTLE_INTERVAL}'`)
     expect(compiled.sql).toMatch(/updated_at"?\s*</)
     expect(compiled.parameters).toContain('ws-1')
     expect(compiled.parameters).toContain('pending')
+    expect(compiled.parameters).toContain('queued')
+    db.destroy()
   })
 
   it('exposes a 5-minute settle interval per the plan', () => {

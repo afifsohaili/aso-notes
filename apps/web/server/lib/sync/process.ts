@@ -1,6 +1,5 @@
 import type { IngestionDispatcher } from './dispatcher'
 import type { SyncDb } from './sweeper'
-import { useDatabase } from '~~/utils/db'
 import { createInlineDispatcher, createSyncDispatcher } from './dispatcher'
 import { ingestNote } from './ingest'
 
@@ -20,17 +19,15 @@ export function setProcessTestDispatcher(dispatcher: IngestionDispatcher | null)
   testDispatcher = dispatcher
 }
 
-export function resolveProcessDispatcher(env: { databaseUrl: string, redisUrl?: string }): IngestionDispatcher {
+export function resolveProcessDispatcher(env: { db: SyncDb, databaseUrl: string, redisUrl?: string }): IngestionDispatcher {
   if (testDispatcher)
     return testDispatcher
 
-  const dispatcher = createSyncDispatcher({ redisUrl: env.redisUrl })
+  const dispatcher = createSyncDispatcher({ db: env.db, redisUrl: env.redisUrl })
   if (dispatcher)
     return dispatcher
 
-  return createInlineDispatcher(noteId =>
-    ingestNote({ db: useDatabase({ databaseUrl: env.databaseUrl }), noteId }),
-  )
+  return createInlineDispatcher({ db: env.db, run: noteId => ingestNote({ db: env.db, noteId }) })
 }
 
 export interface ProcessPendingResult {

@@ -197,7 +197,7 @@ describe('notes domain schema (M1)', () => {
     }
   })
 
-  test('notes.status and note_tags.origin reject values outside the allowed sets', async ({ trx }) => {
+  test('notes.status and note_tags.origin reject values outside the allowed sets, and queued/processing are allowed', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'checks')
 
     await expectDbError(trx, () =>
@@ -213,8 +213,10 @@ describe('notes domain schema (M1)', () => {
     await expectDbError(trx, () =>
       trx.insertInto('note_tags').values({ workspace_id: workspaceId, note_id: noteId, tag_id: tag.id, origin: 'robot' }).execute())
 
-    // allowed values succeed
+    // allowed values succeed, including the new queue lifecycle states
     await trx.insertInto('note_tags').values({ workspace_id: workspaceId, note_id: noteId, tag_id: tag.id, origin: 'ai' }).execute()
+    await trx.updateTable('notes').set({ status: 'queued' }).where('id', '=', noteId).execute()
+    await trx.updateTable('notes').set({ status: 'processing' }).where('id', '=', noteId).execute()
     expect(await rowCount(trx, 'note_tags')).toBe(1)
   })
 

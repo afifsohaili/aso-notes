@@ -4,6 +4,7 @@ import process from 'node:process'
 import { useDatabase } from '~~/utils/db'
 import { INGESTION_QUEUE_NAME } from '../lib/sync/dispatcher'
 import { ingestNote } from '../lib/sync/ingest'
+import { handleFailedIngestionJob } from '../lib/sync/worker-failed'
 
 /**
  * BullMQ consumer for the ingestion queue (plan-002-system §Sync service,
@@ -41,8 +42,20 @@ export default defineNitroPlugin(() => {
     },
   )
 
-  worker.on('failed', (job: Job | undefined, err: Error) => {
+  worker.on('failed', async (job: Job | undefined, err: Error) => {
     console.error(`Ingestion job ${job?.id} failed after retries:`, err.message)
+
+    // The catch block in ingestNote already records last_run and flips the
+    // status to 'failed' for errors that happen inside the handler. This
+    // handler covers crashes between BullMQ handing the job to the worker and
+    // the handler completing, plus stalled jobs that exhaust retries.
+    try {
+      const db = useDatabase({ databaseUrl: config.databaseUrl })
+      await handleFailedIngestionJob(db, job?.data?.noteId)
+    }
+    catch (dbError) {
+      console.error(`Ingestion worker failed-handler: could not flip note ${job?.data?.noteId} to failed:`, dbError)
+    }
   })
 
   console.warn('Ingestion worker initialized')

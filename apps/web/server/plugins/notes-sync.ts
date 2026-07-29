@@ -43,7 +43,11 @@ export default defineNitroPlugin(() => {
 
     mkdirSync(notesDir, { recursive: true })
 
-    const dispatcher = createSyncDispatcher({ redisUrl: process.env.NUXT_REDIS_URL })
+    const dispatcher = createSyncDispatcher({
+      db,
+      redisUrl: process.env.NUXT_REDIS_URL,
+      inlineRun: noteId => ingestNote({ db, noteId }),
+    })
     if (!dispatcher)
       console.warn('notes-sync: NUXT_REDIS_URL is not set; sweeper disabled — pending notes will not be ingested')
 

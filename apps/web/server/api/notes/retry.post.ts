@@ -55,6 +55,7 @@ export default defineEventHandler(async (event) => {
     .execute()
 
   const dispatcher = resolveProcessDispatcher({
+    db,
     databaseUrl: config.databaseUrl,
     redisUrl: config.redisUrl,
   })

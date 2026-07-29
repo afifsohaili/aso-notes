@@ -1,10 +1,11 @@
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
-import { describe, expect } from 'vitest'
+import { afterEach, describe, expect } from 'vitest'
 import { StageRegistry } from '../../server/lib/pipeline/registry'
 import { createInlineDispatcher } from '../../server/lib/sync/dispatcher'
 import { ingestNote } from '../../server/lib/sync/ingest'
 import { runSweeperOnce } from '../../server/lib/sync/sweeper'
+import { getSweeperState, resetSweeperState } from '../../server/lib/sync/sweeper-state'
 
 /**
  * M3 feature spec: the sweeper slow path + ingestion worker handler
@@ -64,6 +65,10 @@ async function getNote(trx: any, id: string) {
 }
 
 describe('sweeper', () => {
+  afterEach(() => {
+    resetSweeperState()
+  })
+
   test('dispatches ingestion only for pending notes settled past the settle interval', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sweep-settle')
     const settled = await givenNote(trx, workspaceId, '/settled.md', '10 minutes')
@@ -73,7 +78,7 @@ describe('sweeper', () => {
     const result = await runSweeperOnce({
       db: trx,
       workspaceId,
-      dispatcher: createInlineDispatcher(async (noteId) => { dispatched.push(noteId) }),
+      dispatcher: createInlineDispatcher({ db: trx, run: async (noteId) => { dispatched.push(noteId) } }),
     })
 
     expect(dispatched).toEqual([settled.id])
@@ -88,8 +93,10 @@ describe('sweeper', () => {
     await runSweeperOnce({
       db: trx,
       workspaceId,
-      dispatcher: createInlineDispatcher(noteId =>
-        ingestNote({ db: trx, noteId, options: { registry, pipelines: { 'markdown-note': ['mark-ingested'] } } })),
+      dispatcher: createInlineDispatcher({
+        db: trx,
+        run: noteId => ingestNote({ db: trx, noteId, options: { registry, pipelines: { 'markdown-note': ['mark-ingested'] } } }),
+      }),
     })
 
     const after = await getNote(trx, note.id)
@@ -111,15 +118,17 @@ describe('sweeper', () => {
     const result = await runSweeperOnce({
       db: trx,
       workspaceId,
-      dispatcher: createInlineDispatcher(noteId =>
-        ingestNote({
+      dispatcher: createInlineDispatcher({
+        db: trx,
+        run: noteId => ingestNote({
           db: trx,
           noteId,
           options: {
             registry: noteId === bad.id ? badRegistry : okRegistry,
             pipelines: { 'markdown-note': [noteId === bad.id ? 'boom' : 'mark-ingested'] },
           },
-        })),
+        }),
+      }),
     })
 
     expect((await getNote(trx, bad.id)).status).toBe('failed')
@@ -136,5 +145,71 @@ describe('sweeper', () => {
       noteId: crypto.randomUUID(),
       options: { registry, pipelines: { 'markdown-note': ['noop'] } },
     })).resolves.toBeUndefined()
+  })
+
+  test('re-dispatches stale queued notes but leaves fresh queued notes alone', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'sweep-stale-queued')
+    const stale = await givenNote(trx, workspaceId, '/stale-queued.md', '10 minutes')
+    const fresh = await givenNote(trx, workspaceId, '/fresh-queued.md', '10 minutes')
+
+    // Simulate a prior dispatch: both are queued, but only stale is old enough.
+    await trx
+      .updateTable('notes')
+      .set({ status: 'queued' })
+      .where('id', 'in', [stale.id, fresh.id])
+      .execute()
+    await trx
+      .updateTable('notes')
+      .set({ updated_at: sql`now() - interval '1 minute'` })
+      .where('id', '=', fresh.id)
+      .execute()
+
+    const dispatched: string[] = []
+    await runSweeperOnce({
+      db: trx,
+      workspaceId,
+      dispatcher: createInlineDispatcher({ db: trx, run: async (noteId) => { dispatched.push(noteId) } }),
+    })
+
+    expect(dispatched).toEqual([stale.id])
+  })
+
+  test('does not re-dispatch processing notes', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'sweep-processing')
+    await givenNote(trx, workspaceId, '/processing.md', '10 minutes')
+    await trx.updateTable('notes').set({ status: 'processing' }).execute()
+
+    const dispatched: string[] = []
+    await runSweeperOnce({
+      db: trx,
+      workspaceId,
+      dispatcher: createInlineDispatcher({ db: trx, run: async (noteId) => { dispatched.push(noteId) } }),
+    })
+
+    expect(dispatched).toHaveLength(0)
+  })
+
+  test('records a heartbeat with the last sweep result', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'sweep-heartbeat')
+    const _a = await givenNote(trx, workspaceId, '/a.md', '10 minutes')
+    const b = await givenNote(trx, workspaceId, '/b.md', '10 minutes')
+
+    await runSweeperOnce({
+      db: trx,
+      workspaceId,
+      dispatcher: createInlineDispatcher({
+        db: trx,
+        run: async (noteId) => {
+          if (noteId === b.id)
+            throw new Error('boom')
+        },
+      }),
+    })
+
+    const state = getSweeperState()
+    expect(state.lastDispatched).toBe(1)
+    expect(state.lastFailed).toBe(1)
+    expect(state.lastSweepAt).not.toBeNull()
+    expect(new Date(state.lastSweepAt!).getTime()).toBeGreaterThan(Date.now() - 60_000)
   })
 })
