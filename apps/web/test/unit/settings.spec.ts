@@ -1,16 +1,21 @@
 import type { PipelineDb } from '../../server/lib/pipeline/types'
+import type { KnownSettingKey } from '../../server/lib/settings'
 import { describe, expect, it } from 'vitest'
 import {
+  assertKnownSettingKey,
   DEFAULT_BLIND_MERGE_THRESHOLD,
   getWorkspaceSetting,
+  normalizeSettingValue,
   resolveBlindMergeThreshold,
   resolveVocabularyStrategy,
+  resolveWorkspaceSettings,
 } from '../../server/lib/settings'
 
 function fakeDb(rows: { workspace_id: string, key: string, value: unknown }[] = []): PipelineDb {
   const query = () => {
     let workspaceId: string | undefined
-    let key: string | undefined
+    let key: string | string[] | undefined
+    let op: string | undefined
     let selected: string[] = []
 
     const chain: any = {
@@ -22,15 +27,26 @@ function fakeDb(rows: { workspace_id: string, key: string, value: unknown }[] = 
         selected = cols
         return chain
       },
-      where(col: string, _op: string, val: unknown) {
+      where(col: string, operator: string, val: unknown) {
+        op = operator
         if (col === 'workspace_id')
           workspaceId = val as string
         if (col === 'key')
-          key = val as string
+          key = val as string | string[]
         return chain
       },
       async execute() {
-        const matches = rows.filter(r => r.workspace_id === workspaceId && r.key === key)
+        const matches = rows.filter((r) => {
+          if (r.workspace_id !== workspaceId)
+            return false
+          if (key === undefined)
+            return true
+          if (op === 'in' && Array.isArray(key))
+            return key.includes(r.key)
+          return r.key === key
+        })
+        if (selected.includes('key'))
+          return matches
         if (selected.includes('value'))
           return matches.map(r => ({ value: r.value }))
         return matches
@@ -85,6 +101,99 @@ describe('resolveVocabularyStrategy', () => {
     const db = fakeDb([])
     const strategy = await resolveVocabularyStrategy(db, 'ws-1')
     expect(strategy.id).toBe('top-k')
+  })
+})
+
+describe('resolveWorkspaceSettings', () => {
+  it('returns defaults with source default when no workspace rows exist', async () => {
+    const db = fakeDb([])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+
+    expect(settings).toEqual({
+      'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
+      'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
+    })
+  })
+
+  it('returns workspace values with source workspace when rows exist', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'extraction.vocabulary_strategy', value: 'blind-merge' },
+      { workspace_id: 'ws-1', key: 'extraction.blind_merge_threshold', value: 0.92 },
+    ])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+
+    expect(settings).toEqual({
+      'extraction.vocabulary_strategy': { value: 'blind-merge', source: 'workspace' },
+      'extraction.blind_merge_threshold': { value: 0.92, source: 'workspace' },
+    })
+  })
+
+  it('ignores unknown keys from the database', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'extraction.vocabulary_strategy', value: 'full' },
+      { workspace_id: 'ws-1', key: 'future.key', value: 'ignored' },
+    ])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+
+    expect(settings).toEqual({
+      'extraction.vocabulary_strategy': { value: 'full', source: 'workspace' },
+      'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
+    })
+  })
+})
+
+describe('assertKnownSettingKey', () => {
+  it('accepts known keys', () => {
+    expect(assertKnownSettingKey('extraction.vocabulary_strategy')).toBe('extraction.vocabulary_strategy')
+    expect(assertKnownSettingKey('extraction.blind_merge_threshold')).toBe('extraction.blind_merge_threshold')
+  })
+
+  it('throws for unknown keys', () => {
+    expect(() => assertKnownSettingKey('unknown.key')).toThrow('unknown setting key')
+  })
+
+  it('throws for non-string keys', () => {
+    expect(() => assertKnownSettingKey(null)).toThrow('unknown setting key')
+  })
+})
+
+describe('normalizeSettingValue', () => {
+  it('accepts valid vocabulary strategies', () => {
+    expect(normalizeSettingValue('extraction.vocabulary_strategy', 'top-k')).toBe('top-k')
+    expect(normalizeSettingValue('extraction.vocabulary_strategy', 'blind-merge')).toBe('blind-merge')
+    expect(normalizeSettingValue('extraction.vocabulary_strategy', 'full')).toBe('full')
+  })
+
+  it('rejects invalid vocabulary strategies', () => {
+    expect(() => normalizeSettingValue('extraction.vocabulary_strategy', 'nearest-neighbor')).toThrow('invalid vocabulary strategy')
+  })
+
+  it('rejects non-string vocabulary strategies', () => {
+    expect(() => normalizeSettingValue('extraction.vocabulary_strategy', 123)).toThrow('invalid vocabulary strategy')
+  })
+
+  it('accepts a valid threshold in (0, 1]', () => {
+    expect(normalizeSettingValue('extraction.blind_merge_threshold', 0.85)).toBe(0.85)
+    expect(normalizeSettingValue('extraction.blind_merge_threshold', 1)).toBe(1)
+    expect(normalizeSettingValue('extraction.blind_merge_threshold', 0.001)).toBe(0.001)
+  })
+
+  it('parses a numeric string threshold', () => {
+    expect(normalizeSettingValue('extraction.blind_merge_threshold', '0.72')).toBe(0.72)
+  })
+
+  it('rejects thresholds outside (0, 1]', () => {
+    expect(() => normalizeSettingValue('extraction.blind_merge_threshold', 0)).toThrow('threshold must be a number in (0, 1]')
+    expect(() => normalizeSettingValue('extraction.blind_merge_threshold', 1.1)).toThrow('threshold must be a number in (0, 1]')
+    expect(() => normalizeSettingValue('extraction.blind_merge_threshold', -0.1)).toThrow('threshold must be a number in (0, 1]')
+  })
+
+  it('rejects non-numeric thresholds', () => {
+    expect(() => normalizeSettingValue('extraction.blind_merge_threshold', 'high')).toThrow('threshold must be a number in (0, 1]')
+  })
+
+  it('rejects unknown keys', () => {
+    expect(() => normalizeSettingValue('unknown.key' as KnownSettingKey, 'x')).toThrow('unknown setting key')
   })
 })
 

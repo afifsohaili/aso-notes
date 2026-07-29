@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { useI18n } from 'vue-i18n'
+import CogIcon from '~icons/heroicons/cog'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -9,6 +10,7 @@ const links = [
   { to: '/chat', label: () => t('chat.title') },
   { to: '/notes', label: () => t('notes.title') },
   { to: '/graph', label: () => t('graph.title') },
+  { to: '/settings', label: () => t('settings.title'), icon: CogIcon },
 ]
 
 function isActive(to: string) {
@@ -28,11 +30,17 @@ function isActive(to: string) {
           v-for="link in links"
           :key="link.to"
           :to="link.to"
-          class="px-3 py-2 rounded-md text-sm font-medium"
+          class="px-3 py-2 rounded-md text-sm font-medium inline-flex items-center gap-1.5"
           :class="isActive(link.to)
             ? 'text-indigo-600 underline underline-offset-8 decoration-2'
             : 'text-gray-600 hover:text-gray-900'"
         >
+          <component
+            :is="link.icon"
+            v-if="link.icon"
+            class="h-4 w-4"
+            aria-hidden="true"
+          />
           {{ link.label() }}
         </NuxtLink>
       </nav>

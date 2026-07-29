@@ -15,7 +15,7 @@ describe('app-header', () => {
     expect(component.text()).toContain('aso-notes')
   })
 
-  it('shows nav links to chat, notes, and graph when signed in', async () => {
+  it('shows nav links to chat, notes, graph, and settings when signed in', async () => {
     useSessionMock.mockResolvedValue({ session: { user: { id: 'u1' } } })
     const component = await mountSuspended(AppHeader)
 
@@ -23,6 +23,7 @@ describe('app-header', () => {
     expect(hrefs).toContain('/chat')
     expect(hrefs).toContain('/notes')
     expect(hrefs).toContain('/graph')
+    expect(hrefs).toContain('/settings')
   })
 
   it('hides nav links when signed out', async () => {
@@ -33,5 +34,6 @@ describe('app-header', () => {
     expect(hrefs).not.toContain('/chat')
     expect(hrefs).not.toContain('/notes')
     expect(hrefs).not.toContain('/graph')
+    expect(hrefs).not.toContain('/settings')
   })
 })

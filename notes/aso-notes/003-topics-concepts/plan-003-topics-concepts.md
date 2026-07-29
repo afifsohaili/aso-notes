@@ -151,7 +151,20 @@ interface VocabularyStrategy {
 - **Unit test file location**: `vitest --project unit` only includes files directly under `test/unit/*.spec.ts`, so the store-graph unit spec lives at `test/unit/store-graph.spec.ts` rather than nested under `test/unit/pipeline/`.
 - **Existing e2e mirror object** updated to include the new `mergeTopicNode` and `mergeGroupedUnderEdge` helpers so the atomicity failure test continues to use real mirror functions for all new operations.
 
-- **M4 — Settings UI**: `/api/settings` GET/PATCH, `/settings` page + navbar link, strategy select + threshold input.
+- **M4 — Settings UI**: `/api/settings` GET/PATCH, `/settings` page + navbar link, strategy select + threshold input. **DONE (2026-07-29)** — full suite 377 passed, 4 skipped; lint clean. Notes below.
+
+### M4 implementation notes (divergences & decisions)
+
+- **API shape**: `PATCH /api/settings` accepts a single `{ key, value }` object and validates it atomically. A partial-map shape was considered but rejected to keep writes explicit and error messages unambiguous.
+- **Effective settings**: `GET /api/settings` returns `{ settings: { [key]: { value, source: 'workspace' | 'default' } } }` for known keys. Values stored in `workspace_settings` are returned as-is with `source: 'workspace'`; missing keys use the hardcoded code default with `source: 'default'`.
+- **Validation extracted**: `assertKnownSettingKey` and `normalizeSettingValue` live in `server/lib/settings.ts` with unit specs. Strategy accepts `top-k`, `blind-merge`, `full`. Threshold must be a number in `(0, 1]` (strictly greater than 0, at most 1).
+- **JSONB upsert**: `workspace_settings.value` is written with `to_jsonb(value::text)` for strings and `to_jsonb(value::numeric)` for numbers so PostgreSQL receives a well-typed JSONB value; raw Kysely parameter binding produced "invalid input syntax for type json".
+- **Settings page** at `app/pages/settings.vue`: strategy select, threshold input shown only for `blind-merge`, save button, saved/error feedback. Changes apply to the next ingestion (documented on the page).
+- **Navbar** at `app/components/app-header.vue`: Settings link with `~icons/heroicons/cog`.
+- **Component test for the page**: added a smoke test for `settings.vue` using `mockNuxtImport('useFetch', ...)`. It renders the strategy select and conditionally shows the threshold input.
+- **Tests added**: 8 e2e tests in `test/e2e/settings-api.spec.ts` (auth, defaults, persistence, unknown key, invalid strategy, out-of-range threshold, valid threshold); 13 unit tests in `test/unit/settings.spec.ts` (resolution, key validation, value normalization); 2 component tests in `test/components/settings-page.nuxt.spec.ts`; 1 updated app-header component test.
+- **Typecheck**: `pnpm --filter web exec nuxt typecheck` currently fails before reaching project types due to a pre-existing `vue@^3.5.28` override conflict with npm (EOVERRIDE); lint and the full test suite are green.
+
 - **M5 — Graph API + UI**: Topic nodes/color, topic-grouped list panel, concept detail updates.
 - **M6 — Mention-gap report**: script + report output.
 - **M7 — Rebuild + comparison + live verification**: wipe, run comparison protocol (flip strategy via Settings between rebuilds), psql cypher count parity, browser check of `/graph` and `/settings`, findings recorded below.
