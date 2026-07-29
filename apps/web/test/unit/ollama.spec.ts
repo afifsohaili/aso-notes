@@ -120,14 +120,40 @@ describe('ollamaEmbeddingProvider', () => {
     const { calls, fetchFn } = mockFetch(200, {
       embeddings: [[0.1, 0.2], [0.3, 0.4]],
     })
-    const provider = new OllamaEmbeddingProvider({ model: 'nomic-embed-text', fetchFn })
+    const provider = new OllamaEmbeddingProvider({ model: 'nomic-embed-text', fetchFn, dimensions: 2 })
 
     const result = await provider.embed(['a', 'b'])
 
     expect(calls[0]!.url).toBe('http://localhost:11434/api/embed')
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body).toEqual({ model: 'nomic-embed-text', input: ['a', 'b'] })
+    expect(body).toEqual({ model: 'nomic-embed-text', input: ['a', 'b'], dimensions: 2 })
     expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]])
+  })
+
+  it('requests the graph-store width by default', async () => {
+    const { calls, fetchFn } = mockFetch(200, { embeddings: [Array.from({ length: 2048 }).fill(0)] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn })
+
+    await provider.embed(['x'])
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.dimensions).toBe(2048)
+  })
+
+  it('zero-pads embeddings shorter than the target dimensions', async () => {
+    const { fetchFn } = mockFetch(200, { embeddings: [[0.5, -0.5]] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn, dimensions: 4 })
+
+    const result = await provider.embed(['x'])
+
+    expect(result).toEqual([[0.5, -0.5, 0, 0]])
+  })
+
+  it('throws when the model returns more dimensions than the target', async () => {
+    const { fetchFn } = mockFetch(200, { embeddings: [[0.1, 0.2, 0.3]] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn, dimensions: 2 })
+
+    await expect(provider.embed(['x'])).rejects.toThrow(/3 dimensions, above the 2 target/)
   })
 
   it('throws with status on non-OK', async () => {

@@ -6,6 +6,7 @@ import type {
   LLMProvider,
   ResponseFormat,
 } from './types'
+import { EMBEDDING_DIMENSIONS } from './types'
 
 export const OLLAMA_BASE_URL = 'http://localhost:11434'
 
@@ -14,6 +15,15 @@ export interface OllamaOptions {
   baseUrl?: string
   /** Injectable for tests — no live API calls in the test suite. */
   fetchFn?: typeof fetch
+}
+
+export interface OllamaEmbeddingOptions extends OllamaOptions {
+  /**
+   * Target embedding length. Sent to Ollama as the `dimensions` body param
+   * (Matryoshka models truncate server-side); short results are zero-padded,
+   * longer results are an error. Defaults to the graph store width.
+   */
+  dimensions?: number
 }
 
 interface OllamaToolCallWire {
@@ -133,18 +143,20 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   private readonly model: string
   private readonly baseUrl: string
   private readonly fetchFn: typeof fetch
+  private readonly dimensions: number
 
-  constructor(options: OllamaOptions) {
+  constructor(options: OllamaEmbeddingOptions) {
     this.model = options.model
     this.baseUrl = options.baseUrl ?? OLLAMA_BASE_URL
     this.fetchFn = options.fetchFn ?? fetch
+    this.dimensions = options.dimensions ?? EMBEDDING_DIMENSIONS
   }
 
   async embed(texts: string[]): Promise<number[][]> {
     const response = await this.fetchFn(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: JSON.stringify({ model: this.model, input: texts, dimensions: this.dimensions }),
     })
     if (!response.ok) {
       const text = await response.text()
@@ -152,6 +164,17 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     }
 
     const payload = await response.json() as OllamaEmbedResponse
-    return payload.embeddings
+    return payload.embeddings.map(embedding => this.fitDimensions(embedding))
+  }
+
+  private fitDimensions(embedding: number[]): number[] {
+    if (embedding.length === this.dimensions)
+      return embedding
+    if (embedding.length > this.dimensions) {
+      throw new Error(
+        `Ollama model ${this.model} returned ${embedding.length} dimensions, above the ${this.dimensions} target — pick a smaller model or widen the graph store`,
+      )
+    }
+    return [...embedding, ...Array.from({ length: this.dimensions - embedding.length }).fill(0)]
   }
 }

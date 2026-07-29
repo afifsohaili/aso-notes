@@ -1,9 +1,10 @@
 import type { EmbeddingProvider } from './types'
+import { EMBEDDING_DIMENSIONS } from './types'
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 export const DEFAULT_EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free'
 /** nvidia/llama-nemotron-embed-vl-1b-v2 outputs 2048-dim embeddings (model card). */
-export const EMBEDDING_DIMENSIONS = 2048
+export { EMBEDDING_DIMENSIONS }
 
 export interface OpenRouterEmbeddingOptions {
   apiKey: string

@@ -4,6 +4,12 @@
  * the first implementation. M4 (extraction) and M5 (agent) consume these.
  */
 
+/**
+ * Embedding width of the graph store (chunks/concepts/topics halfvec columns).
+ * Providers must return exactly this many dimensions.
+ */
+export const EMBEDDING_DIMENSIONS = 2048
+
 export interface EmbeddingProvider {
   /**
    * Embed a batch of texts. Returns one embedding per input, in input
