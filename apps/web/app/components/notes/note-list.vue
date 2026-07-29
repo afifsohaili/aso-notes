@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import ArrowPathIcon from '~icons/heroicons/arrow-path'
 import DocumentIcon from '~icons/heroicons/document-text'
+import ExclamationTriangleIcon from '~icons/heroicons/exclamation-triangle'
 
 export interface NoteListItem {
   path: string
@@ -8,9 +10,13 @@ export interface NoteListItem {
   status: string
   tags: { id: string, name: string, origin: string }[]
   updatedAt: string
+  lastRun: {
+    status: 'succeeded' | 'failed'
+    error: { message: string } | null
+  } | null
 }
 
-defineProps<{
+const props = defineProps<{
   notes: NoteListItem[]
   selectedPath: string | null
 }>()
@@ -19,6 +25,8 @@ const emit = defineEmits<{
   (e: 'select', path: string): void
   (e: 'retry', path: string): void
 }>()
+
+const { t } = useI18n()
 
 const statusClasses: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -29,13 +37,17 @@ const statusClasses: Record<string, string> = {
 function statusClass(status: string): string {
   return statusClasses[status] ?? 'bg-gray-100 text-gray-800'
 }
+
+function isFailed(note: NoteListItem): boolean {
+  return note.status === 'failed' || note.lastRun?.status === 'failed'
+}
 </script>
 
 <template>
   <div class="overflow-y-auto h-full">
     <ul class="divide-y divide-gray-200">
       <li
-        v-for="note in notes"
+        v-for="note in props.notes"
         :key="note.path"
         class="px-4 py-3 hover:bg-gray-50 cursor-pointer"
         :class="selectedPath === note.path ? 'bg-indigo-50' : ''"
@@ -54,6 +66,16 @@ function statusClass(status: string): string {
                   :class="statusClass(note.status)"
                 >
                   {{ note.status }}
+                </span>
+                <span
+                  v-if="isFailed(note)"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"
+                  :title="note.lastRun?.error?.message ?? t('notes.lastRun.errorTooltip')"
+                >
+                  <ExclamationTriangleIcon class="h-3 w-3" />
+                  <span class="truncate max-w-[120px]">
+                    {{ note.lastRun?.error?.message ?? t('notes.lastRun.errorTooltip') }}
+                  </span>
                 </span>
                 <button
                   v-if="note.status === 'failed'"

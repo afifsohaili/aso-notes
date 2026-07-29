@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import ArrowPathIcon from '~icons/heroicons/arrow-path'
 import DocumentIcon from '~icons/heroicons/document-text'
+import ExclamationTriangleIcon from '~icons/heroicons/exclamation-triangle'
 import PencilIcon from '~icons/heroicons/pencil'
 import XMarkIcon from '~icons/heroicons/x-mark'
 
@@ -32,11 +33,61 @@ export interface NoteDetailNote {
   tags: { id: string, name: string, origin: string }[]
   sources: { url: string, type: string | null }[]
   updatedAt: string
+  lastRun: LastRunDetail | null
+}
+
+interface LastRunDetail {
+  pipeline: string
+  status: 'succeeded' | 'failed'
+  failed_stage: string | null
+  error: { name: string, message: string, stack?: string } | null
+  attempt: number
+  job_id: string | null
+  started_at: string
+  finished_at: string
+  duration_ms: number
+  chunks: number | null
+  extraction: {
+    strategy: string
+    model: string
+    messages: { role: string, content: string }[]
+    response: string
+    usage: { prompt_tokens: number, completion_tokens: number } | null
+    counts: { concepts: number, relations: number, mentions: number, tags: number }
+  } | null
 }
 
 const isEditing = ref(false)
 const draftContent = ref('')
 const newTagName = ref('')
+const showMessages = ref(false)
+const showResponse = ref(false)
+
+const isFailed = computed(() => props.note.status === 'failed' || props.note.lastRun?.status === 'failed')
+
+const prettyResponse = computed(() => {
+  const raw = props.note.lastRun?.extraction?.response
+  if (!raw)
+    return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  }
+  catch {
+    return raw
+  }
+})
+
+function formatDuration(ms: number): string {
+  if (ms < 1000)
+    return `${ms}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
+function formatTokens(usage: { prompt_tokens: number, completion_tokens: number } | null): string {
+  if (!usage)
+    return '-'
+  return `${usage.prompt_tokens} / ${usage.completion_tokens}`
+}
 
 watch(() => props.startEditing, (value) => {
   if (value) {
@@ -97,6 +148,14 @@ function statusClass(status: string): string {
           :class="statusClass(note.status)"
         >
           {{ note.status }}
+        </span>
+        <span
+          v-if="isFailed"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"
+          :title="note.lastRun?.error?.message ?? t('notes.lastRun.errorTooltip')"
+        >
+          <ExclamationTriangleIcon class="h-3 w-3" />
+          {{ t('notes.lastRun.errorTooltip') }}
         </span>
         <button
           v-if="note.status === 'failed' && !isEditing"
@@ -208,6 +267,142 @@ function statusClass(status: string): string {
           <span v-if="source.type" class="ml-2 text-xs text-gray-500">({{ source.type }})</span>
         </li>
       </ul>
+    </div>
+
+    <div v-if="note.lastRun" class="mt-6 border-t pt-6">
+      <details>
+        <summary class="cursor-pointer list-none">
+          <h3 class="text-sm font-medium text-gray-900 inline-flex items-center gap-2">
+            {{ t('notes.lastRun.title') }}
+            <span
+              class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize"
+              :class="statusClass(note.lastRun.status)"
+            >
+              {{ note.lastRun.status }}
+            </span>
+            <span
+              v-if="note.lastRun.error"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"
+              :title="note.lastRun.error.message"
+            >
+              <ExclamationTriangleIcon class="h-3 w-3" />
+              {{ note.lastRun.error.message }}
+            </span>
+          </h3>
+        </summary>
+
+        <div class="mt-4 space-y-3 text-sm text-gray-700">
+          <dl class="grid grid-cols-2 gap-3">
+            <div>
+              <dt class="text-xs text-gray-500">
+                {{ t('notes.lastRun.pipeline') }}
+              </dt>
+              <dd class="font-mono text-xs">
+                {{ note.lastRun.pipeline }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-gray-500">
+                {{ t('notes.lastRun.duration') }}
+              </dt>
+              <dd>{{ formatDuration(note.lastRun.duration_ms) }}</dd>
+            </div>
+            <div v-if="note.lastRun.failed_stage">
+              <dt class="text-xs text-gray-500">
+                {{ t('notes.lastRun.failedStage') }}
+              </dt>
+              <dd class="font-mono text-xs text-red-700">
+                {{ note.lastRun.failed_stage }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-gray-500">
+                {{ t('notes.lastRun.chunks') }}
+              </dt>
+              <dd>{{ note.lastRun.chunks ?? '-' }}</dd>
+            </div>
+          </dl>
+
+          <div v-if="note.lastRun.extraction" class="border-t pt-3 space-y-3">
+            <dl class="grid grid-cols-2 gap-3">
+              <div>
+                <dt class="text-xs text-gray-500">
+                  {{ t('notes.lastRun.strategy') }}
+                </dt>
+                <dd class="font-mono text-xs">
+                  {{ note.lastRun.extraction.strategy }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-gray-500">
+                  {{ t('notes.lastRun.model') }}
+                </dt>
+                <dd class="font-mono text-xs">
+                  {{ note.lastRun.extraction.model }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-gray-500">
+                  {{ t('notes.lastRun.tokens') }}
+                </dt>
+                <dd>{{ formatTokens(note.lastRun.extraction.usage) }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-gray-500">
+                  {{ t('notes.lastRun.counts') }}
+                </dt>
+                <dd>
+                  {{ note.lastRun.extraction.counts.concepts }} concepts,
+                  {{ note.lastRun.extraction.counts.relations }} relations,
+                  {{ note.lastRun.extraction.counts.mentions }} mentions,
+                  {{ note.lastRun.extraction.counts.tags }} tags
+                </dd>
+              </div>
+            </dl>
+
+            <div>
+              <button
+                type="button"
+                class="text-sm text-indigo-600 hover:text-indigo-900"
+                @click="showMessages = !showMessages"
+              >
+                {{ showMessages ? t('notes.lastRun.hideMessages') : t('notes.lastRun.showMessages') }}
+              </button>
+              <div v-if="showMessages" data-testid="last-run-messages" class="mt-2 space-y-2">
+                <div
+                  v-for="(message, index) in note.lastRun.extraction.messages"
+                  :key="index"
+                  class="border rounded-md overflow-hidden"
+                >
+                  <div class="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 capitalize">
+                    {{ message.role }}
+                  </div>
+                  <pre class="p-3 whitespace-pre-wrap font-mono text-xs text-gray-800">{{ message.content }}</pre>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                class="text-sm text-indigo-600 hover:text-indigo-900"
+                @click="showResponse = !showResponse"
+              >
+                {{ showResponse ? t('notes.lastRun.hideResponse') : t('notes.lastRun.showResponse') }}
+              </button>
+              <pre
+                v-if="showResponse"
+                data-testid="last-run-response"
+                class="mt-2 p-3 whitespace-pre-wrap font-mono text-xs text-gray-800 bg-gray-50 rounded-md overflow-x-auto"
+              >{{ prettyResponse }}</pre>
+            </div>
+          </div>
+
+          <div v-else class="text-sm text-gray-500 italic">
+            {{ t('notes.lastRun.noExtraction') }}
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 </template>

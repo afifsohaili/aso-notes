@@ -95,10 +95,30 @@ function isExtraction(value: unknown): value is NonNullable<LastRun['extraction'
     && isCounts(value.counts)
 }
 
+export type LastRunSummary = Omit<LastRun, 'extraction'> & {
+  extraction: Omit<NonNullable<LastRun['extraction']>, 'messages' | 'response'> | null
+}
+
 export interface BuildLastRunOptions {
   status: 'succeeded' | 'failed'
   error?: unknown
   worker?: { attemptsMade?: number, jobId?: string | null } | null
+}
+
+/** Strip large extraction fields for note list serialization. */
+export function toLastRunSummary(lastRun: LastRun): LastRunSummary {
+  const { extraction, ...rest } = lastRun
+  return {
+    ...rest,
+    extraction: extraction
+      ? {
+          strategy: extraction.strategy,
+          model: extraction.model,
+          usage: extraction.usage,
+          counts: extraction.counts,
+        }
+      : null,
+  }
 }
 
 function serializeError(error: unknown): LastRun['error'] {

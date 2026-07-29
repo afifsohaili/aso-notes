@@ -22,7 +22,7 @@ afterAll(() => {
     rmSync(dir, { recursive: true, force: true })
 })
 
-async function seedNotesDomain(trx: any, workspaceId: string): Promise<void> {
+async function seedNotesDomain(trx: any, workspaceId: string): Promise<string> {
   await ensureNotesGraphCatalog(trx)
 
   const folders = ['/project-a', '/project-b', '/project-a/engineering']
@@ -114,6 +114,8 @@ async function seedNotesDomain(trx: any, workspaceId: string): Promise<void> {
       type: 'youtube',
     })
     .execute()
+
+  return planNote.id
 }
 
 async function taggedEdgeExists(trx: any, noteId: string, tagId: string): Promise<boolean> {
@@ -123,6 +125,39 @@ async function taggedEdgeExists(trx: any, noteId: string, tagId: string): Promis
     'r ag_catalog.agtype',
   )
   return rows.length > 0
+}
+
+function makeLastRun(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    pipeline: 'markdown-note-with-links',
+    status: 'failed',
+    failed_stage: 'extract-graph',
+    error: { name: 'Error', message: 'LLM extraction failed' },
+    attempt: 2,
+    job_id: 'job-abc',
+    started_at: '2026-07-29T10:00:00.000Z',
+    finished_at: '2026-07-29T10:00:05.123Z',
+    duration_ms: 5123,
+    chunks: 4,
+    extraction: {
+      strategy: 'top-k',
+      model: 'openai/gpt-4o-mini',
+      messages: [{ role: 'system', content: 'extract' }, { role: 'user', content: 'note body' }],
+      response: '{"concepts":[]}',
+      usage: { prompt_tokens: 100, completion_tokens: 50 },
+      counts: { concepts: 3, relations: 2, mentions: 5, tags: 1 },
+    },
+    ...overrides,
+  }
+}
+
+async function setNoteLastRun(trx: any, workspaceId: string, notePath: string, lastRun: unknown): Promise<void> {
+  await trx
+    .updateTable('notes')
+    .set({ last_run: JSON.stringify(lastRun) as any })
+    .where('workspace_id', '=', workspaceId)
+    .where('path', '=', notePath)
+    .execute()
 }
 
 describe.sequential('notes API', () => {
@@ -181,6 +216,7 @@ describe.sequential('notes API', () => {
       expect(body[0].tags).toHaveLength(1)
       expect(body[0].tags[0]).toMatchObject({ name: 'Important', origin: 'ai' })
       expect(typeof body[0].updatedAt).toBe('string')
+      expect(body[0].lastRun).toBeNull()
     })
 
     test('returns root-level notes when folder is omitted', async ({ server, trx }) => {
@@ -206,6 +242,45 @@ describe.sequential('notes API', () => {
       expect(body).toHaveLength(1)
       expect(body[0].path).toBe('/inbox.md')
     })
+
+    test('last_run summary strips messages and response', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', makeLastRun())
+
+      const res = await server('/api/notes?folder=/project-a', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body).toHaveLength(1)
+      const lastRun = body[0].lastRun
+      expect(lastRun).not.toBeNull()
+      expect(lastRun.status).toBe('failed')
+      expect(lastRun.pipeline).toBe('markdown-note-with-links')
+      expect(lastRun.failed_stage).toBe('extract-graph')
+      expect(lastRun.error).toEqual({ name: 'Error', message: 'LLM extraction failed' })
+      expect(lastRun.duration_ms).toBe(5123)
+      expect(lastRun.extraction).toMatchObject({
+        strategy: 'top-k',
+        model: 'openai/gpt-4o-mini',
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+        counts: { concepts: 3, relations: 2, mentions: 5, tags: 1 },
+      })
+      expect(lastRun.extraction.messages).toBeUndefined()
+      expect(lastRun.extraction.response).toBeUndefined()
+    })
+
+    test('malformed last_run is serialized as null', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', { garbage: true })
+
+      const res = await server('/api/notes?folder=/project-a', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body[0].lastRun).toBeNull()
+    })
   })
 
   describe('gET /api/notes/:path', () => {
@@ -228,6 +303,37 @@ describe.sequential('notes API', () => {
       expect(body.tags).toHaveLength(0)
       expect(body.sources).toHaveLength(1)
       expect(body.sources[0]).toMatchObject({ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', type: 'youtube' })
+      expect(body.lastRun).toBeNull()
+    })
+
+    test('detail endpoint returns full last_run with messages and response verbatim', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', makeLastRun())
+
+      const res = await server('/api/notes/project-a/plan.md', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      const lastRun = body.lastRun
+      expect(lastRun).not.toBeNull()
+      expect(lastRun.extraction.messages).toEqual([
+        { role: 'system', content: 'extract' },
+        { role: 'user', content: 'note body' },
+      ])
+      expect(lastRun.extraction.response).toBe('{\"concepts\":[]}')
+    })
+
+    test('malformed last_run on detail endpoint returns null without 500', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', { garbage: true })
+
+      const res = await server('/api/notes/project-a/plan.md', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.lastRun).toBeNull()
     })
 
     test('rejects path traversal attempts', async ({ server, trx }) => {

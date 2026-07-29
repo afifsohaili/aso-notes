@@ -1,3 +1,4 @@
+import { parseLastRun, toLastRunSummary } from '~~/server/lib/pipeline/last-run'
 import { useDatabase } from '~~/utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   let noteQuery = db
     .selectFrom('notes')
-    .select(['id', 'path', 'title', 'status', 'updated_at'])
+    .select(['id', 'path', 'title', 'status', 'updated_at', 'last_run'])
     .where('workspace_id', '=', workspaceId)
     .orderBy('updated_at', 'desc')
 
@@ -67,11 +68,15 @@ export default defineEventHandler(async (event) => {
     tagsByNote.set(tag.note_id, list)
   }
 
-  return notes.map(n => ({
-    path: n.path,
-    title: n.title,
-    status: n.status,
-    tags: tagsByNote.get(n.id) ?? [],
-    updatedAt: n.updated_at.toISOString(),
-  }))
+  return notes.map((n) => {
+    const parsed = parseLastRun(n.last_run)
+    return {
+      path: n.path,
+      title: n.title,
+      status: n.status,
+      tags: tagsByNote.get(n.id) ?? [],
+      updatedAt: n.updated_at.toISOString(),
+      lastRun: parsed ? toLastRunSummary(parsed) : null,
+    }
+  })
 })

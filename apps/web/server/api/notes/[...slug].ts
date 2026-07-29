@@ -4,6 +4,7 @@ import process from 'node:process'
 import { useDatabase } from '~~/utils/db'
 import { isTagDeleteRoute, isTagsRoute, NotePathError, parseNoteRouteSegments, parseTagDeleteRoute, parseTagsRoute } from '../../lib/notes/paths'
 import { addTagToNote, removeTagFromNote } from '../../lib/notes/tags'
+import { parseLastRun } from '../../lib/pipeline/last-run'
 import { handleFileUpsert } from '../../lib/sync/files'
 
 async function resolveWorkspaceId(db: any, userId: string): Promise<string | null> {
@@ -19,7 +20,7 @@ async function resolveWorkspaceId(db: any, userId: string): Promise<string | nul
 async function loadNoteByPath(db: any, workspaceId: string, notePath: string) {
   return db
     .selectFrom('notes')
-    .select(['id', 'path', 'title', 'content', 'status', 'updated_at', 'folder_id'])
+    .select(['id', 'path', 'title', 'content', 'status', 'updated_at', 'folder_id', 'last_run'])
     .where('workspace_id', '=', workspaceId)
     .where('path', '=', notePath)
     .executeTakeFirst()
@@ -143,6 +144,7 @@ export default defineEventHandler(async (event) => {
         folder: folderPath,
         tags,
         sources,
+        lastRun: parseLastRun(note.last_run),
         updatedAt: note.updated_at.toISOString(),
       }
     }

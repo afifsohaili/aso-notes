@@ -1,6 +1,6 @@
 # Plan 004 — Extraction Observability (Last Run)
 
-Status: O1 and O2 done, O3 and O4 pending.
+Status: O1–O4 done.
 Created: 2026-07-29.
 
 ## Problem
@@ -82,7 +82,7 @@ interface LastRun {
 - [x] **O1** — Migration (`notes.last_run` jsonb) + types.d.ts + schema dump + schema/TS type + schema test. **DONE 2026-07-29**
 - [x] **O2** — Pipeline capture: context accumulation, run-pipeline stage tracking, extract-graph payload capture, LLM usage surface. **DONE 2026-07-29**
 - [x] **O3** — `ingest.ts` success/failure LastRun writes + worker attempt/job-id plumbing. **DONE 2026-07-29**
-- **O4** — Notes API serialization (list=summary, detail=full) + note UI badge/panel.
+- [x] **O4** — Notes API serialization (list=summary, detail=full) + note UI badge/panel. **DONE 2026-07-29**
 
 Each milestone: TDD (feature specs: ingest a note → verify `last_run` row content; failure case → verify `failed_stage` + error), update this doc with status + divergences, commit.
 
@@ -128,7 +128,24 @@ Each milestone: TDD (feature specs: ingest a note → verify `last_run` row cont
   - Note path/title/content_hash are **not** duplicated inside `last_run` because the fixed `LastRun` schema does not include them; they remain available on the `notes` row.
   - The worker plumbing uses the BullMQ field names `attemptsMade`/`jobId` internally and maps them to the `LastRun` fields `attempt`/`job_id` at write time.
 
-## Deferred / rejected
+### O4 implementation notes
+
+- `server/lib/pipeline/last-run.ts`: added `LastRunSummary` type and `toLastRunSummary(lastRun)` helper that copies every top-level field and the extraction meta (`strategy`, `model`, `usage`, `counts`) while stripping `messages` and `response` for the list payload.
+- `server/api/notes/index.get.ts`: selects `last_run`, validates it with `parseLastRun`, and returns `lastRun` as a summary on every note. Malformed stored JSON serializes as `null`; missing `last_run` also returns `null`.
+- `server/api/notes/[...slug].ts`: the existing single-note GET route now selects `last_run`, validates it, and returns the full `LastRun` object (including `messages` and `response`) as `lastRun`.
+- `app/components/notes/note-list.vue`: `NoteListItem` now includes a minimal `lastRun` shape. Failed notes show an inline error badge (`ExclamationTriangleIcon`) using `lastRun.error.message` when available, falling back to a generic tooltip; the badge is also shown when `note.status === 'failed'` even if `lastRun` is absent.
+- `app/components/notes/note-detail.vue`: `NoteDetailNote` now includes the full `LastRun` shape. A collapsed-by-default "Last Run" panel (`<details>`) shows status, pipeline, failed stage, duration, chunks, extraction meta (strategy, model, token usage, concept/relation/mention/tag counts), and toggles for the full prompt messages and pretty-printed raw response. Tailwind only, no inline styles, heroicons only, i18n keys under `notes.lastRun.*`.
+- `app/pages/notes/index.vue`: no changes needed; the existing fetch types and pass-through already carry the new `lastRun` field.
+- Tests:
+  - `test/unit/last-run-summary.spec.ts` (new): summary serializer keeps top-level fields + extraction meta, strips messages/response, preserves null extraction, preserves failed/error fields, does not mutate input.
+  - `test/e2e/notes-api.spec.ts`: added list summary test (no messages/response), detail full test (messages + response verbatim), malformed `last_run` returns `null` on both endpoints, and no-`last_run` returns `null`.
+  - `test/components/note-list-retry.nuxt.spec.ts`: added error badge tests for failed notes with/without `last_run`.
+  - `test/components/note-detail.nuxt.spec.ts`: added badge rendering, extraction meta, and messages/response toggle tests.
+- Full suite: 446 passed / 4 skipped; lint clean.
+- **Divergences from plan:**
+  - The list summary strips `extraction.messages` and `extraction.response`; there is no separate `rawResponse` field in the stored schema.
+  - The inner messages/response viewers use toggle buttons (`v-if`) rather than nested `<details>` elements, while the outer panel remains a native `<details>` collapsed by default.
+  - Count labels are rendered as plain text (e.g. "3 concepts, 2 relations...") instead of a structured table.
 
 - Run history / archival (rejected by user — latest-only is the design).
 - Per-stage timing rows.
