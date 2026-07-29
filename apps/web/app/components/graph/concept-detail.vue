@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ConceptDetail } from '~/server/lib/graph/ui'
+import { useI18n } from 'vue-i18n'
 import DocumentIcon from '~icons/heroicons/document-text'
 import LightBulbIcon from '~icons/heroicons/light-bulb'
 

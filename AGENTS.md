@@ -74,7 +74,7 @@ Dev notes:
 - Auth composable: `useSession()` from better-auth/vue (e.g. `const { session } = await useSession()`).
 - DB access: `useDatabase({ databaseUrl })` in `utils/db.ts`.
 - Error handling: `error instanceof Error`.
-- i18n via `useI18n()`.
+- i18n via `useI18n()` — ALWAYS `import { useI18n } from 'vue-i18n'` explicitly. The bare auto-import resolves to nuxt-seo-utils' stub (`t` returns its fallback arg), which silently blanks labels at runtime while component tests still pass.
 
 ## Testing
 

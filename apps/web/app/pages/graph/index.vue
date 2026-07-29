@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ConceptDetail, GraphEdge, GraphNode } from '~/server/lib/graph/ui'
+import { useI18n } from 'vue-i18n'
 
 interface GraphPayload {
   nodes: GraphNode[]

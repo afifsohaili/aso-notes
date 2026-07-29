@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { useI18n } from 'vue-i18n'
+
 const loading = ref(false)
 const email = ref('')
 const password = ref('')

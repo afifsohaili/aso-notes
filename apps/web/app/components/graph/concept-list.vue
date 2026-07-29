@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ConceptSummary } from '~/server/lib/graph/ui'
+import { useI18n } from 'vue-i18n'
 import SearchIcon from '~icons/heroicons/magnifying-glass'
 
 const props = defineProps<{

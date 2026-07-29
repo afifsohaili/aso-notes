@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ExclamationTriangleIcon from '~icons/heroicons/exclamation-triangle'
 
 interface SettingEntry {
