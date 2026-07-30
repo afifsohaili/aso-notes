@@ -30,9 +30,16 @@ const emit = defineEmits<{
   (e: 'delete', id: string): void
 }>()
 
+const REMOVE_CONFIRM_TEXT = 'REMOVE'
+
 const { t } = useI18n()
 
 const newPath = ref('')
+const confirmingFolderId = ref<string | null>(null)
+const confirmText = ref('')
+
+const isRemoveConfirmed = computed(() => confirmText.value.trim() === REMOVE_CONFIRM_TEXT)
+const confirmingFolder = computed(() => props.folders.find(f => f.id === confirmingFolderId.value) ?? null)
 
 function submit() {
   const path = newPath.value.trim()
@@ -42,9 +49,23 @@ function submit() {
   emit('add', path)
 }
 
-function remove(id: string) {
+function openRemoveConfirm(id: string) {
   if (props.adding)
     return
+  confirmingFolderId.value = id
+  confirmText.value = ''
+}
+
+function cancelRemoveConfirm() {
+  confirmingFolderId.value = null
+  confirmText.value = ''
+}
+
+function confirmRemove() {
+  const id = confirmingFolderId.value
+  if (!id || !isRemoveConfirmed.value)
+    return
+  cancelRemoveConfirm()
   emit('delete', id)
 }
 </script>
@@ -62,7 +83,7 @@ function remove(id: string) {
         class="flex items-center justify-between px-4 py-3"
       >
         <div class="flex min-w-0 items-center gap-2">
-          <FolderIcon class="h-5 w-5 flex-shrink-0 text-gray-400" />>
+          <FolderIcon class="h-5 w-5 flex-shrink-0 text-gray-400" />
           <div class="min-w-0">
             <p class="truncate text-sm font-medium text-gray-900">
               {{ folder.path }}
@@ -86,8 +107,9 @@ function remove(id: string) {
             type="button"
             class="inline-flex items-center rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             :title="t('settings.folders.delete')"
-            :disabled="folder.noteCount > 0 || adding"
-            @click="remove(folder.id)"
+            :disabled="adding"
+            data-testid="folder-delete-button"
+            @click="openRemoveConfirm(folder.id)"
           >
             <TrashIcon class="h-4 w-4" />
           </button>
@@ -130,5 +152,53 @@ function remove(id: string) {
         <span v-else>{{ t('settings.folders.add') }}</span>
       </button>
     </form>
+
+    <!-- Remove confirmation dialog -->
+    <div
+      v-if="confirmingFolder"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      @click.self="cancelRemoveConfirm"
+    >
+      <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-gray-900">
+          {{ t('settings.folders.removeDialog.title') }}
+        </h3>
+
+        <p class="mt-2 text-sm text-gray-600">
+          {{ t('settings.folders.removeDialog.help', { count: confirmingFolder.noteCount, path: confirmingFolder.path }) }}
+        </p>
+
+        <input
+          v-model="confirmText"
+          type="text"
+          class="mt-4 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+          :placeholder="t('settings.folders.removeDialog.placeholder')"
+          data-testid="folder-remove-confirm-input"
+        >
+
+        <div class="mt-4 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            data-testid="folder-remove-cancel-button"
+            @click="cancelRemoveConfirm"
+          >
+            {{ t('settings.folders.removeDialog.cancel') }}
+          </button>
+
+          <button
+            type="button"
+            class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            :disabled="!isRemoveConfirmed"
+            data-testid="folder-remove-confirm-button"
+            @click="confirmRemove"
+          >
+            {{ t('settings.folders.removeDialog.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

@@ -1,10 +1,17 @@
+import type { EmbeddingProvider, LLMProvider } from '../../server/lib/ai/types'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
 import { afterAll, afterEach, describe, expect } from 'vitest'
+import { parseAgtype, queryCypher } from '../../server/lib/graph'
+import { PIPELINES } from '../../server/lib/pipeline/ids'
+import { createStageRegistry } from '../../server/lib/pipeline/singleton'
+import { StoreGraphStage } from '../../server/lib/pipeline/stages/store-graph'
+import { ingestNote } from '../../server/lib/sync/ingest'
 import { syncedFolderEvents } from '../../server/lib/sync/synced-folders'
+import { ensureNotesGraphCatalog } from './age-catalog'
 
 const tempDirs: string[] = []
 
@@ -31,13 +38,72 @@ async function postFolder(server: any, cookies: string, folderPath: string): Pro
   })
 }
 
-async function addFolder(server: any, trx: any, cookies: string, folderPath: string) {
+async function addFolder(server: any, cookies: string, folderPath: string) {
   const res = await postFolder(server, cookies, folderPath)
   expect(res.status).toBe(200)
   const body = await res.json()
   expect(body.id).toBeTruthy()
   expect(body.path).toBe(path.resolve(folderPath))
   return body
+}
+
+function stubEmbeddingProvider() {
+  const provider: EmbeddingProvider = {
+    async embed(texts) {
+      return texts.map(() => Array.from({ length: 2048 }).fill(0.01))
+    },
+  }
+  return { provider }
+}
+
+function stubLLM(payload: object) {
+  const provider: LLMProvider = {
+    async complete() {
+      return { message: { role: 'assistant', content: JSON.stringify(payload) } }
+    },
+  }
+  return { provider }
+}
+
+async function givenNote(trx: any, workspaceId: string, syncedFolderId: string, path: string, content: string) {
+  return trx
+    .insertInto('notes')
+    .values({
+      workspace_id: workspaceId,
+      synced_folder_id: syncedFolderId,
+      path,
+      title: path,
+      content,
+      content_hash: `hash-${path}`,
+      pipeline: 'markdown-note-with-links',
+    })
+    .returning(['id', 'content_hash'])
+    .executeTakeFirstOrThrow()
+}
+
+async function ingest(trx: any, noteId: string, extraction: object) {
+  const embedding = stubEmbeddingProvider()
+  const llm = stubLLM(extraction)
+  const registry = createStageRegistry({ llmProvider: llm.provider, embeddingProvider: embedding.provider })
+  registry.register(new StoreGraphStage(embedding.provider))
+  await ingestNote({ db: trx, noteId, options: { registry, pipelines: PIPELINES } })
+}
+
+function noteContent(body: string): string {
+  return `# Note\n\n${`${body} `.repeat(200)}`
+}
+
+async function rowCount(trx: any, table: string, where?: (q: any) => any): Promise<number> {
+  let q = trx.selectFrom(table).select((eb: any) => eb.fn.count('id').as('c'))
+  if (where)
+    q = where(q)
+  const row = await q.executeTakeFirstOrThrow()
+  return Number(row.c ?? 0)
+}
+
+async function cypherStrings(trx: any, query: string, column: string): Promise<string[]> {
+  const rows = await queryCypher<Record<string, unknown>>(trx, query, `${column} ag_catalog.agtype`)
+  return rows.map(row => String(parseAgtype(row[column])))
 }
 
 describe('synced-folders API', () => {
@@ -72,7 +138,7 @@ describe('synced-folders API', () => {
         emitted = event
       })
 
-      const body = await addFolder(server, trx, cookies, dir)
+      const body = await addFolder(server, cookies, dir)
 
       const row = await trx
         .selectFrom('synced_folders')
@@ -92,7 +158,7 @@ describe('synced-folders API', () => {
     test('returns note counts in the list response', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
       const dir = givenTempDir()
-      const body = await addFolder(server, trx, cookies, dir)
+      const body = await addFolder(server, cookies, dir)
 
       await trx
         .insertInto('notes')
@@ -134,40 +200,40 @@ describe('synced-folders API', () => {
       expect(res.status).toBe(400)
     })
 
-    test('rejects a duplicate path', async ({ server, trx }) => {
+    test('rejects a duplicate path', async ({ server }) => {
       const { cookies } = await givenVerifiedUser()
       const dir = givenTempDir()
-      await addFolder(server, trx, cookies, dir)
+      await addFolder(server, cookies, dir)
       const res = await postFolder(server, cookies, dir)
       expect(res.status).toBe(409)
     })
 
-    test('rejects a folder nested inside an existing synced folder', async ({ server, trx }) => {
+    test('rejects a folder nested inside an existing synced folder', async ({ server }) => {
       const { cookies } = await givenVerifiedUser()
       const root = givenTempDir()
       const nested = path.join(root, 'nested')
       mkdirSync(nested, { recursive: true })
-      await addFolder(server, trx, cookies, root)
+      await addFolder(server, cookies, root)
       const res = await postFolder(server, cookies, nested)
       expect(res.status).toBe(409)
     })
 
-    test('rejects a folder that contains an existing synced folder', async ({ server, trx }) => {
+    test('rejects a folder that contains an existing synced folder', async ({ server }) => {
       const { cookies } = await givenVerifiedUser()
       const root = givenTempDir()
       const nested = path.join(root, 'nested')
       mkdirSync(nested, { recursive: true })
-      await addFolder(server, trx, cookies, nested)
+      await addFolder(server, cookies, nested)
       const res = await postFolder(server, cookies, root)
       expect(res.status).toBe(409)
     })
   })
 
   describe('dELETE /api/synced-folders/:id', () => {
-    test('returns 401 when unauthenticated', async ({ server, trx }) => {
+    test('returns 401 when unauthenticated', async ({ server }) => {
       const { cookies } = await givenVerifiedUser()
       const dir = givenTempDir()
-      const body = await addFolder(server, trx, cookies, dir)
+      const body = await addFolder(server, cookies, dir)
 
       const res = await server(`/api/synced-folders/${body.id}`, { method: 'DELETE' })
       expect(res.status).toBe(401)
@@ -176,7 +242,7 @@ describe('synced-folders API', () => {
     test('deletes an empty synced folder and emits a remove event', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
       const dir = givenTempDir()
-      const body = await addFolder(server, trx, cookies, dir)
+      const body = await addFolder(server, cookies, dir)
 
       let emitted: unknown = null
       syncedFolderEvents.once('removed', (event) => {
@@ -188,6 +254,8 @@ describe('synced-folders API', () => {
         headers: { cookie: cookies },
       })
       expect(res.status).toBe(200)
+      const summary = await res.json()
+      expect(summary).toMatchObject({ notes: 0, concepts: 0, topics: 0 })
 
       const row = await trx
         .selectFrom('synced_folders')
@@ -202,35 +270,168 @@ describe('synced-folders API', () => {
       })
     })
 
-    test('returns 409 when the synced folder has notes', async ({ server, trx }) => {
+    test('wipes the synced folder notes and garbage-collects orphaned graph rows, preserving shared rows', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      const dir = givenTempDir()
-      const body = await addFolder(server, trx, cookies, dir)
+      await ensureNotesGraphCatalog(trx)
 
-      await trx
-        .insertInto('notes')
-        .values({
-          workspace_id: workspace.id,
-          synced_folder_id: body.id,
-          path: '/note.md',
-          title: 'note',
-          content_hash: 'h',
-          status: 'pending',
-        })
+      const dirA = givenTempDir()
+      const dirB = givenTempDir()
+      const folderA = await addFolder(server, cookies, dirA)
+      const folderB = await addFolder(server, cookies, dirB)
+
+      const noteA = await givenNote(trx, workspace.id, folderA.id, '/a.md', noteContent('alpha'))
+      const noteB = await givenNote(trx, workspace.id, folderB.id, '/b.md', noteContent('beta'))
+
+      await ingest(trx, noteA.id, {
+        concepts: [
+          { name: 'Shared Concept', description: 'shared across folders', topics: ['Topic A'] },
+          { name: 'Folder1 Exclusive', description: 'only in folder 1', topics: ['Topic A'] },
+        ],
+        relations: [{ from: 'Shared Concept', to: 'Folder1 Exclusive', type: 'contains' }],
+        mentions: [
+          { concept: 'Shared Concept', chunkRefs: [0] },
+          { concept: 'Folder1 Exclusive', chunkRefs: [0] },
+        ],
+        tags: ['ai-tag'],
+        topics: [{ name: 'Topic A', description: 'topic a' }],
+      })
+
+      await ingest(trx, noteB.id, {
+        concepts: [
+          { name: 'Shared Concept', description: 'shared across folders', topics: ['Topic A'] },
+          { name: 'Folder2 Exclusive', description: 'only in folder 2', topics: ['Topic A'] },
+        ],
+        relations: [{ from: 'Shared Concept', to: 'Folder2 Exclusive', type: 'relates-to' }],
+        mentions: [
+          { concept: 'Shared Concept', chunkRefs: [0] },
+          { concept: 'Folder2 Exclusive', chunkRefs: [0] },
+        ],
+        tags: [],
+        topics: [{ name: 'Topic A', description: 'topic a' }],
+      })
+
+      const conceptIdsBefore = await trx
+        .selectFrom('concepts')
+        .select(['id', 'name'])
+        .where('workspace_id', '=', workspace.id)
         .execute()
+      const conceptIdByName = new Map(conceptIdsBefore.map(c => [c.name, c.id]))
+
+      const userTag = await trx
+        .insertInto('tags')
+        .values({ workspace_id: workspace.id, name: 'user-tag', name_normalized: 'user-tag' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      await trx
+        .insertInto('note_tags')
+        .values({ workspace_id: workspace.id, note_id: noteA.id, tag_id: userTag.id, origin: 'user' })
+        .execute()
+      await trx
+        .insertInto('note_tag_dismissals')
+        .values({ workspace_id: workspace.id, note_id: noteA.id, tag_id: userTag.id })
+        .execute()
+
+      const res = await server(`/api/synced-folders/${folderA.id}`, {
+        method: 'DELETE',
+        headers: { cookie: cookies },
+      })
+      expect(res.status).toBe(200)
+      const summary = await res.json()
+      expect(summary).toMatchObject({
+        notes: 1,
+        concepts: 1,
+        relations: 1,
+        topics: 0,
+        aiNoteTags: 1,
+        userNoteTags: 1,
+        tagDismissals: 1,
+      })
+
+      // folder A's note and derived rows are gone
+      const noteARow = await trx
+        .selectFrom('notes')
+        .select('id')
+        .where('id', '=', noteA.id)
+        .executeTakeFirst()
+      expect(noteARow).toBeUndefined()
+      expect(await rowCount(trx, 'chunks', (q: any) => q.where('note_id', '=', noteA.id))).toBe(0)
+
+      // folder B's data is untouched
+      const noteBRow = await trx
+        .selectFrom('notes')
+        .select('id')
+        .where('id', '=', noteB.id)
+        .executeTakeFirstOrThrow()
+      expect(noteBRow.id).toBe(noteB.id)
+      expect(await rowCount(trx, 'chunks', (q: any) => q.where('note_id', '=', noteB.id))).toBeGreaterThan(0)
+
+      // shared concept survives; exclusive concept is gone
+      expect(await rowCount(trx, 'concepts', (q: any) => q.where('name', '=', 'Shared Concept'))).toBe(1)
+      expect(await rowCount(trx, 'concepts', (q: any) => q.where('name', '=', 'Folder1 Exclusive'))).toBe(0)
+      expect(await rowCount(trx, 'concepts')).toBe(2)
+
+      // topic A survives because folder B still links to it
+      expect(await rowCount(trx, 'topics')).toBe(1)
+
+      // folder1's relation is gone, folder2's relation remains
+      expect(await rowCount(trx, 'relations')).toBe(1)
+
+      // AGE mirror: folder A note, exclusive concept and relation removed; shared/topic remain
+      const noteAVertices = await cypherStrings(
+        trx,
+        `MATCH (n:Note {id: '${noteA.id}'}) RETURN n.id`,
+        'id',
+      )
+      expect(noteAVertices).toHaveLength(0)
+
+      const noteBVertices = await cypherStrings(
+        trx,
+        `MATCH (n:Note {id: '${noteB.id}'}) RETURN n.id`,
+        'id',
+      )
+      expect(noteBVertices).toHaveLength(1)
+
+      const exclusiveConceptVertices = await cypherStrings(
+        trx,
+        `MATCH (c:Concept {id: '${conceptIdByName.get('Folder1 Exclusive')}'}) RETURN c.id`,
+        'id',
+      )
+      expect(exclusiveConceptVertices).toHaveLength(0)
+
+      const sharedConceptVertices = await cypherStrings(
+        trx,
+        `MATCH (c:Concept {id: '${conceptIdByName.get('Shared Concept')}'}) RETURN c.id`,
+        'id',
+      )
+      expect(sharedConceptVertices).toHaveLength(1)
+
+      const topicVertices = await cypherStrings(
+        trx,
+        `MATCH (t:Topic {workspace_id: '${workspace.id}'}) RETURN t.name ORDER BY t.name`,
+        'name',
+      )
+      expect(topicVertices).toEqual(['Topic A'])
+    })
+
+    test('deletes a synced folder with no notes and returns zero counts', async ({ server, trx }) => {
+      const { cookies } = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, cookies, dir)
 
       const res = await server(`/api/synced-folders/${body.id}`, {
         method: 'DELETE',
         headers: { cookie: cookies },
       })
-      expect(res.status).toBe(409)
+      expect(res.status).toBe(200)
+      const summary = await res.json()
+      expect(summary).toMatchObject({ notes: 0, chunks: 0, mentions: 0, concepts: 0, relations: 0, topics: 0 })
 
       const row = await trx
         .selectFrom('synced_folders')
         .select('id')
         .where('id', '=', body.id)
         .executeTakeFirst()
-      expect(row).toBeTruthy()
+      expect(row).toBeUndefined()
     })
 
     test('returns 404 for an unknown synced folder id', async ({ server }) => {

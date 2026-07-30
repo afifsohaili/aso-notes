@@ -337,19 +337,11 @@ async function deleteFolder(id: string) {
     await refreshFolders()
   }
   catch (err) {
-    if (err instanceof Error && 'statusCode' in err) {
-      const status = (err as any).statusCode
-      if (status === 409) {
-        folderDeleteErrorId.value = id
-        folderDeleteError.value = t('settings.folders.errors.hasNotes')
-      }
-      else {
-        folderDeleteError.value = t('settings.folders.errors.unknown')
-      }
-    }
-    else {
+    folderDeleteErrorId.value = id
+    if (err instanceof Error && 'statusCode' in err && (err as any).statusCode === 404)
       folderDeleteError.value = t('settings.folders.errors.unknown')
-    }
+    else
+      folderDeleteError.value = t('settings.folders.errors.unknown')
   }
 }
 

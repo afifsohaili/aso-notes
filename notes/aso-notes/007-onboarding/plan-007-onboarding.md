@@ -28,6 +28,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 - Setup completes only on mandatory end-to-end proof: a test note written by the app into a synced folder must reach `status='ingested'`, then is auto-deleted via the normal unlink flow. No Redis = hard block (BullMQ is required infrastructure), surfaced clearly in the wizard.
 - Removing a synced folder = partial wipe of its notes + orphan GC of derived graph rows (not a full rebuild).
 - The running sync plugin learns of synced-folder changes via an in-process event from the settings/folder endpoints (no polling, no restart).
+- **Orphan GC rules**: removing a synced folder deletes its notes inline and garbage-collects orphaned concepts/relations/topics; shared rows survive, never-overwrite semantics apply, user tags on the wiped notes are deleted with the notes, and AGE mirror cleanup shares the same transaction. See [ticket-orphan-gc-rules.md](ticket-orphan-gc-rules.md).
 - [Embedding dims detection](ticket-embedding-dims-detection.md) — probe-always at save time for both providers (no metadata source exists); accept iff length == 2048; expect frequent rejects since most hosted embedding models aren't 2048-dim.
 - Synced Folder data model closed: see [ticket-synced-folder-data-model.md](ticket-synced-folder-data-model.md). `notes` carries a per-root `synced_folder_id` FK; uniqueness is `(synced_folder_id, path)`; `folders` stays workspace-scoped in Phase 2; two roots display as a merged list with a known collision quirk; path edits = remove + re-add.
 - Smoke-test note flow closed: see [ticket-smoke-test-note-flow.md](ticket-smoke-test-note-flow.md). File is `__aso-smoke-test.md` at the first synced folder root; endpoints `POST /api/onboarding/smoke-test` + `GET /api/onboarding/smoke-test?attemptId=...`; phases `written` → `pending` → `queued` → `processing` → `ingested` → `deleting` → `done` / `failed`; 3-minute timeout; Redis and synced-folder prerequisites are 409 hard-blocks; retry starts a fresh attempt and re-verify does not clear `onboarding.completed_at`.
@@ -59,6 +60,30 @@ Locked during exploration + charting (pre-ticket, so no links):
 - Server-side directory browser for folder picking (free-text absolute path + validation is the decision).
 
 ## Implementation log
+
+### Phase 6 — Orphan GC on synced-folder removal (2026-07-30)
+
+Status: **closed** (ticket: [Orphan GC rules](ticket-orphan-gc-rules.md)).
+
+Built:
+- `server/lib/sync/gc.ts`: pure `planOrphanGc` decision core plus `removeSyncedFolderAndCollectGarbage` DB implementation.
+- `DELETE /api/synced-folders/:id` now runs inline partial wipe + orphan GC in one transaction (savepoint when inside a host transaction), returning a wipe summary JSON.
+- GC rules: Notes in the synced folder are deleted (cascading chunks/mentions/links/sources/note_tags/dismissals). Concepts with zero remaining mentions are deleted, Relations touching a dead Concept are deleted, Topics with zero remaining Concepts are deleted. Shared concepts/topics survive.
+- AGE mirror cleanup: Note, Concept, and Topic vertices (and all incident edges) for deleted rows are removed in the same transaction.
+- UI: `synced-folder-manager.vue` gained a type-to-confirm dialog that shows the affected note count and requires typing `REMOVE` before the confirm button enables, mirroring the rebuild danger-zone pattern.
+
+Specs:
+- Updated `test/e2e/synced-folders-api.spec.ts` (10 tests): empty-folder delete, zero-count response, unauth/404, and full partial-wipe scenario with shared/exclusive concepts/relations/topics, AGE assertions, user tag/dismissal counts, and response summary.
+- New `test/unit/synced-folder-gc.spec.ts` (6 tests): pure decision-core edge cases for shared vs exclusive concepts, relations with dead endpoints, and topics with live/dead concept sets.
+- New `test/components/synced-folder-manager.nuxt.spec.ts` (5 tests): note-count rendering, dialog open, confirm disabled until `REMOVE`, emit on confirm, cancel behavior.
+
+Test result:
+- Full suite: **85 test files / 663 tests passed** (`pnpm test`).
+
+Divergences / kept items:
+- User-origin `note_tags` and `note_tag_dismissals` for wiped Notes are deleted with the Note. This differs from a full rebuild (which preserves user tags workspace-wide) because a partial wipe scopes deletion to the removed folder's Notes.
+- Surviving Concepts keep their existing embedding/description (never-overwrite rule); no staleness handling.
+- The shared Apache AGE graph is cleaned vertex-by-vertex rather than dropped/recreated; workspace isolation of the AGE graph remains a future improvement.
 
 ### Phase 5 — Smoke-test note flow (2026-07-31)
 
