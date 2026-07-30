@@ -11,13 +11,21 @@ export interface ResilientFetchOptions {
   sleepFn?: (ms: number) => Promise<void>
 }
 
+export interface RateLimitContext {
+  limit?: string
+  remaining?: string
+  reset?: string
+}
+
 export class RateLimitError extends Error {
   retryAfterMs: number | null
+  context: RateLimitContext
 
-  constructor(message: string, retryAfterMs: number | null) {
+  constructor(message: string, retryAfterMs: number | null, context?: RateLimitContext) {
     super(message)
     this.name = 'RateLimitError'
     this.retryAfterMs = retryAfterMs
+    this.context = context ?? {}
   }
 }
 
@@ -33,6 +41,12 @@ export class FatalError extends Error {
     super(message)
     this.name = 'FatalError'
   }
+}
+
+export const DEFAULT_RESILIENCE: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>> = {
+  timeoutMs: 60_000,
+  maxAttempts: 4,
+  baseDelayMs: 1_000,
 }
 
 /**
@@ -111,11 +125,16 @@ export async function resilientFetch(
 
       if (status === 429) {
         const retryAfterMs = parseRetryAfter(response.headers.get('Retry-After'))
+        const context: RateLimitContext = {
+          limit: response.headers.get('X-RateLimit-Limit') ?? undefined,
+          remaining: response.headers.get('X-RateLimit-Remaining') ?? undefined,
+          reset: response.headers.get('X-RateLimit-Reset') ?? undefined,
+        }
         if (attempt < maxAttempts) {
           await sleepFn(retryAfterMs ?? jitteredDelay(attempt, baseDelayMs))
           continue
         }
-        throw new RateLimitError(`Rate limited (${status}): ${body}`, retryAfterMs)
+        throw new RateLimitError(`Rate limited (${status}): ${body}`, retryAfterMs, context)
       }
 
       if (status >= 500) {

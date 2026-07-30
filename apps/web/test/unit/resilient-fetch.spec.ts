@@ -85,11 +85,16 @@ describe('resilientFetch', () => {
     expect(response.status).toBe(200)
   })
 
-  it('throws RateLimitError with retryAfterMs and body text when 429 is exhausted', async () => {
+  it('throws RateLimitError with retryAfterMs and OpenRouter X-RateLimit context when exhausted', async () => {
     const fetchFn = async (_url: string | URL | Request, _init?: RequestInit) => {
       return new Response('too many requests', {
         status: 429,
-        headers: { 'Retry-After': '5' },
+        headers: {
+          'Retry-After': '5',
+          'X-RateLimit-Limit': '20',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': '1234567890',
+        },
       })
     }
 
@@ -103,6 +108,11 @@ describe('resilientFetch', () => {
       expect(error.name).toBe('RateLimitError')
       expect(error.message).toContain('too many requests')
       expect((error as any).retryAfterMs).toBe(5000)
+      expect((error as any).context).toEqual({
+        limit: '20',
+        remaining: '0',
+        reset: '1234567890',
+      })
       return true
     })
   })

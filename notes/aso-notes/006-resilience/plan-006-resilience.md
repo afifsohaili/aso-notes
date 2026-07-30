@@ -1,6 +1,6 @@
 # Plan 006: AI Provider Resilience
 
-> Status: **planned** → update per phase as work lands.
+> Status: **Phase 1 done, Phase 2 done** — Phase 3 pending.
 
 ## Problem
 
@@ -85,7 +85,7 @@ before a Note can fail, plus the 18/min limiter preventing most 429s.
 2. **Phase 2 — wire providers**: all 4 providers use `resilientFetch`;
    registry passes per-use-case options; provider unit tests updated/added
    (mocked `fetchFn`: 429-then-success, fatal passthrough, timeout).
-   Commit.
+   Commit. **Status: done.**
 3. **Phase 3 — BullMQ pacing**: worker limiter, `RateLimitError` pause
    translation, `ingest.ts` rate-limit status handling, longer job backoff.
    Feature specs (in-process e2e via `@base/testing`: enqueue → rate-limited
@@ -117,3 +117,7 @@ before a Note can fail, plus the 18/min limiter preventing most 429s.
 - `sleepFn` is exposed as an injectable option in addition to `fetchFn`; the injected value receives the already-jittered delay (the final wait time), not the raw exponential backoff. This lets unit tests assert jitter bounds without mocking a random source.
 - Per-attempt `AbortSignal.timeout` is composed with any caller-supplied `init.signal` via `AbortSignal.any`. A caller abort is therefore treated as a transient error and retried, matching the timeout/network path; this was chosen as the "simplest correct approach" and is documented in the code.
 - The `nuxt typecheck` command referenced in AGENTS.md is not available as a package script; `tsc --noEmit` was used instead. It surfaces numerous pre-existing type errors but none in the new files.
+- `RateLimitError` now carries an optional `context` field populated from `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` response headers when present, in addition to the parsed `Retry-After` value. This makes the OpenRouter platform context trivially available to callers.
+- Providers expose a `public readonly resilience` object (timeoutMs / maxAttempts / baseDelayMs) so the registry and tests can observe the resolved configuration without reaching into internals.
+- Per-use-case resilience values are configured via `NUXT_LLM_<ROLE>_{TIMEOUT_MS,MAX_ATTEMPTS,BASE_DELAY_MS}` environment variables. The registry already consumed `process.env` as an `EnvMap`, so runtime config is threaded through env vars rather than the `useRuntimeConfig()` object.
+- `sleepFn` is also accepted as a constructor option by each provider so provider-level unit tests can stub retries without real timers.

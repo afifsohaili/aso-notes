@@ -1,3 +1,4 @@
+import type { ResilientFetchOptions } from './resilient-fetch'
 import type {
   ChatMessage,
   CompletionRequest,
@@ -6,6 +7,7 @@ import type {
   LLMProvider,
   ResponseFormat,
 } from './types'
+import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 import { EMBEDDING_DIMENSIONS } from './types'
 
 export const OLLAMA_BASE_URL = 'http://localhost:11434'
@@ -15,6 +17,14 @@ export interface OllamaOptions {
   baseUrl?: string
   /** Injectable for tests — no live API calls in the test suite. */
   fetchFn?: typeof fetch
+  /** Injectable for tests — no real sleeps in the test suite. */
+  sleepFn?: (ms: number) => Promise<void>
+  /** Per-attempt timeout in milliseconds. */
+  timeoutMs?: number
+  /** Maximum number of attempts (including the first try). */
+  maxAttempts?: number
+  /** Base delay for exponential backoff with jitter. */
+  baseDelayMs?: number
 }
 
 export interface OllamaEmbeddingOptions extends OllamaOptions {
@@ -60,12 +70,20 @@ interface OllamaChatResponse {
 export class OllamaLLMProvider implements LLMProvider {
   private readonly model: string
   private readonly baseUrl: string
+  readonly resilience: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>>
   private readonly fetchFn: typeof fetch
+  private readonly sleepFn: (ms: number) => Promise<void>
 
   constructor(options: OllamaOptions) {
     this.model = options.model
     this.baseUrl = options.baseUrl ?? OLLAMA_BASE_URL
     this.fetchFn = options.fetchFn ?? fetch
+    this.sleepFn = options.sleepFn ?? (async (_ms: number) => {})
+    this.resilience = {
+      timeoutMs: options.timeoutMs ?? DEFAULT_RESILIENCE.timeoutMs,
+      maxAttempts: options.maxAttempts ?? DEFAULT_RESILIENCE.maxAttempts,
+      baseDelayMs: options.baseDelayMs ?? DEFAULT_RESILIENCE.baseDelayMs,
+    }
   }
 
   async complete(request: CompletionRequest): Promise<CompletionResult> {
@@ -93,15 +111,15 @@ export class OllamaLLMProvider implements LLMProvider {
     if (Object.keys(options).length === 0)
       delete body.options
 
-    const response = await this.fetchFn(`${this.baseUrl}/api/chat`, {
+    const response = await resilientFetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    }, {
+      ...this.resilience,
+      fetchFn: this.fetchFn,
+      sleepFn: this.sleepFn,
     })
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`Ollama /api/chat request failed (${response.status}): ${text}`)
-    }
 
     const payload = await response.json() as OllamaChatResponse
     if (!payload.message)
@@ -142,26 +160,34 @@ interface OllamaEmbedResponse {
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
   private readonly model: string
   private readonly baseUrl: string
+  readonly resilience: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>>
   private readonly fetchFn: typeof fetch
+  private readonly sleepFn: (ms: number) => Promise<void>
   private readonly dimensions: number
 
   constructor(options: OllamaEmbeddingOptions) {
     this.model = options.model
     this.baseUrl = options.baseUrl ?? OLLAMA_BASE_URL
     this.fetchFn = options.fetchFn ?? fetch
+    this.sleepFn = options.sleepFn ?? (async (_ms: number) => {})
     this.dimensions = options.dimensions ?? EMBEDDING_DIMENSIONS
+    this.resilience = {
+      timeoutMs: options.timeoutMs ?? DEFAULT_RESILIENCE.timeoutMs,
+      maxAttempts: options.maxAttempts ?? DEFAULT_RESILIENCE.maxAttempts,
+      baseDelayMs: options.baseDelayMs ?? DEFAULT_RESILIENCE.baseDelayMs,
+    }
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const response = await this.fetchFn(`${this.baseUrl}/api/embed`, {
+    const response = await resilientFetch(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this.model, input: texts, dimensions: this.dimensions }),
+    }, {
+      ...this.resilience,
+      fetchFn: this.fetchFn,
+      sleepFn: this.sleepFn,
     })
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`Ollama /api/embed request failed (${response.status}): ${text}`)
-    }
 
     const payload = await response.json() as OllamaEmbedResponse
     return payload.embeddings.map(embedding => this.fitDimensions(embedding))
@@ -175,6 +201,9 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
         `Ollama model ${this.model} returned ${embedding.length} dimensions, above the ${this.dimensions} target — pick a smaller model or widen the graph store`,
       )
     }
-    return [...embedding, ...Array.from({ length: this.dimensions - embedding.length }).fill(0)]
+    const result = [...embedding]
+    while (result.length < this.dimensions)
+      result.push(0)
+    return result
   }
 }

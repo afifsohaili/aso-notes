@@ -1,3 +1,4 @@
+import type { ResilientFetchOptions } from './resilient-fetch'
 import type {
   ChatMessage,
   CompletionRequest,
@@ -5,6 +6,7 @@ import type {
   LLMProvider,
   ResponseFormat,
 } from './types'
+import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 export const DEFAULT_CHAT_MODEL = 'deepseek/deepseek-v4-flash'
@@ -15,6 +17,14 @@ export interface OpenRouterLLMOptions {
   baseUrl?: string
   /** Injectable for tests — no live API calls in the test suite. */
   fetchFn?: typeof fetch
+  /** Injectable for tests — no real sleeps in the test suite. */
+  sleepFn?: (ms: number) => Promise<void>
+  /** Per-attempt timeout in milliseconds. */
+  timeoutMs?: number
+  /** Maximum number of attempts (including the first try). */
+  maxAttempts?: number
+  /** Base delay for exponential backoff with jitter. */
+  baseDelayMs?: number
 }
 
 function toWireMessage(message: ChatMessage): Record<string, unknown> {
@@ -59,13 +69,21 @@ export class OpenRouterLLMProvider implements LLMProvider {
   private readonly apiKey: string
   private readonly model: string
   private readonly baseUrl: string
+  readonly resilience: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>>
   private readonly fetchFn: typeof fetch
+  private readonly sleepFn: (ms: number) => Promise<void>
 
   constructor(options: OpenRouterLLMOptions) {
     this.apiKey = options.apiKey
     this.model = options.model ?? DEFAULT_CHAT_MODEL
     this.baseUrl = options.baseUrl ?? OPENROUTER_BASE_URL
     this.fetchFn = options.fetchFn ?? fetch
+    this.sleepFn = options.sleepFn ?? (async (_ms: number) => {})
+    this.resilience = {
+      timeoutMs: options.timeoutMs ?? DEFAULT_RESILIENCE.timeoutMs,
+      maxAttempts: options.maxAttempts ?? DEFAULT_RESILIENCE.maxAttempts,
+      baseDelayMs: options.baseDelayMs ?? DEFAULT_RESILIENCE.baseDelayMs,
+    }
   }
 
   async complete(request: CompletionRequest): Promise<CompletionResult> {
@@ -88,18 +106,18 @@ export class OpenRouterLLMProvider implements LLMProvider {
     if (request.temperature !== undefined)
       body.temperature = request.temperature
 
-    const response = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
+    const response = await resilientFetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+    }, {
+      ...this.resilience,
+      fetchFn: this.fetchFn,
+      sleepFn: this.sleepFn,
     })
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`OpenRouter chat/completions request failed (${response.status}): ${text}`)
-    }
 
     const payload = await response.json() as ChatCompletionsResponse
     const message = payload.choices[0]?.message

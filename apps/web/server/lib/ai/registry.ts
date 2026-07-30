@@ -1,7 +1,9 @@
+import type { ResilientFetchOptions } from './resilient-fetch'
 import type { EmbeddingProvider, LLMProvider } from './types'
 import { OLLAMA_BASE_URL, OllamaEmbeddingProvider, OllamaLLMProvider } from './ollama'
 import { DEFAULT_EMBEDDING_MODEL, OPENROUTER_BASE_URL, OpenRouterEmbeddingProvider } from './openrouter-embedding'
 import { DEFAULT_CHAT_MODEL, OpenRouterLLMProvider } from './openrouter-llm'
+import { DEFAULT_RESILIENCE } from './resilient-fetch'
 
 /**
  * AI provider registry (plan-002-system M10).
@@ -39,24 +41,33 @@ export interface ResolvedEmbedding {
   provider: EmbeddingProvider
 }
 
-const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string }> = {
+const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string, timeoutMs: string, maxAttempts: string, baseDelayMs: string }> = {
   agent: {
     provider: 'NUXT_LLM_AGENT_PROVIDER',
     baseUrl: 'NUXT_LLM_AGENT_BASE_URL',
     model: 'NUXT_LLM_AGENT_MODEL',
     apiKey: 'NUXT_LLM_AGENT_API_KEY',
+    timeoutMs: 'NUXT_LLM_AGENT_TIMEOUT_MS',
+    maxAttempts: 'NUXT_LLM_AGENT_MAX_ATTEMPTS',
+    baseDelayMs: 'NUXT_LLM_AGENT_BASE_DELAY_MS',
   },
   extraction: {
     provider: 'NUXT_LLM_EXTRACTION_PROVIDER',
     baseUrl: 'NUXT_LLM_EXTRACTION_BASE_URL',
     model: 'NUXT_LLM_EXTRACTION_MODEL',
     apiKey: 'NUXT_LLM_EXTRACTION_API_KEY',
+    timeoutMs: 'NUXT_LLM_EXTRACTION_TIMEOUT_MS',
+    maxAttempts: 'NUXT_LLM_EXTRACTION_MAX_ATTEMPTS',
+    baseDelayMs: 'NUXT_LLM_EXTRACTION_BASE_DELAY_MS',
   },
   embedding: {
     provider: 'NUXT_LLM_EMBEDDING_PROVIDER',
     baseUrl: 'NUXT_LLM_EMBEDDING_BASE_URL',
     model: 'NUXT_LLM_EMBEDDING_MODEL',
     apiKey: 'NUXT_LLM_EMBEDDING_API_KEY',
+    timeoutMs: 'NUXT_LLM_EMBEDDING_TIMEOUT_MS',
+    maxAttempts: 'NUXT_LLM_EMBEDDING_MAX_ATTEMPTS',
+    baseDelayMs: 'NUXT_LLM_EMBEDDING_BASE_DELAY_MS',
   },
 }
 
@@ -84,14 +95,29 @@ function resolveLLMModel(env: EnvMap, keys: { model: string }, kind: ProviderKin
   throw new Error(`${keys.model} is required when using the ollama provider (e.g. ${keys.model}=gemma3:4b)`)
 }
 
+function resolveResilienceOptions(
+  env: EnvMap,
+  keys: { timeoutMs: string, maxAttempts: string, baseDelayMs: string },
+): Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>> {
+  const baseDelayEnv = env[keys.baseDelayMs]
+  return {
+    timeoutMs: Number.parseInt(env[keys.timeoutMs] ?? String(DEFAULT_RESILIENCE.timeoutMs), 10),
+    maxAttempts: Number.parseInt(env[keys.maxAttempts] ?? String(DEFAULT_RESILIENCE.maxAttempts), 10),
+    baseDelayMs: baseDelayEnv !== undefined
+      ? Number.parseInt(baseDelayEnv, 10)
+      : DEFAULT_RESILIENCE.baseDelayMs,
+  }
+}
+
 export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
   const keys = KEYS[role]
   const kind = providerKind(env[keys.provider])
   const model = resolveLLMModel(env, keys, kind)
+  const resilience = resolveResilienceOptions(env, keys)
 
   if (kind === 'ollama') {
     const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
-    return { kind, model, baseUrl, provider: new OllamaLLMProvider({ model, baseUrl }) }
+    return { kind, model, baseUrl, provider: new OllamaLLMProvider({ model, baseUrl, ...resilience }) }
   }
 
   const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
@@ -99,13 +125,14 @@ export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
     kind,
     model,
     baseUrl,
-    provider: new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl }),
+    provider: new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...resilience }),
   }
 }
 
 export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
   const keys = KEYS.embedding
   const kind = providerKind(env[keys.provider])
+  const resilience = resolveResilienceOptions(env, keys)
 
   const model = env[keys.model] || (kind === 'openrouter' ? DEFAULT_EMBEDDING_MODEL : '')
   if (!model)
@@ -113,7 +140,7 @@ export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
 
   if (kind === 'ollama') {
     const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
-    return { kind, model, baseUrl, provider: new OllamaEmbeddingProvider({ model, baseUrl }) }
+    return { kind, model, baseUrl, provider: new OllamaEmbeddingProvider({ model, baseUrl, ...resilience }) }
   }
 
   const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
@@ -121,6 +148,6 @@ export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
     kind,
     model,
     baseUrl,
-    provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl }),
+    provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...resilience }),
   }
 }

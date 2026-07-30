@@ -1,3 +1,4 @@
+import type { OllamaEmbeddingProvider, OllamaLLMProvider, OpenRouterEmbeddingProvider, OpenRouterLLMProvider } from '../../server/lib/ai'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from '../../server/lib/ai'
 import { createEmbeddingProvider, createLLMProvider } from '../../server/lib/ai/registry'
@@ -82,5 +83,58 @@ describe('ai registry — createEmbeddingProvider', () => {
   it('throws a clear error when ollama embedding has no model configured', () => {
     expect(() => createEmbeddingProvider({ NUXT_LLM_EMBEDDING_PROVIDER: 'ollama' }))
       .toThrow(/NUXT_LLM_EMBEDDING_MODEL/)
+  })
+})
+
+describe('ai registry — resilience options', () => {
+  it('uses default resilience options for agent', () => {
+    const resolved = createLLMProvider('agent', { NUXT_LLM_AGENT_API_KEY: 'sk' })
+    const provider = resolved.provider as OpenRouterLLMProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 60000, maxAttempts: 4, baseDelayMs: 1000 })
+  })
+
+  it('reads per-use timeout and attempt env vars', () => {
+    const resolved = createLLMProvider('extraction', {
+      NUXT_LLM_EXTRACTION_API_KEY: 'sk',
+      NUXT_LLM_EXTRACTION_TIMEOUT_MS: '120000',
+      NUXT_LLM_EXTRACTION_MAX_ATTEMPTS: '2',
+      NUXT_LLM_EXTRACTION_BASE_DELAY_MS: '500',
+    })
+    const provider = resolved.provider as OpenRouterLLMProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 120000, maxAttempts: 2, baseDelayMs: 500 })
+  })
+
+  it('passes resilience options to ollama providers', () => {
+    const resolved = createLLMProvider('agent', {
+      NUXT_LLM_AGENT_PROVIDER: 'ollama',
+      NUXT_LLM_AGENT_MODEL: 'gemma3:4b',
+      NUXT_LLM_AGENT_TIMEOUT_MS: '30000',
+      NUXT_LLM_AGENT_MAX_ATTEMPTS: '5',
+    })
+    const provider = resolved.provider as OllamaLLMProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 30000, maxAttempts: 5, baseDelayMs: 1000 })
+  })
+
+  it('passes resilience options to the embedding provider', () => {
+    const resolved = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_API_KEY: 'sk',
+      NUXT_LLM_EMBEDDING_TIMEOUT_MS: '90000',
+      NUXT_LLM_EMBEDDING_MAX_ATTEMPTS: '3',
+      NUXT_LLM_EMBEDDING_BASE_DELAY_MS: '2000',
+    })
+    const provider = resolved.provider as OpenRouterEmbeddingProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 90000, maxAttempts: 3, baseDelayMs: 2000 })
+  })
+
+  it('passes resilience options to the ollama embedding provider', () => {
+    const resolved = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'ollama',
+      NUXT_LLM_EMBEDDING_MODEL: 'nomic-embed-text',
+      NUXT_LLM_EMBEDDING_TIMEOUT_MS: '45000',
+      NUXT_LLM_EMBEDDING_MAX_ATTEMPTS: '6',
+      NUXT_LLM_EMBEDDING_BASE_DELAY_MS: '750',
+    })
+    const provider = resolved.provider as OllamaEmbeddingProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 45000, maxAttempts: 6, baseDelayMs: 750 })
   })
 })

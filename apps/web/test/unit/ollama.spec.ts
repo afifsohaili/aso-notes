@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OllamaEmbeddingProvider, OllamaLLMProvider } from '../../server/lib/ai/ollama'
+import { FatalError, TransientError } from '../../server/lib/ai/resilient-fetch'
 
 interface MockCall {
   url: string
@@ -16,6 +17,69 @@ function mockFetch(status: number, body: unknown) {
     })
   }
   return { calls, fetchFn: fetchFn as typeof fetch }
+}
+
+function sequenceFetch(scenarios: Array<{ status: number, body: unknown, headers?: Record<string, string> }>) {
+  const calls: MockCall[] = []
+  let attempt = 0
+  const fetchFn = async (url: any, init: any) => {
+    calls.push({ url: String(url), init })
+    const { status, body, headers = { 'content-type': 'application/json' } } = scenarios[attempt++] ?? { status: 200, body: {} }
+    return new Response(JSON.stringify(body), { status, headers })
+  }
+  return { calls, fetchFn: fetchFn as typeof fetch }
+}
+
+async function sleepFn() {}
+
+function timedOutChatFetch(attemptsToFail: number) {
+  let attempt = 0
+  return async (url: any, init: any) => {
+    attempt++
+    if (attempt <= attemptsToFail) {
+      return new Promise<Response>((_resolve, reject) => {
+        const onAbort = () => {
+          const error = new Error('The operation was aborted')
+          error.name = 'TimeoutError'
+          reject(error)
+        }
+        if (init.signal?.aborted) {
+          onAbort()
+          return
+        }
+        init.signal?.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+    return new Response(JSON.stringify({ message: { role: 'assistant', content: 'ok' } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+}
+
+function timedOutEmbedFetch(attemptsToFail: number) {
+  let attempt = 0
+  return async (url: any, init: any) => {
+    attempt++
+    if (attempt <= attemptsToFail) {
+      return new Promise<Response>((_resolve, reject) => {
+        const onAbort = () => {
+          const error = new Error('The operation was aborted')
+          error.name = 'TimeoutError'
+          reject(error)
+        }
+        if (init.signal?.aborted) {
+          onAbort()
+          return
+        }
+        init.signal?.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+    return new Response(JSON.stringify({ embeddings: [[0.1, 0.2]] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
 }
 
 describe('ollamaLLMProvider', () => {
@@ -106,11 +170,15 @@ describe('ollamaLLMProvider', () => {
     expect(body.messages[2]).toEqual({ role: 'tool', content: '{"notes":[]}' })
   })
 
-  it('honours a custom baseUrl and throws with status on non-OK', async () => {
+  it('honours a custom baseUrl and throws TransientError on a 5xx response', async () => {
     const { calls, fetchFn } = mockFetch(500, { error: 'boom' })
-    const provider = new OllamaLLMProvider({ model: 'm', baseUrl: 'http://host.docker.internal:11434', fetchFn })
+    const provider = new OllamaLLMProvider({ model: 'm', baseUrl: 'http://host.docker.internal:11434', fetchFn, sleepFn })
 
-    await expect(provider.complete({ messages: [{ role: 'user', content: 'x' }] })).rejects.toThrow(/500/)
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'x' }] })).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/500/)
+      return true
+    })
     expect(calls[0]!.url).toBe('http://host.docker.internal:11434/api/chat')
   })
 })
@@ -156,9 +224,171 @@ describe('ollamaEmbeddingProvider', () => {
     await expect(provider.embed(['x'])).rejects.toThrow(/3 dimensions, above the 2 target/)
   })
 
-  it('throws with status on non-OK', async () => {
+  it('throws FatalError on a 404 response', async () => {
     const { fetchFn } = mockFetch(404, { error: 'model not found' })
-    const provider = new OllamaEmbeddingProvider({ model: 'missing', fetchFn })
-    await expect(provider.embed(['x'])).rejects.toThrow(/404/)
+    const provider = new OllamaEmbeddingProvider({ model: 'missing', fetchFn, sleepFn, dimensions: 2 })
+    await expect(provider.embed(['x'])).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(FatalError)
+      expect(error.message).toMatch(/404/)
+      return true
+    })
+  })
+})
+
+describe('ollamaLLMProvider resilience', () => {
+  it('retries 503 (model loading) and returns the successful response', async () => {
+    const { calls, fetchFn } = sequenceFetch([
+      { status: 503, body: { error: 'loading model' } },
+      { status: 200, body: { message: { role: 'assistant', content: 'ok' } } },
+    ])
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    expect(calls).toHaveLength(2)
+    expect(result.message.content).toBe('ok')
+  })
+
+  it('throws TransientError when 503 is exhausted', async () => {
+    const { fetchFn } = sequenceFetch([
+      { status: 503, body: { error: 'loading model' } },
+      { status: 503, body: { error: 'loading model' } },
+    ])
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 2 })
+
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/503/)
+      return true
+    })
+  })
+
+  it('throws FatalError immediately for 400, 401, 402 and 404', async () => {
+    for (const status of [400, 401, 402, 404]) {
+      const { calls, fetchFn } = sequenceFetch([{ status, body: { error: 'bad' } }])
+      const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
+
+      await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toSatisfy((error: Error) => {
+        expect(error).toBeInstanceOf(FatalError)
+        expect(error.message).toMatch(new RegExp(String(status)))
+        return true
+      })
+      expect(calls).toHaveLength(1)
+    }
+  })
+
+  it('retries 5xx and returns the successful response', async () => {
+    const { calls, fetchFn } = sequenceFetch([
+      { status: 500, body: { error: 'server error' } },
+      { status: 200, body: { message: { role: 'assistant', content: 'ok' } } },
+    ])
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    expect(calls).toHaveLength(2)
+    expect(result.message.content).toBe('ok')
+  })
+
+  it('throws TransientError when 5xx is exhausted', async () => {
+    const { fetchFn } = sequenceFetch([
+      { status: 500, body: { error: 'server error' } },
+      { status: 500, body: { error: 'server error' } },
+    ])
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 2 })
+
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/500/)
+      return true
+    })
+  })
+
+  it('retries a timed-out fetch and returns the successful response', async () => {
+    const fetchFn = timedOutChatFetch(1)
+    const provider = new OllamaLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 1, maxAttempts: 2 })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    expect(result.message.content).toBe('ok')
+  })
+})
+
+describe('ollamaEmbeddingProvider resilience', () => {
+  it('retries 503 (model loading) and returns the successful response', async () => {
+    const { calls, fetchFn } = sequenceFetch([
+      { status: 503, body: { error: 'loading model' } },
+      { status: 200, body: { embeddings: [[0.1, 0.2]] } },
+    ])
+    const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 5000, maxAttempts: 3 })
+
+    const result = await provider.embed(['x'])
+
+    expect(calls).toHaveLength(2)
+    expect(result).toEqual([[0.1, 0.2]])
+  })
+
+  it('throws TransientError when 503 is exhausted', async () => {
+    const { fetchFn } = sequenceFetch([
+      { status: 503, body: { error: 'loading model' } },
+      { status: 503, body: { error: 'loading model' } },
+    ])
+    const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 5000, maxAttempts: 2 })
+
+    await expect(provider.embed(['x'])).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/503/)
+      return true
+    })
+  })
+
+  it('throws FatalError immediately for 400, 401, 402 and 404', async () => {
+    for (const status of [400, 401, 402, 404]) {
+      const { calls, fetchFn } = sequenceFetch([{ status, body: { error: 'bad' } }])
+      const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 5000, maxAttempts: 3 })
+
+      await expect(provider.embed(['x'])).rejects.toSatisfy((error: Error) => {
+        expect(error).toBeInstanceOf(FatalError)
+        expect(error.message).toMatch(new RegExp(String(status)))
+        return true
+      })
+      expect(calls).toHaveLength(1)
+    }
+  })
+
+  it('retries 5xx and returns the successful response', async () => {
+    const { calls, fetchFn } = sequenceFetch([
+      { status: 500, body: { error: 'server error' } },
+      { status: 200, body: { embeddings: [[0.1, 0.2]] } },
+    ])
+    const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 5000, maxAttempts: 3 })
+
+    const result = await provider.embed(['x'])
+
+    expect(calls).toHaveLength(2)
+    expect(result).toEqual([[0.1, 0.2]])
+  })
+
+  it('throws TransientError when 5xx is exhausted', async () => {
+    const { fetchFn } = sequenceFetch([
+      { status: 500, body: { error: 'server error' } },
+      { status: 500, body: { error: 'server error' } },
+    ])
+    const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 5000, maxAttempts: 2 })
+
+    await expect(provider.embed(['x'])).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/500/)
+      return true
+    })
+  })
+
+  it('retries a timed-out fetch and returns the successful response', async () => {
+    const fetchFn = timedOutEmbedFetch(1)
+    const provider = new OllamaEmbeddingProvider({ model: 'm', fetchFn, sleepFn, dimensions: 2, timeoutMs: 1, maxAttempts: 2 })
+
+    const result = await provider.embed(['x'])
+
+    expect(result).toEqual([[0.1, 0.2]])
   })
 })
