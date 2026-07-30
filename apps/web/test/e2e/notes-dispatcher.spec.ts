@@ -107,6 +107,50 @@ describe('ingestion dispatcher', () => {
     expect(await getStatus(trx, noteId)).toBe('pending')
   })
 
+  test('BullMQ dispatcher removes a lingering failed job so a retry actually re-enqueues', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'dispatcher-retry-failed')
+    const noteId = await givenNote(trx, workspaceId, '/a.md', 'pending')
+    const enqueued: { name: string }[] = []
+    const removed: string[] = []
+    const jobs = new Map([[noteId, { getState: async () => 'failed' }]])
+    const queue = {
+      getJob: async (jobId: string) => jobs.get(jobId),
+      remove: async (jobId: string) => {
+        removed.push(jobId)
+        jobs.delete(jobId)
+      },
+      add: async (name: string) => {
+        enqueued.push({ name })
+      },
+    }
+
+    const dispatcher = createBullMqDispatcher({ db: trx, queue })
+    await dispatcher.dispatch(noteId)
+
+    expect(removed).toEqual([noteId])
+    expect(enqueued).toHaveLength(1)
+    expect(await getStatus(trx, noteId)).toBe('queued')
+  })
+
+  test('BullMQ dispatcher leaves an active job untouched on re-dispatch', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'dispatcher-active')
+    const noteId = await givenNote(trx, workspaceId, '/a.md', 'queued')
+    const removed: string[] = []
+    const queue = {
+      getJob: async (jobId: string) => (jobId === noteId ? { getState: async () => 'active' } : undefined),
+      remove: async (jobId: string) => {
+        removed.push(jobId)
+      },
+      add: async () => {},
+    }
+
+    const dispatcher = createBullMqDispatcher({ db: trx, queue })
+    await dispatcher.dispatch(noteId)
+
+    expect(removed).toEqual([])
+    expect(await getStatus(trx, noteId)).toBe('queued')
+  })
+
   test('inline dispatcher flips pending → queued before running the job', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'dispatcher-inline')
     const noteId = await givenNote(trx, workspaceId, '/a.md', 'pending')

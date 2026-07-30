@@ -235,6 +235,21 @@ export async function getSmokeTestState(
     return { phase: 'ingested', error: errorFromRun, ...(note ? { lastRun: note.last_run } : {}) }
   }
 
+  if (derived.phase === 'pending' && note) {
+    // The sweeper only dispatches notes untouched for PENDING_SETTLE_INTERVAL
+    // (5 minutes) — longer than SMOKE_TEST_TIMEOUT_MS (3 minutes), so the
+    // verify step could never pass against the real daemon. Backdate the
+    // smoke note's updated_at so the NORMAL sweep path dispatches it on the
+    // next pass; the note still travels watcher → sweeper → queue → worker →
+    // pipeline. Idempotent and guarded to the pending row.
+    await db
+      .updateTable('notes')
+      .set({ updated_at: sql`now() - interval '10 minutes'` })
+      .where('id', '=', note.id)
+      .where('status', '=', 'pending')
+      .execute()
+  }
+
   if (derived.phase === 'done') {
     await completeOnboarding(db, workspaceId)
   }

@@ -13,6 +13,7 @@ import { PIPELINES } from '../../server/lib/pipeline/ids'
 import { createStageRegistry } from '../../server/lib/pipeline/singleton'
 import { handleFileUnlink, handleFileUpsert } from '../../server/lib/sync/files'
 import { ingestNote } from '../../server/lib/sync/ingest'
+import { settledPendingNotesQuery } from '../../server/lib/sync/sweeper'
 import { ensureNotesGraphCatalog } from './age-catalog'
 
 /**
@@ -227,6 +228,40 @@ describe('onboarding smoke test end-to-end', () => {
       .executeTakeFirst()
     expect(completed).not.toBeUndefined()
     expect(typeof completed?.value).toBe('string')
+  })
+
+  test('marks the smoke note settle-eligible so the sweeper dispatches it within the timeout', async ({ server, trx }) => {
+    // Browser-verification bug (Phase 7b): the sweeper only dispatches notes
+    // untouched for PENDING_SETTLE_INTERVAL (5 min) but the smoke test times
+    // out after 3, so the verify step could never pass against the real
+    // daemon. The GET poll must backdate the smoke note's updated_at so the
+    // NORMAL sweep path picks it up.
+    const postRes = await server('/api/onboarding/smoke-test', {
+      method: 'POST',
+      headers: { cookie: cookies },
+    })
+    expect(postRes.status).toBe(200)
+    const { attemptId } = await postRes.json() as { attemptId: string }
+
+    await handleFileUpsert({
+      db: trx,
+      workspaceId,
+      syncedFolderId: folderId,
+      notesDir: dir,
+      absolutePath: filePath,
+    })
+
+    const pendingRes = await server(`/api/onboarding/smoke-test?attemptId=${attemptId}`, {
+      headers: { cookie: cookies },
+    })
+    expect(pendingRes.status).toBe(200)
+    expect((await pendingRes.json() as { phase: string }).phase).toBe('pending')
+
+    const note = await findSmokeTestNote(trx, folderId)
+    expect(note).not.toBeNull()
+
+    const settled = await settledPendingNotesQuery(trx, workspaceId).execute()
+    expect(settled.map(row => row.id)).toContain(note!.id)
   })
 
   test('surfaces ingestion failure and allows retry', async ({ server, trx }) => {

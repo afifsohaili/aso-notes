@@ -21,9 +21,16 @@ export interface IngestionDispatcher {
   dispatch: (noteId: string) => Promise<void>
 }
 
+/** Minimal BullMQ Job surface the dispatcher needs. */
+export interface IngestionJobLike {
+  getState: () => Promise<string>
+}
+
 /** Structural subset of BullMQ's Queue — keeps the dispatcher testable without Redis. */
 export interface IngestionQueueLike {
   add: (name: string, data: IngestNoteJobData, opts?: { jobId: string }) => Promise<unknown>
+  getJob?: (jobId: string) => Promise<IngestionJobLike | undefined>
+  remove?: (jobId: string) => Promise<unknown>
 }
 
 /**
@@ -47,8 +54,17 @@ export function createBullMqDispatcher(args: {
   return {
     dispatch: async (noteId) => {
       // jobId = noteId dedupes re-dispatch of the same note (stale queued
-      // re-sweep, manual re-process). If the job still exists, add() is a
-      // no-op; if Redis was flushed, a new job is created.
+      // re-sweep, manual re-process). BullMQ's dedupe also makes add() a
+      // silent no-op when a FAILED/COMPLETED job with the same id lingers
+      // (removeOnFail keeps them for 7 days) — remove terminal-state jobs
+      // first so a retry actually re-enqueues. Active/waiting jobs are left
+      // alone.
+      const existing = queue.getJob ? await queue.getJob(noteId) : undefined
+      if (existing) {
+        const state = await existing.getState()
+        if (state === 'failed' || state === 'completed')
+          await queue.remove?.(noteId)
+      }
       await queue.add(INGEST_NOTE_JOB, { noteId }, { jobId: noteId })
       // Only flip status after a successful enqueue. If the queue throws, the
       // note stays pending and the sweeper will retry on the next pass.
