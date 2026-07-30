@@ -22,11 +22,10 @@ export interface CreateServerCallerOptions {
 
 // Relative to packages/testing/src/ -> apps/web
 const DEFAULT_APP_ROOT = resolve(__dirname, '../../../apps/web')
-const DEFAULT_EXCLUDED_ROUTES = ['apps/web/server/api/_sitemap-urls.ts']
+const DEFAULT_EXCLUDED_ROUTES: string[] = []
 
 const apiModules = import.meta.glob<HandlerModule>([
   '../../../apps/web/server/api/**/*.ts',
-  '!../../../apps/web/server/api/_sitemap-urls.ts',
 ], {
   eager: true,
   import: 'default',

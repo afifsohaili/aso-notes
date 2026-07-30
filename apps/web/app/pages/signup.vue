@@ -2,10 +2,10 @@
 const session = useSession()
 const router = useRouter()
 
-// Redirect to home if already logged in
+// Redirect to chat home if already logged in
 watchEffect(() => {
   if (session.value)
-    router.push('/')
+    router.push('/chat')
 })
 </script>
 

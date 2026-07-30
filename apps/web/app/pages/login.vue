@@ -1,20 +1,12 @@
 <script setup>
 const { session } = await useSession()
 
-async function handleLogout() {
-  await useAuthClient().signOut()
-  window.location.reload()
+if (session.value) {
+  await navigateTo('/chat', { replace: true })
 }
 </script>
 
 <template>
   <pre-dev>{{ session || 'null' }}</pre-dev>
-  <div v-if="session">
-    Already logged in
-
-    <button class="block" @click="handleLogout">
-      Logout
-    </button>
-  </div>
-  <login-form v-else />
+  <login-form />
 </template>

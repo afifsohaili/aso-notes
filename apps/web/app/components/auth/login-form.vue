@@ -27,7 +27,7 @@ async function handleLogin() {
 
     alert.value = { message: t('login-form.submit.success'), type: 'success' }
 
-    navigateTo('/')
+    navigateTo('/chat')
   }
   catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'An error occurred'

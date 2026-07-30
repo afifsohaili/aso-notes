@@ -10,7 +10,6 @@ export default defineNuxtConfig({
     'radix-vue/nuxt',
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
-    '@nuxt/content',
     '@nuxt/image',
     '@nuxtjs/seo',
     '@nuxt/test-utils/module',

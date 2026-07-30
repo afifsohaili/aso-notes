@@ -163,4 +163,4 @@ The harness reads from `apps/web/.env.local` (via dotenv). Required for e2e:
 
 ## Built-server WebSocket broadcast limitation
 
-WebSocket connection and auth work against the built server, but `crossws` `peer.send()` does not currently deliver broadcast messages to the `ws` client in this Nitro/node-server preset. Broadcast assertions are skipped in `test/e2e-built/todos.ws.spec.ts`. Those flows are still covered by the dev-server loop via `TEST_HOST`.
+WebSocket connection and auth work against the built server, but `crossws` `peer.send()` does not currently deliver broadcast messages to the `ws` client in this Nitro/node-server preset. Assert broadcast behaviour through the dev-server loop via `TEST_HOST` instead.

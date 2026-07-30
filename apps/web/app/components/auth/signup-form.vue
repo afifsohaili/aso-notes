@@ -81,8 +81,8 @@ async function handleSignup() {
 
     alert.value = { message: 'Sign up successful! You can now log in.', type: 'success' }
 
-    // navigate home
-    navigateTo('/')
+    // navigate to the chat home
+    navigateTo('/chat')
   }
   catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'An error occurred'

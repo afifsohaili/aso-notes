@@ -2,9 +2,9 @@ import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
 
 describe('in-process transactional smoke', () => {
-  test('GET /api/notifications without auth returns 401', async ({ server }) => {
-    const res = await server('/api/notifications')
-    expect(res.status).toBe(401)
+  test('GET /api/healthcheck without auth returns 200', async ({ server }) => {
+    const res = await server('/api/healthcheck')
+    expect(res.status).toBe(200)
   })
 
   test('writes are visible test-side and rolled back', async ({ trx }) => {
