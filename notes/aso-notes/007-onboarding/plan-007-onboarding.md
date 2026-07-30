@@ -140,6 +140,10 @@ Each milestone was TDD-driven; full suite green before the next.
 - Surviving Concepts keep their existing embedding/description (never-overwrite rule); no staleness handling.
 - The shared Apache AGE graph is cleaned vertex-by-vertex rather than dropped/recreated; workspace isolation of the AGE graph remains a future improvement.
 
+### Phase 7
+- **Bug found by browser verification (fixed)**: the sync plugin resolved the workspace once at server boot and gave up permanently when none existed — on a fresh install (signup happens AFTER boot) folder sync never started until a server restart. Extracted `server/lib/sync/daemon.ts` (`createSyncDaemon`) with lazy boot: the daemon stays subscribed to synced-folder events and boots when the first Synced Folder is added. Covered by `test/e2e/sync-daemon.spec.ts` (2 tests). Full suite: **86 files / 665 tests passed**.
+- Dev-server note: the better-auth client derives its base URL from `public.siteUrl` (default `http://localhost:3000`); when running on a non-default port set `NUXT_PUBLIC_SITE_URL` or signup/login posts hit the wrong origin.
+
 ## Deferred / open
 
 - **Merged-tree folder path-collision quirk.** Two Synced Folders with overlapping relative paths share a `folders` row and the notes UI merges them. Either per-synced-folder `folders` rows or root-prefix rendering in the UI is needed.
