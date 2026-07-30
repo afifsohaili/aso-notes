@@ -4,7 +4,10 @@ import process from 'node:process'
 import { useDatabase } from '~~/utils/db'
 import { INGESTION_QUEUE_NAME } from '../lib/sync/dispatcher'
 import { ingestNote } from '../lib/sync/ingest'
+import { mapIngestionWorkerError } from '../lib/sync/ingestion-worker-error-policy'
 import { handleFailedIngestionJob } from '../lib/sync/worker-failed'
+import { useQueue } from '../utils/queue'
+import { useWorker } from '../utils/worker'
 
 /**
  * BullMQ consumer for the ingestion queue (plan-002-system §Sync service,
@@ -23,22 +26,32 @@ export default defineNitroPlugin(() => {
     return // logged once by the notes-sync plugin
 
   const config = useRuntimeConfig()
+  const queue = useQueue<IngestNoteJobData>(INGESTION_QUEUE_NAME)
 
   const worker = useWorker(
     INGESTION_QUEUE_NAME,
     async (job: Job<IngestNoteJobData>) => {
       const db = useDatabase({ databaseUrl: config.databaseUrl })
-      await ingestNote({
-        db,
-        noteId: job.data.noteId,
-        worker: {
-          attemptsMade: job.attemptsMade,
-          jobId: job.id ?? null,
-        },
-      })
+      try {
+        await ingestNote({
+          db,
+          noteId: job.data.noteId,
+          worker: {
+            attemptsMade: job.attemptsMade,
+            jobId: job.id ?? null,
+          },
+        })
+      }
+      catch (error) {
+        throw await mapIngestionWorkerError({ error, queue })
+      }
     },
     {
       concurrency: 2,
+      limiter: {
+        max: 18,
+        duration: 60_000,
+      },
     },
   )
 

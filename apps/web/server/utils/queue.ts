@@ -28,7 +28,7 @@ export function useQueue<
       attempts: 3,
       backoff: {
         type: 'exponential',
-        delay: 5000,
+        delay: 30_000,
       },
       removeOnComplete: {
         age: 24 * 3600, // keep completed jobs for 24 hours

@@ -1,6 +1,7 @@
 import type { RunPipelineOptions } from '../pipeline/run-pipeline'
 import type { SyncDb } from './sweeper'
 import { sql } from 'kysely'
+import { RateLimitError } from '../ai/resilient-fetch'
 import { PipelineContext } from '../pipeline/context'
 import { buildLastRun } from '../pipeline/last-run'
 import { runPipeline } from '../pipeline/run-pipeline'
@@ -66,16 +67,35 @@ export async function ingestNote(args: {
   }
   catch (error) {
     const lastRun = buildLastRun(ctx, { status: 'failed', error, worker })
-    await db
-      .updateTable('notes')
-      .set({
-        status: 'failed',
-        last_run: sql`${JSON.stringify(lastRun)}::jsonb`,
-        updated_at: sql`now()`,
-      })
-      .where('id', '=', note.id)
-      .execute()
-    // Rethrow so BullMQ applies its retry/backoff policy.
+
+    // Rate limiting is a pause, not a failure: keep the note in processing so
+    // BullMQ can resume it after the worker-level rate limit expires. All other
+    // errors flip the note to failed so the normal BullMQ retry/backoff policy
+    // (or the worker's UnrecoverableError mapping for fatal errors) applies.
+    if (error instanceof RateLimitError) {
+      await db
+        .updateTable('notes')
+        .set({
+          last_run: sql`${JSON.stringify(lastRun)}::jsonb`,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', note.id)
+        .execute()
+    }
+    else {
+      await db
+        .updateTable('notes')
+        .set({
+          status: 'failed',
+          last_run: sql`${JSON.stringify(lastRun)}::jsonb`,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', note.id)
+        .execute()
+    }
+
+    // Rethrow so the worker processor can map resilient errors to BullMQ
+    // control errors (RateLimitError / UnrecoverableError).
     throw error
   }
 }

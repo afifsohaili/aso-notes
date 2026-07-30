@@ -1,6 +1,6 @@
 # Plan 006: AI Provider Resilience
 
-> Status: **Phase 1 done, Phase 2 done** — Phase 3 pending.
+> Status: **Phase 1 done, Phase 2 done, Phase 3 done** — Phase 4 pending.
 
 ## Problem
 
@@ -120,4 +120,8 @@ before a Note can fail, plus the 18/min limiter preventing most 429s.
 - `RateLimitError` now carries an optional `context` field populated from `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` response headers when present, in addition to the parsed `Retry-After` value. This makes the OpenRouter platform context trivially available to callers.
 - Providers expose a `public readonly resilience` object (timeoutMs / maxAttempts / baseDelayMs) so the registry and tests can observe the resolved configuration without reaching into internals.
 - Per-use-case resilience values are configured via `NUXT_LLM_<ROLE>_{TIMEOUT_MS,MAX_ATTEMPTS,BASE_DELAY_MS}` environment variables. The registry already consumed `process.env` as an `EnvMap`, so runtime config is threaded through env vars rather than the `useRuntimeConfig()` object.
-- `sleepFn` is also accepted as a constructor option by each provider so provider-level unit tests can stub retries without real timers.
+- `UnrecoverableError` mapping for `FatalError` happens in the worker processor (`mapIngestionWorkerError`) rather than inside `ingest.ts`, so `ingest.ts` stays independent of BullMQ control errors and can be unit-tested through its public seam.
+- `RateLimitError` pause is implemented by calling `queue.rateLimit(retryAfterMs ?? 60s)` and throwing BullMQ's `RateLimitError`, rather than the deprecated `worker.rateLimit()` or the move-to-delayed alternatives mentioned in the plan.
+- `ingest.ts` keeps the note status at `processing` for `RateLimitError` (it does not roll back to `queued`) because BullMQ moves the rate-limited job back to the wait list and the next attempt will flip status consistently.
+- Default job backoff was changed to a 30-second exponential base (minutes-scale outer net) rather than the previous 5-second base.
+- Feature/integration specs drive `ingestNote` directly instead of enqueue → worker → pause, because the ingestion pipeline uses raw BullMQ rather than the `@base/jobs` `ApplicationJob` abstraction, so the queue fixture's inline/real adapters cannot consume it.
