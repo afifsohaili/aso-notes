@@ -5,7 +5,7 @@ import type { NoteListItem } from '~/components/notes/note-list.vue'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({
-  middleware: ['auth'],
+  middleware: ['auth', 'onboarding'],
   layout: 'default',
 })
 

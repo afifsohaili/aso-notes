@@ -36,7 +36,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 <!-- frontier = open + unblocked + unclaimed. Resolve ONE per session (research tickets excepted). -->
 
 - [Synced Folder data model](ticket-synced-folder-data-model.md) — grilling
-- [Wizard-mode UX options](ticket-wizard-mode-ux-options.md) — prototype
+- ~~[Wizard-mode UX options](ticket-wizard-mode-ux-options.md)~~ — prototype — **CLOSED 2026-07-30** (see Phase 4 implementation log)
 - [Smoke-test note flow](ticket-smoke-test-note-flow.md) — grilling
 - ~~[Embedding dims detection](ticket-embedding-dims-detection.md)~~ — research — **CLOSED 2026-07-30** (see Decisions so far)
 - [Orphan GC rules](ticket-orphan-gc-rules.md) — grilling (blocked by Synced Folder data model)
@@ -133,3 +133,32 @@ Divergences / kept items:
 - Timeout for test-connection is hardcoded: 30s for ollama, 15s for openrouter. Not exposed as a setting in Phase 3.
 - The Ollama embedding probe uses raw `fetch` to `/api/embed` so we can omit the `dimensions` param; the OpenRouter probe uses the provider class because it already omits `dimensions`.
 - No UI work in this phase; Phase 4 will wire the test-connection call before save.
+
+### Phase 4 — Wizard-mode settings + first-run chat + onboarding gate (2026-07-30)
+
+Status: **closed** (ticket: [Wizard-mode UX options](ticket-wizard-mode-ux-options.md)).
+
+Built:
+- `onboarding.completed_at` registered in `workspace_settings` as the canonical flag; `PATCH /api/settings` supports deleting it by passing `value: null`, which re-enters wizard mode for tests.
+- Onboarding gate middleware (`app/middleware/onboarding.ts`) checks onboarding status on the server via `useRequestFetch` and client-side via `$fetch`, redirecting protected pages (`/chat`, `/notes`, `/graph`, `/notes/queue`) to `/settings` when incomplete. Steady-state settings loads without redirect. Shared status cache in `app/composables/onboarding.ts`.
+- `GET /api/settings/providers` returns per-role provider availability (`openrouter` enabled only if its env key is present; `ollama` always enabled).
+- Wizard-mode `/settings` UI: progress steps (folder → LLM roles → verify), folder manager, LLM role cards, Redis hard-block banner, verify placeholder. Steady-state UI keeps the same folder/LLM sections alongside extraction strategy and danger zone.
+- LLM role cards (`llm-role-card.vue`) bind provider/model/base-url locally, emit updates, test connection before save, and enforce the 2048-dim embedding guard at save time.
+- First-run `/chat` empty state (`chat/index.vue`) shows a guiding card with adaptive suggestion chips based on whether notes have been ingested.
+
+Specs:
+- `test/e2e-built/onboarding-gate.spec.ts` (6 tests) — gate redirect/no-redirect cases across signed-out, incomplete, and completed onboarding states.
+- `test/e2e/settings-api.spec.ts` updated for `onboarding.completed_at` persistence and deletion; `test/e2e/settings-providers.spec.ts` new for provider availability.
+- `test/unit/settings.spec.ts` updated for onboarding setting validation.
+- `test/components/settings-page.nuxt.spec.ts` (8 tests) — steady-state strategy/rebuild + wizard rendering, Redis warning, step locking, and LLM step enabling after folder add.
+- `test/components/llm-role-card.nuxt.spec.ts` (5 tests) — rendering, disabled unavailable providers, model input emits, empty-model test button, OK status.
+- `test/components/chat-index-page.nuxt.spec.ts` (2 tests) — first-run title and adaptive suggestions.
+
+Test result:
+- Full suite: **80 test files / 630 tests passed** (`pnpm test`).
+
+Divergences / kept items:
+- The verify step is only a placeholder; the actual smoke-test note flow (write → ingest → auto-delete) is deferred to the next ticket ([Smoke-test note flow](ticket-smoke-test-note-flow.md)).
+- The onboarding gate is a client-side route middleware; a direct server-rendered request to a protected page would still need to rely on the client redirect. This is acceptable for the SPA but could be hardened with a server-side guard later.
+- Provider availability is computed server-side from env keys; the UI only hides/disables providers that are missing, it does not let the user add keys.
+- Removing a synced folder still returns 409 if notes exist; the smoke-test note will exercise the deletion path once implemented.

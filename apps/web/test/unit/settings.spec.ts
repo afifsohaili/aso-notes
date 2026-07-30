@@ -130,6 +130,7 @@ describe('resolveWorkspaceSettings', () => {
       'llm.embedding.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.embedding.model': { value: DEFAULT_EMBEDDING_MODEL, source: 'default' },
       'llm.embedding.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'onboarding.completed_at': { value: null, source: 'default' },
     })
   })
 
@@ -156,6 +157,7 @@ describe('resolveWorkspaceSettings', () => {
       'llm.embedding.provider': { value: 'ollama', source: 'workspace' },
       'llm.embedding.model': { value: 'nomic-embed-text', source: 'workspace' },
       'llm.embedding.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
+      'onboarding.completed_at': { value: null, source: 'default' },
     })
   })
 
@@ -188,6 +190,7 @@ describe('resolveWorkspaceSettings', () => {
     expect(settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'workspace' })
     expect(settings['extraction.blind_merge_threshold']).toEqual({ value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' })
     expect(settings['llm.agent.provider']).toEqual({ value: DEFAULT_LLM_PROVIDER, source: 'default' })
+    expect(settings['onboarding.completed_at']).toEqual({ value: null, source: 'default' })
   })
 })
 
@@ -201,6 +204,7 @@ describe('assertKnownSettingKey', () => {
     expect(assertKnownSettingKey('llm.embedding.provider')).toBe('llm.embedding.provider')
     expect(assertKnownSettingKey('llm.embedding.model')).toBe('llm.embedding.model')
     expect(assertKnownSettingKey('llm.embedding.base_url')).toBe('llm.embedding.base_url')
+    expect(assertKnownSettingKey('onboarding.completed_at')).toBe('onboarding.completed_at')
   })
 
   it('throws for unknown keys', () => {
@@ -290,6 +294,18 @@ describe('normalizeSettingValue', () => {
 
     it('rejects a non-string base_url', () => {
       expect(() => normalizeSettingValue('llm.extraction.base_url', 123)).toThrow('base_url must be a string')
+    })
+
+    it('accepts null for onboarding.completed_at', () => {
+      expect(normalizeSettingValue('onboarding.completed_at', null)).toBeNull()
+    })
+
+    it('normalizes a valid ISO timestamp for onboarding.completed_at', () => {
+      expect(normalizeSettingValue('onboarding.completed_at', '2026-07-30T12:00:00Z')).toBe('2026-07-30T12:00:00.000Z')
+    })
+
+    it('rejects an invalid timestamp for onboarding.completed_at', () => {
+      expect(() => normalizeSettingValue('onboarding.completed_at', 'not-a-date')).toThrow('onboarding.completed_at must be a valid ISO timestamp or null')
     })
   })
 })

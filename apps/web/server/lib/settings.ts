@@ -28,6 +28,7 @@ export const KNOWN_SETTING_KEYS = [
   'llm.embedding.provider',
   'llm.embedding.model',
   'llm.embedding.base_url',
+  'onboarding.completed_at',
 ] as const
 
 export type KnownSettingKey = typeof KNOWN_SETTING_KEYS[number]
@@ -210,6 +211,8 @@ export async function resolveWorkspaceSettings(
   const extraction = resolveLLM('extraction')
   const embedding = resolveLLM('embedding')
 
+  const onboardingCompletedAt = workspaceValues.get('onboarding.completed_at') ?? null
+
   return {
     'extraction.vocabulary_strategy': {
       value: workspaceValues.get('extraction.vocabulary_strategy') ?? defaultVocabularyStrategy().id,
@@ -228,6 +231,10 @@ export async function resolveWorkspaceSettings(
     'llm.embedding.provider': embedding.provider,
     'llm.embedding.model': embedding.model,
     'llm.embedding.base_url': embedding.base_url,
+    'onboarding.completed_at': {
+      value: onboardingCompletedAt,
+      source: workspaceValues.has('onboarding.completed_at') ? 'workspace' : 'default',
+    },
   }
 }
 
@@ -288,6 +295,18 @@ export function normalizeSettingValue(key: KnownSettingKey, value: unknown): Jso
       }
       return value === undefined ? null : value
     }
+  }
+
+  if (key === 'onboarding.completed_at') {
+    if (value === null || value === undefined)
+      return null
+    if (typeof value !== 'string' || value.trim().length === 0)
+      throw new Error('onboarding.completed_at must be a valid ISO timestamp or null')
+    const trimmed = value.trim()
+    const parsed = new Date(trimmed)
+    if (Number.isNaN(parsed.getTime()))
+      throw new Error('onboarding.completed_at must be a valid ISO timestamp or null')
+    return parsed.toISOString()
   }
 
   throw new Error(`unknown setting key: '${key}'`)

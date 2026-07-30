@@ -24,6 +24,7 @@ describe('settings API', () => {
       expect(body.settings['llm.embedding.provider']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.embedding.model']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.embedding.base_url']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['onboarding.completed_at']).toEqual({ value: null, source: 'default' })
     })
   })
 
@@ -140,7 +141,10 @@ describe('settings API', () => {
           body: JSON.stringify({ key, value }),
           headers: { 'cookie': cookies, 'content-type': 'application/json' },
         })
+        const text = await patchRes.text()
         expect(patchRes.status).toBe(200)
+        if (!patchRes.ok)
+          throw new Error(text)
       }
 
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
@@ -183,6 +187,33 @@ describe('settings API', () => {
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
       const body = await getRes.json()
       expect(body.settings['llm.embedding.model'].source).toBe('default')
+    })
+
+    test('persists and clears onboarding.completed_at', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const timestamp = '2026-07-30T12:00:00.000Z'
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'onboarding.completed_at', value: timestamp }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(200)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      const body = await getRes.json()
+      expect(body.settings['onboarding.completed_at']).toEqual({ value: timestamp, source: 'workspace' })
+
+      const clearRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'onboarding.completed_at', value: null }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(clearRes.status).toBe(200)
+
+      const getRes2 = await server('/api/settings', { headers: { cookie: cookies } })
+      const body2 = await getRes2.json()
+      expect(body2.settings['onboarding.completed_at']).toEqual({ value: null, source: 'default' })
     })
   })
 })

@@ -2,6 +2,9 @@
 import type { ChatConversationSummary } from '~/components/chat/chat-sidebar.vue'
 import type { ChatMessage } from '~/composables/use-chat'
 import { useI18n } from 'vue-i18n'
+import ChatBubbleLeftRightIcon from '~icons/heroicons/chat-bubble-left-right'
+import DocumentTextIcon from '~icons/heroicons/document-text'
+import LightBulbIcon from '~icons/heroicons/light-bulb'
 import PaperAirplaneIcon from '~icons/heroicons/paper-airplane'
 import SparklesIcon from '~icons/heroicons/sparkles'
 import XMarkIcon from '~icons/heroicons/x-mark'
@@ -25,7 +28,7 @@ interface ConversationDetail extends ChatConversationSummary {
 }
 
 definePageMeta({
-  middleware: ['auth'],
+  middleware: ['auth', 'onboarding'],
   layout: 'default',
 })
 
@@ -38,6 +41,7 @@ const conversationId = ref<string | null>(
 
 const { data: conversations, refresh: refreshConversations } = await useFetch<ChatConversationSummary[]>('/api/conversations')
 const { data: archivedConversations, refresh: refreshArchived } = await useFetch<ChatConversationSummary[]>('/api/conversations?archived=true')
+const { data: noteStatusCounts } = await useFetch<{ ingested: number }>('/api/notes/status-counts')
 
 const sidebarConversations = computed(() => {
   return (conversations.value ?? []).map(c => ({
@@ -134,6 +138,23 @@ async function handleSubmit() {
   }
 }
 
+const hasNotes = computed(() => (noteStatusCounts.value?.ingested ?? 0) > 0)
+
+const suggestedQueries = computed(() => {
+  const suggestions = []
+  if (hasNotes.value)
+    suggestions.push({ icon: DocumentTextIcon, text: t('chat.firstQuery.suggestions.withNotes') })
+  else
+    suggestions.push({ icon: ChatBubbleLeftRightIcon, text: t('chat.firstQuery.suggestions.noNotes') })
+  suggestions.push({ icon: LightBulbIcon, text: t('chat.firstQuery.suggestions.general') })
+  return suggestions
+})
+
+function sendSuggestedQuery(text: string) {
+  queryText.value = text
+  handleSubmit()
+}
+
 function startEdit(message: ChatMessage) {
   editingMessage.value = message
   queryText.value = message.content
@@ -197,8 +218,31 @@ async function setArchived(id: string, archived: boolean) {
 
       <main class="flex-1 flex flex-col bg-white overflow-hidden">
         <chat-thread v-if="messages.length > 0" :messages="messages" @edit="startEdit" />
-        <div v-else class="flex-1 flex items-center justify-center text-gray-500">
-          {{ t('chat.empty') }}
+        <div v-else class="flex-1 flex flex-col items-center justify-center overflow-y-auto p-6 text-center">
+          <div class="max-w-md">
+            <h2 class="text-2xl font-semibold text-gray-900 mb-2">
+              {{ t('chat.firstQuery.title') }}
+            </h2>
+            <p class="text-gray-500 mb-8">
+              {{ t('chat.firstQuery.subtitle') }}
+            </p>
+
+            <p class="text-xs font-medium uppercase tracking-wider text-gray-400 mb-3">
+              {{ t('chat.firstQuery.suggestionTitle') }}
+            </p>
+            <div class="space-y-3">
+              <button
+                v-for="(suggestion, index) in suggestedQueries"
+                :key="index"
+                type="button"
+                class="w-full flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-700 shadow-sm hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                @click="sendSuggestedQuery(suggestion.text)"
+              >
+                <component :is="suggestion.icon" class="h-5 w-5 text-indigo-500 shrink-0" />
+                <span>{{ suggestion.text }}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <chat-activity v-if="activities.length > 0" :activities="activities" />

@@ -16,7 +16,7 @@ interface ConceptSummary {
 }
 
 definePageMeta({
-  middleware: ['auth'],
+  middleware: ['auth', 'onboarding'],
   layout: 'default',
 })
 

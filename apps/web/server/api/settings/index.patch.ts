@@ -33,21 +33,30 @@ export default defineEventHandler(async (event) => {
     const key = assertKnownSettingKey(body?.key)
     const value = normalizeSettingValue(key, body?.value)
 
-    const valueSql = typeof value === 'string'
-      ? sql`to_jsonb(${value}::text)`
-      : sql`to_jsonb(${value}::numeric)`
+    if (value === null) {
+      await db
+        .deleteFrom('workspace_settings')
+        .where('workspace_id', '=', workspaceId)
+        .where('key', '=', key)
+        .execute()
+    }
+    else {
+      const valueSql = typeof value === 'string'
+        ? sql`to_jsonb(${value}::text)`
+        : sql`to_jsonb(${value}::numeric)`
 
-    await db
-      .insertInto('workspace_settings')
-      .values({
-        workspace_id: workspaceId,
-        key,
-        value: valueSql,
-      })
-      .onConflict(oc => oc.columns(['workspace_id', 'key']).doUpdateSet({
-        value: valueSql,
-      }))
-      .execute()
+      await db
+        .insertInto('workspace_settings')
+        .values({
+          workspace_id: workspaceId,
+          key,
+          value: valueSql,
+        })
+        .onConflict(oc => oc.columns(['workspace_id', 'key']).doUpdateSet({
+          value: valueSql,
+        }))
+        .execute()
+    }
 
     if (isLLMSettingKey(key)) {
       clearStageRegistry()

@@ -10,7 +10,7 @@ interface CountCard {
 }
 
 definePageMeta({
-  middleware: ['auth'],
+  middleware: ['auth', 'onboarding'],
   layout: 'default',
 })
 
