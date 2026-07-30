@@ -151,6 +151,7 @@ export interface Notes {
   path: string;
   pipeline: Generated<string>;
   status: Generated<string>;
+  synced_folder_id: string;
   title: string;
   updated_at: Generated<Timestamp>;
   workspace_id: string;
@@ -232,6 +233,14 @@ export interface Sources {
   updated_at: Generated<Timestamp>;
   url: string;
   url_normalized: string;
+  workspace_id: string;
+}
+
+export interface SyncedFolders {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  path: string;
+  updated_at: Generated<Timestamp>;
   workspace_id: string;
 }
 
@@ -321,6 +330,7 @@ export interface DB {
   relations: Relations;
   sessions: Sessions;
   sources: Sources;
+  synced_folders: SyncedFolders;
   tags: Tags;
   todos: Todos;
   topics: Topics;

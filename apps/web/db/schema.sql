@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict QdfLJvyR9CR3ZOXqPCtmPU32mnLe0sq9UTl6lNeIQJCWzP99E55CKBM4qFX4Vss
+\restrict YVEl2lWCZPCSHglap9EfcGy5yfRFa61Mjeeyf128C2jcLt256xsvQCiYnscugdy
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -22,6 +22,7 @@ ALTER TABLE IF EXISTS ONLY public.workspace_settings DROP CONSTRAINT IF EXISTS w
 ALTER TABLE IF EXISTS ONLY public.topics DROP CONSTRAINT IF EXISTS topics_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.todos DROP CONSTRAINT IF EXISTS todos_user_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.tags DROP CONSTRAINT IF EXISTS tags_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.synced_folders DROP CONSTRAINT IF EXISTS synced_folders_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.sources DROP CONSTRAINT IF EXISTS sources_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.sources DROP CONSTRAINT IF EXISTS sources_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS "sessions_userId_fkey";
@@ -32,6 +33,7 @@ ALTER TABLE IF EXISTS ONLY public.read_notifications DROP CONSTRAINT IF EXISTS r
 ALTER TABLE IF EXISTS ONLY public.read_notifications DROP CONSTRAINT IF EXISTS read_notifications_notification_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.notifications DROP CONSTRAINT IF EXISTS notifications_created_by_fkey;
 ALTER TABLE IF EXISTS ONLY public.notes DROP CONSTRAINT IF EXISTS notes_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.notes DROP CONSTRAINT IF EXISTS notes_synced_folder_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.notes DROP CONSTRAINT IF EXISTS notes_folder_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.note_tags DROP CONSTRAINT IF EXISTS note_tags_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.note_tags DROP CONSTRAINT IF EXISTS note_tags_tag_id_fkey;
@@ -58,10 +60,12 @@ ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS conce
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.accounts DROP CONSTRAINT IF EXISTS "accounts_userId_fkey";
+DROP TRIGGER IF EXISTS notes_default_synced_folder ON public.notes;
 DROP INDEX IF EXISTS public.topics_workspace_name_normalized_unique;
 DROP INDEX IF EXISTS public.tags_workspace_name_normalized_unique;
+DROP INDEX IF EXISTS public.synced_folders_workspace_path_unique;
 DROP INDEX IF EXISTS public.sources_note_url_normalized_unique;
-DROP INDEX IF EXISTS public.notes_workspace_path_unique;
+DROP INDEX IF EXISTS public.notes_synced_folder_path_unique;
 DROP INDEX IF EXISTS public.mentions_chunk_concept_unique;
 DROP INDEX IF EXISTS public.memberships_user_workspace_unique;
 DROP INDEX IF EXISTS public.idx_topics_embedding_hnsw;
@@ -92,6 +96,7 @@ ALTER TABLE IF EXISTS ONLY public.user_verifications DROP CONSTRAINT IF EXISTS u
 ALTER TABLE IF EXISTS ONLY public.topics DROP CONSTRAINT IF EXISTS topics_pkey;
 ALTER TABLE IF EXISTS ONLY public.todos DROP CONSTRAINT IF EXISTS todos_pkey;
 ALTER TABLE IF EXISTS ONLY public.tags DROP CONSTRAINT IF EXISTS tags_pkey;
+ALTER TABLE IF EXISTS ONLY public.synced_folders DROP CONSTRAINT IF EXISTS synced_folders_pkey;
 ALTER TABLE IF EXISTS ONLY public.sources DROP CONSTRAINT IF EXISTS sources_pkey;
 ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS sessions_token_key;
 ALTER TABLE IF EXISTS ONLY public.sessions DROP CONSTRAINT IF EXISTS sessions_pkey;
@@ -128,6 +133,7 @@ DROP TABLE IF EXISTS public.topics;
 DROP SEQUENCE IF EXISTS public.todos_id_seq;
 DROP TABLE IF EXISTS public.todos;
 DROP TABLE IF EXISTS public.tags;
+DROP TABLE IF EXISTS public.synced_folders;
 DROP TABLE IF EXISTS public.sources;
 DROP TABLE IF EXISTS public.sessions;
 DROP TABLE IF EXISTS public.relations;
@@ -155,6 +161,7 @@ DROP SEQUENCE IF EXISTS notes_graph._ag_label_vertex_id_seq;
 DROP TABLE IF EXISTS notes_graph._ag_label_vertex;
 DROP SEQUENCE IF EXISTS notes_graph._ag_label_edge_id_seq;
 DROP TABLE IF EXISTS notes_graph._ag_label_edge;
+DROP FUNCTION IF EXISTS public.trg_notes_default_synced_folder();
 DROP EXTENSION IF EXISTS vector;
 DROP EXTENSION IF EXISTS age;
 DROP SCHEMA IF EXISTS notes_graph;
@@ -199,6 +206,29 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+
+
+--
+-- Name: trg_notes_default_synced_folder(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.trg_notes_default_synced_folder() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      IF NEW.synced_folder_id IS NULL THEN
+        NEW.synced_folder_id := (
+          SELECT id FROM synced_folders WHERE workspace_id = NEW.workspace_id LIMIT 1
+        );
+      END IF;
+      IF NEW.synced_folder_id IS NULL THEN
+        INSERT INTO synced_folders (workspace_id, path)
+        VALUES (NEW.workspace_id, '__default_synced_folder__')
+        RETURNING id INTO NEW.synced_folder_id;
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
 
 
 SET default_table_access_method = heap;
@@ -493,6 +523,7 @@ CREATE TABLE public.notes (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     last_run jsonb,
+    synced_folder_id uuid NOT NULL,
     CONSTRAINT notes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'queued'::character varying, 'processing'::character varying, 'ingested'::character varying, 'failed'::character varying])::text[])))
 );
 
@@ -509,7 +540,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-29 16:03:42.654629'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-30 12:18:51.885199'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -542,7 +573,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-29 16:03:42.654629'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-30 12:18:51.885199'::timestamp without time zone NOT NULL
 );
 
 
@@ -610,6 +641,19 @@ CREATE TABLE public.sources (
     url_normalized text NOT NULL,
     title character varying,
     type character varying,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: synced_folders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.synced_folders (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    path text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
@@ -953,6 +997,14 @@ ALTER TABLE ONLY public.sources
 
 
 --
+-- Name: synced_folders synced_folders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.synced_folders
+    ADD CONSTRAINT synced_folders_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: tags tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1171,10 +1223,10 @@ CREATE UNIQUE INDEX mentions_chunk_concept_unique ON public.mentions USING btree
 
 
 --
--- Name: notes_workspace_path_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: notes_synced_folder_path_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX notes_workspace_path_unique ON public.notes USING btree (workspace_id, path);
+CREATE UNIQUE INDEX notes_synced_folder_path_unique ON public.notes USING btree (synced_folder_id, path);
 
 
 --
@@ -1182,6 +1234,13 @@ CREATE UNIQUE INDEX notes_workspace_path_unique ON public.notes USING btree (wor
 --
 
 CREATE UNIQUE INDEX sources_note_url_normalized_unique ON public.sources USING btree (note_id, url_normalized);
+
+
+--
+-- Name: synced_folders_workspace_path_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX synced_folders_workspace_path_unique ON public.synced_folders USING btree (workspace_id, path);
 
 
 --
@@ -1196,6 +1255,13 @@ CREATE UNIQUE INDEX tags_workspace_name_normalized_unique ON public.tags USING b
 --
 
 CREATE UNIQUE INDEX topics_workspace_name_normalized_unique ON public.topics USING btree (workspace_id, name_normalized);
+
+
+--
+-- Name: notes notes_default_synced_folder; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER notes_default_synced_folder BEFORE INSERT ON public.notes FOR EACH ROW EXECUTE FUNCTION public.trg_notes_default_synced_folder();
 
 
 --
@@ -1407,6 +1473,14 @@ ALTER TABLE ONLY public.notes
 
 
 --
+-- Name: notes notes_synced_folder_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notes
+    ADD CONSTRAINT notes_synced_folder_id_fkey FOREIGN KEY (synced_folder_id) REFERENCES public.synced_folders(id) ON DELETE CASCADE;
+
+
+--
 -- Name: notes notes_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1487,6 +1561,14 @@ ALTER TABLE ONLY public.sources
 
 
 --
+-- Name: synced_folders synced_folders_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.synced_folders
+    ADD CONSTRAINT synced_folders_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
 -- Name: tags tags_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1522,5 +1604,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict QdfLJvyR9CR3ZOXqPCtmPU32mnLe0sq9UTl6lNeIQJCWzP99E55CKBM4qFX4Vss
+\unrestrict YVEl2lWCZPCSHglap9EfcGy5yfRFa61Mjeeyf128C2jcLt256xsvQCiYnscugdy
 

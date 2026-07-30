@@ -12,6 +12,8 @@ import { resolveSyncWorkspace } from '../../server/lib/sync/workspace'
  * notes dir. Timing-sensitive behavior (settle sweeps, rename ordering) is
  * covered by driving handlers directly in notes-sync.spec.ts — here we only
  * prove chokidar events reach the sync handlers.
+ *
+ * Phase 2 update: handler calls now carry the synced_folder_id for the root.
  */
 
 const tempDirs: string[] = []
@@ -20,6 +22,15 @@ function givenNotesDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aso-notes-sync-'))
   tempDirs.push(dir)
   return dir
+}
+
+async function givenSyncedFolder(trx: any, workspaceId: string, folderPath: string): Promise<string> {
+  const row = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: folderPath })
+    .returning('id')
+    .executeTakeFirstOrThrow()
+  return row.id
 }
 
 afterAll(() => {
@@ -65,13 +76,14 @@ describe('folder sync (chokidar smoke)', () => {
   test('a written .md file is upserted and a deleted file removes the row', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-smoke')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
 
     const folderSync = createFolderSync({
       notesDir,
       unlinkGraceMs: 10,
       handlers: {
-        onUpsert: absolutePath => handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath }),
-        onUnlink: absolutePath => handleFileUnlink({ db: trx, workspaceId, notesDir, absolutePath }),
+        onUpsert: absolutePath => handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath }),
+        onUnlink: absolutePath => handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath }),
       },
     })
     await new Promise<void>(resolve => folderSync.on('ready', () => resolve()))

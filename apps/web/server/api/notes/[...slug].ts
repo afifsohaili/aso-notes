@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import process from 'node:process'
 import { useDatabase } from '~~/utils/db'
 import { isTagDeleteRoute, isTagsRoute, NotePathError, parseNoteRouteSegments, parseTagDeleteRoute, parseTagsRoute } from '../../lib/notes/paths'
 import { addTagToNote, removeTagFromNote } from '../../lib/notes/tags'
@@ -20,7 +19,7 @@ async function resolveWorkspaceId(db: any, userId: string): Promise<string | nul
 async function loadNoteByPath(db: any, workspaceId: string, notePath: string) {
   return db
     .selectFrom('notes')
-    .select(['id', 'path', 'title', 'content', 'status', 'updated_at', 'folder_id', 'last_run'])
+    .select(['id', 'path', 'title', 'content', 'status', 'updated_at', 'folder_id', 'last_run', 'synced_folder_id'])
     .where('workspace_id', '=', workspaceId)
     .where('path', '=', notePath)
     .executeTakeFirst()
@@ -55,6 +54,37 @@ async function loadFolderPath(db: any, workspaceId: string, folderId: string | n
     .where('id', '=', folderId)
     .executeTakeFirst()
   return folder?.path ?? null
+}
+
+/**
+ * Resolve the Synced Folder root to use for a note path.
+ * If the path already exists in the DB, use its root. Otherwise fall back to
+ * the first Synced Folder for the workspace. This keeps the existing PUT flow
+ * working while multi-root UI ambiguity is resolved in Phase 4.
+ */
+async function resolveNoteRoot(db: any, workspaceId: string, notePath: string): Promise<{ syncedFolderId: string, rootPath: string } | null> {
+  const fromNote = await db
+    .selectFrom('notes')
+    .innerJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
+    .select(['synced_folders.id', 'synced_folders.path'])
+    .where('notes.workspace_id', '=', workspaceId)
+    .where('notes.path', '=', notePath)
+    .executeTakeFirst()
+
+  if (fromNote)
+    return { syncedFolderId: fromNote.id, rootPath: fromNote.path }
+
+  const first = await db
+    .selectFrom('synced_folders')
+    .select(['id', 'path'])
+    .where('workspace_id', '=', workspaceId)
+    .orderBy('created_at', 'asc')
+    .executeTakeFirst()
+
+  if (first)
+    return { syncedFolderId: first.id, rootPath: first.path }
+
+  return null
 }
 
 export default defineEventHandler(async (event) => {
@@ -102,12 +132,17 @@ export default defineEventHandler(async (event) => {
       // PUT creates or updates: write the file, upsert the row (pending), return it
       const body = await readBody(event)
       const content = typeof body.content === 'string' ? body.content : ''
-      const notesDir = config.notesDir || process.env.NUXT_NOTES_DIR || './notes'
-      const absolutePath = path.join(notesDir, ...segments)
+
+      const root = await resolveNoteRoot(db, workspaceId, notePath)
+      if (!root) {
+        throw createError({ statusCode: 400, statusMessage: 'No synced folder configured' })
+      }
+
+      const absolutePath = path.join(root.rootPath, ...segments)
       mkdirSync(path.dirname(absolutePath), { recursive: true })
       writeFileSync(absolutePath, content)
 
-      await handleFileUpsert({ db, workspaceId, notesDir, absolutePath })
+      await handleFileUpsert({ db, workspaceId, syncedFolderId: root.syncedFolderId, notesDir: root.rootPath, absolutePath })
 
       const updated = await loadNoteByPath(db, workspaceId, notePath)
       if (!updated) {

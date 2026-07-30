@@ -11,6 +11,9 @@ import { handleFileUnlink, handleFileUpsert, startupScan } from '../../server/li
  * Chokidar events are simulated by writing real files to a temp notes dir and
  * driving the internal handlers directly — chokidar timing stays out of the
  * assertions (one real chokidar smoke test lives in folder-sync.spec.ts).
+ *
+ * Phase 2 update: every handler call carries the synced_folder_id for the root
+ * it is syncing.
  */
 
 const tempDirs: string[] = []
@@ -19,6 +22,15 @@ function givenNotesDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aso-notes-sync-'))
   tempDirs.push(dir)
   return dir
+}
+
+async function givenSyncedFolder(trx: any, workspaceId: string, folderPath: string): Promise<string> {
+  const row = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: folderPath })
+    .returning('id')
+    .executeTakeFirstOrThrow()
+  return row.id
 }
 
 afterAll(() => {
@@ -65,9 +77,10 @@ describe('sync fast path: file add/change', () => {
   test('a new .md file becomes a pending note with a folder row per directory level', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-create')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'project-a/engineering/x.md', '# X\n')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const note = await getNoteByPath(trx, workspaceId, '/project-a/engineering/x.md')
     expect(note).toBeTruthy()
@@ -75,6 +88,7 @@ describe('sync fast path: file add/change', () => {
     expect(note.title).toBe('x')
     expect(note.content).toBe('# X\n')
     expect(note.content_hash).toBeTruthy()
+    expect(note.synced_folder_id).toBe(syncedFolderId)
 
     const folders = await folderPaths(trx, workspaceId)
     expect(folders).toEqual(['/project-a', '/project-a/engineering'])
@@ -92,9 +106,10 @@ describe('sync fast path: file add/change', () => {
   test('a root-level note has no folder row (M1: root notes have folder_id null)', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-root')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'inbox.md', 'hi')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const note = await getNoteByPath(trx, workspaceId, '/inbox.md')
     expect(note.folder_id).toBeNull()
@@ -104,9 +119,10 @@ describe('sync fast path: file add/change', () => {
   test('a synced note uses the markdown-note-with-links pipeline so wikilinks and sources are extracted at ingestion', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-pipeline')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'linked.md', '# Linked\n\nSee [[other]]. https://youtu.be/abc123\n')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const note = await getNoteByPath(trx, workspaceId, '/linked.md')
     expect(note.pipeline).toBe('markdown-note-with-links')
@@ -115,9 +131,10 @@ describe('sync fast path: file add/change', () => {
   test('editing a legacy markdown-note row upgrades its pipeline to markdown-note-with-links', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-pipeline-upgrade')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'legacy.md', 'v1')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     // Simulate a note created before the pipeline was set at sync time.
     await trx
       .updateTable('notes')
@@ -127,7 +144,7 @@ describe('sync fast path: file add/change', () => {
       .execute()
 
     writeFileSync(abs, 'v2 — changed')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const note = await getNoteByPath(trx, workspaceId, '/legacy.md')
     expect(note.pipeline).toBe('markdown-note-with-links')
@@ -136,9 +153,10 @@ describe('sync fast path: file add/change', () => {
   test('modifying a file keeps the note id, bumps updated_at, and marks it pending', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-modify')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'a.md', 'v1')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     const before = await getNoteByPath(trx, workspaceId, '/a.md')
     // simulate the note having been ingested and then settling in the past
     await trx
@@ -149,7 +167,7 @@ describe('sync fast path: file add/change', () => {
     const backdated = (await getNoteByPath(trx, workspaceId, '/a.md')).updated_at
 
     writeFileSync(abs, 'v2 — changed')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const after = await getNoteByPath(trx, workspaceId, '/a.md')
     expect(after.id).toBe(before.id)
@@ -162,9 +180,10 @@ describe('sync fast path: file add/change', () => {
   test('re-syncing unchanged content is a no-op (does not reset the settle clock)', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-noop')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'a.md', 'same')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     const before = await getNoteByPath(trx, workspaceId, '/a.md')
     const settledAt = new Date(Date.now() - 10 * 60_000)
     await trx
@@ -173,7 +192,7 @@ describe('sync fast path: file add/change', () => {
       .where('id', '=', before.id)
       .execute()
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     const after = await getNoteByPath(trx, workspaceId, '/a.md')
     expect(after.updated_at.getTime()).toBe(settledAt.getTime())
@@ -182,9 +201,10 @@ describe('sync fast path: file add/change', () => {
   test('a file with the same content at a new path is a rename: same id, new path, status preserved', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-rename')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const oldAbs = writeNote(notesDir, 'old-name.md', 'rename me')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: oldAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: oldAbs })
     const before = await getNoteByPath(trx, workspaceId, '/old-name.md')
     await trx
       .updateTable('notes')
@@ -196,7 +216,7 @@ describe('sync fast path: file add/change', () => {
     // old one (the unlink delete is grace-delayed) — the content hash match
     // must move the row instead of inserting a new note.
     const newAbs = writeNote(notesDir, 'archive/new-name.md', 'rename me')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: newAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: newAbs })
 
     expect(await getNoteByPath(trx, workspaceId, '/old-name.md')).toBeUndefined()
     const renamed = await getNoteByPath(trx, workspaceId, '/archive/new-name.md')
@@ -215,7 +235,7 @@ describe('sync fast path: file add/change', () => {
     expect(renamed.folder_id).toBe(parent.id)
 
     // the trailing unlink for the old path is then a no-op
-    await handleFileUnlink({ db: trx, workspaceId, notesDir, absolutePath: oldAbs })
+    await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: oldAbs })
     expect((await getNoteByPath(trx, workspaceId, '/archive/new-name.md')).id).toBe(before.id)
   })
 })
@@ -224,12 +244,13 @@ describe('sync fast path: file unlink', () => {
   test('deleting a file deletes the note row', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-delete')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'gone.md', 'bye')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     expect(await getNoteByPath(trx, workspaceId, '/gone.md')).toBeTruthy()
 
-    await handleFileUnlink({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     expect(await getNoteByPath(trx, workspaceId, '/gone.md')).toBeUndefined()
   })
 })
@@ -238,9 +259,10 @@ describe('folder covers', () => {
   test('a __folder-cover.md is never a Note — its content lands on the folders row', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-cover')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const abs = writeNote(notesDir, 'proj/__folder-cover.md', 'All about proj')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: abs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
 
     expect(await getNoteByPath(trx, workspaceId, '/proj/__folder-cover.md')).toBeUndefined()
     const folder = await trx
@@ -256,13 +278,14 @@ describe('folder covers', () => {
   test('a cover change marks all descendant notes pending (cascade re-ingestion)', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-cover-cascade')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const coverAbs = writeNote(notesDir, 'proj/__folder-cover.md', 'v1 cover')
     const noteAbs = writeNote(notesDir, 'proj/sub/note.md', '# note')
     const outsideAbs = writeNote(notesDir, 'other/outside.md', '# outside')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: noteAbs })
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: outsideAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: noteAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: outsideAbs })
 
     // both notes ingested
     await trx
@@ -272,7 +295,7 @@ describe('folder covers', () => {
       .execute()
 
     writeFileSync(coverAbs, 'v2 cover — changed')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
 
     const descendant = await getNoteByPath(trx, workspaceId, '/proj/sub/note.md')
     expect(descendant.status).toBe('pending')
@@ -291,18 +314,19 @@ describe('folder covers', () => {
   test('an unchanged cover is a no-op (no cascade)', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-cover-noop')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const coverAbs = writeNote(notesDir, 'proj/__folder-cover.md', 'same cover')
     const noteAbs = writeNote(notesDir, 'proj/note.md', '# note')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: noteAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: noteAbs })
     await trx
       .updateTable('notes')
       .set({ status: 'ingested', ingested_hash: sql`content_hash` })
       .where('workspace_id', '=', workspaceId)
       .execute()
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
 
     const note = await getNoteByPath(trx, workspaceId, '/proj/note.md')
     expect(note.status).toBe('ingested')
@@ -311,11 +335,12 @@ describe('folder covers', () => {
   test('a root-level cover lives on the "/" folder row and cascades to every note', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-cover-root')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const coverAbs = writeNote(notesDir, '__folder-cover.md', 'root cover')
     const noteAbs = writeNote(notesDir, 'proj/note.md', '# note')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: noteAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: noteAbs })
     await trx
       .updateTable('notes')
       .set({ status: 'ingested', ingested_hash: sql`content_hash` })
@@ -323,7 +348,7 @@ describe('folder covers', () => {
       .execute()
 
     writeFileSync(coverAbs, 'root cover v2')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
 
     const root = await trx
       .selectFrom('folders')
@@ -338,18 +363,19 @@ describe('folder covers', () => {
   test('deleting a cover clears it from the folder row and cascades', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'sync-cover-unlink')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
     const coverAbs = writeNote(notesDir, 'proj/__folder-cover.md', 'cover')
     const noteAbs = writeNote(notesDir, 'proj/note.md', '# note')
 
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: noteAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: noteAbs })
     await trx
       .updateTable('notes')
       .set({ status: 'ingested', ingested_hash: sql`content_hash` })
       .where('workspace_id', '=', workspaceId)
       .execute()
 
-    await handleFileUnlink({ db: trx, workspaceId, notesDir, absolutePath: coverAbs })
+    await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
 
     const folder = await trx
       .selectFrom('folders')
@@ -367,11 +393,12 @@ describe('startup scan', () => {
   test('reconciles disk vs DB: new files pending, vanished rows deleted, unchanged ingested notes untouched', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'scan-reconcile')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
 
     // pre-existing DB state: an ingested note that still exists on disk, and
     // a note whose file was deleted while the app was down
     const keepAbs = writeNote(notesDir, 'keep.md', 'still here')
-    await handleFileUpsert({ db: trx, workspaceId, notesDir, absolutePath: keepAbs })
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: keepAbs })
     const keep = await getNoteByPath(trx, workspaceId, '/keep.md')
     await trx
       .updateTable('notes')
@@ -380,13 +407,20 @@ describe('startup scan', () => {
       .execute()
     await trx
       .insertInto('notes')
-      .values({ workspace_id: workspaceId, path: '/vanished.md', title: 'vanished', content: 'gone', content_hash: 'h' })
+      .values({
+        workspace_id: workspaceId,
+        synced_folder_id: syncedFolderId,
+        path: '/vanished.md',
+        title: 'vanished',
+        content: 'gone',
+        content_hash: 'h',
+      })
       .execute()
 
     // new file created while the app was down
     writeNote(notesDir, 'fresh/new.md', '# new')
 
-    await startupScan({ db: trx, workspaceId, notesDir })
+    await startupScan({ db: trx, workspaceId, syncedFolderId, notesDir })
 
     // disk file missing from DB → pending note
     const added = await getNoteByPath(trx, workspaceId, '/fresh/new.md')
@@ -405,6 +439,7 @@ describe('startup scan', () => {
   test('reconciles covers: stores on-disk covers and clears covers whose file vanished', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'scan-covers')
     const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
 
     writeNote(notesDir, 'proj/__folder-cover.md', 'proj cover')
     await trx
@@ -412,7 +447,7 @@ describe('startup scan', () => {
       .values({ workspace_id: workspaceId, path: '/stale', cover_content: 'old', cover_hash: 'h' })
       .execute()
 
-    await startupScan({ db: trx, workspaceId, notesDir })
+    await startupScan({ db: trx, workspaceId, syncedFolderId, notesDir })
 
     const proj = await trx
       .selectFrom('folders')

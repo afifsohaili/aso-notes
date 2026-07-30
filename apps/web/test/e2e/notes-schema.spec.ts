@@ -27,11 +27,12 @@ const NOTES_DOMAIN_TABLES = [
   'topics',
   'concept_topics',
   'workspace_settings',
+  'synced_folders',
 ] as const
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
   folders: ['id', 'workspace_id', 'path', 'cover_content', 'cover_hash', 'created_at', 'updated_at'],
-  notes: ['id', 'workspace_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'ingested_hash', 'status', 'pipeline', 'last_run', 'created_at', 'updated_at'],
+  notes: ['id', 'workspace_id', 'synced_folder_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'ingested_hash', 'status', 'pipeline', 'last_run', 'created_at', 'updated_at'],
   chunks: ['id', 'workspace_id', 'note_id', 'seq', 'text', 'token_count', 'embedding', 'created_at', 'updated_at'],
   concepts: ['id', 'workspace_id', 'name', 'name_normalized', 'description', 'embedding', 'created_at', 'updated_at'],
   relations: ['id', 'workspace_id', 'from_concept_id', 'to_concept_id', 'type', 'description', 'created_at', 'updated_at'],
@@ -46,6 +47,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   topics: ['id', 'workspace_id', 'name', 'name_normalized', 'description', 'embedding', 'created_at', 'updated_at'],
   concept_topics: ['workspace_id', 'concept_id', 'topic_id'],
   workspace_settings: ['workspace_id', 'key', 'value', 'updated_at'],
+  synced_folders: ['id', 'workspace_id', 'path', 'created_at', 'updated_at'],
 }
 
 async function columnMap(trx: any) {
@@ -244,13 +246,34 @@ describe('notes domain schema (M1)', () => {
     expect(other).toBeTruthy()
   })
 
-  test('notes.path is unique per workspace but reusable across workspaces', async ({ trx }) => {
-    const wsA = await givenWorkspace(trx, 'ws-a')
-    const wsB = await givenWorkspace(trx, 'ws-b')
+  test('notes.path is unique per synced folder but reusable across synced folders', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'ws-a')
 
-    await givenNote(trx, wsA, '/inbox/a.md')
-    await expectDbError(trx, () => givenNote(trx, wsA, '/inbox/a.md'))
-    await givenNote(trx, wsB, '/inbox/a.md')
+    const rootA = await trx
+      .insertInto('synced_folders')
+      .values({ workspace_id: workspaceId, path: '/root-a' })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+    const rootB = await trx
+      .insertInto('synced_folders')
+      .values({ workspace_id: workspaceId, path: '/root-b' })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+
+    await trx
+      .insertInto('notes')
+      .values({ workspace_id: workspaceId, synced_folder_id: rootA.id, path: '/inbox/a.md', title: 'a' })
+      .execute()
+
+    // duplicate path within the same synced folder is rejected
+    await expectDbError(trx, () =>
+      trx.insertInto('notes').values({ workspace_id: workspaceId, synced_folder_id: rootA.id, path: '/inbox/a.md', title: 'a' }).execute())
+
+    // the same relative path in a different synced folder is allowed
+    await trx
+      .insertInto('notes')
+      .values({ workspace_id: workspaceId, synced_folder_id: rootB.id, path: '/inbox/a.md', title: 'a' })
+      .execute()
     expect(await rowCount(trx, 'notes')).toBe(2)
   })
 

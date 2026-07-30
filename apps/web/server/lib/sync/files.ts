@@ -11,11 +11,16 @@ import { decideUpsert } from './upsert-decision'
  * notes rows driven by chokidar events or the startup scan. All functions
  * take a SyncDb so they run inside the test transaction or the production
  * pool.
+ *
+ * Multi-root: every FileEvent carries the synced_folder_id it belongs to so
+ * paths stay relative per root and rename/unique checks stay scoped to the
+ * same root.
  */
 
 export interface FileEvent {
   db: SyncDb
   workspaceId: string
+  syncedFolderId: string
   notesDir: string
   absolutePath: string
 }
@@ -26,6 +31,10 @@ export type UpsertOutcome = 'skip' | 'insert' | 'update' | 'rename'
  * Ensure a folder row exists for every directory level of a note path
  * (path-string model, no parent_id; root notes get folder_id null — M1).
  * Returns the immediate parent folder id, or null for root-level notes.
+ *
+ * Folders remain workspace-scoped in Phase 2; the same relative folder path in
+ * two Synced Folders maps to a single folders row. This is an interim
+ * simplification documented in the plan.
  */
 export async function ensureFolderRows(
   db: SyncDb,
@@ -53,14 +62,14 @@ export async function ensureFolderRows(
 }
 
 /**
- * Notes living under a folder path (by path prefix). The root folder '/'
- * contains every note in the workspace.
+ * Notes living under a folder path (by path prefix), scoped to one Synced
+ * Folder so a cover change in root A does not cascade to root B notes.
  */
-function descendantNotesPredicate(db: SyncDb, workspaceId: string, folderPath: string) {
+function descendantNotesPredicate(db: SyncDb, syncedFolderId: string, folderPath: string) {
   return db
     .updateTable('notes')
     .set({ status: 'pending', updated_at: sql`now()` })
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('status', '<>', 'pending')
     .where('path', 'like', folderPath === '/' ? '/%' : `${folderPath}/%`)
 }
@@ -90,6 +99,7 @@ async function ensureFolderRow(db: SyncDb, workspaceId: string, folderPath: stri
 async function handleCoverUpsert(
   db: SyncDb,
   workspaceId: string,
+  syncedFolderId: string,
   notePath: string,
   content: string,
 ): Promise<UpsertOutcome> {
@@ -113,12 +123,12 @@ async function handleCoverUpsert(
     .where('id', '=', folder.id)
     .execute()
 
-  await descendantNotesPredicate(db, workspaceId, folderPath).execute()
+  await descendantNotesPredicate(db, syncedFolderId, folderPath).execute()
   return 'update'
 }
 
 /** Folder-cover unlink: clear the cover and cascade re-ingestion. */
-async function handleCoverUnlink(db: SyncDb, workspaceId: string, notePath: string): Promise<void> {
+async function handleCoverUnlink(db: SyncDb, workspaceId: string, syncedFolderId: string, notePath: string): Promise<void> {
   const folderPath = folderPathOf(notePath)
   const folder = await db
     .selectFrom('folders')
@@ -133,7 +143,7 @@ async function handleCoverUnlink(db: SyncDb, workspaceId: string, notePath: stri
     .set({ cover_content: null, cover_hash: null, updated_at: sql`now()` })
     .where('id', '=', folder.id)
     .execute()
-  await descendantNotesPredicate(db, workspaceId, folderPath).execute()
+  await descendantNotesPredicate(db, syncedFolderId, folderPath).execute()
 }
 
 /**
@@ -143,19 +153,19 @@ async function handleCoverUnlink(db: SyncDb, workspaceId: string, notePath: stri
  * Folder covers are routed to the folders row instead.
  */
 export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome> {
-  const { db, workspaceId, notesDir, absolutePath } = event
+  const { db, workspaceId, syncedFolderId, notesDir, absolutePath } = event
   const notePath = toNotePath(notesDir, absolutePath)
   const content = await readFile(absolutePath, 'utf8')
 
   if (isFolderCoverPath(notePath))
-    return handleCoverUpsert(db, workspaceId, notePath, content)
+    return handleCoverUpsert(db, workspaceId, syncedFolderId, notePath, content)
 
   const hash = contentHash(content)
 
   const existingAtPath = await db
     .selectFrom('notes')
     .select(['id', 'content_hash', 'ingested_hash'])
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', notePath)
     .executeTakeFirst()
 
@@ -164,7 +174,7 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
     : await db
         .selectFrom('notes')
         .select('id')
-        .where('workspace_id', '=', workspaceId)
+        .where('synced_folder_id', '=', syncedFolderId)
         .where('content_hash', '=', hash)
         .executeTakeFirst()
 
@@ -217,6 +227,7 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
         .insertInto('notes')
         .values({
           workspace_id: workspaceId,
+          synced_folder_id: syncedFolderId,
           folder_id: folderId,
           path: notePath,
           title: titleFromPath(notePath),
@@ -239,13 +250,13 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
  * for the old path is a no-op.
  */
 export async function handleFileUnlink(event: FileEvent): Promise<void> {
-  const { db, workspaceId, notesDir, absolutePath } = event
+  const { db, workspaceId, syncedFolderId, notesDir, absolutePath } = event
   const notePath = toNotePath(notesDir, absolutePath)
   if (isFolderCoverPath(notePath))
-    return handleCoverUnlink(db, workspaceId, notePath)
+    return handleCoverUnlink(db, workspaceId, syncedFolderId, notePath)
   await db
     .deleteFrom('notes')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', notePath)
     .execute()
 }
@@ -281,14 +292,15 @@ async function listMarkdownFiles(dir: string): Promise<string[]> {
 export async function startupScan(args: {
   db: SyncDb
   workspaceId: string
+  syncedFolderId: string
   notesDir: string
 }): Promise<void> {
-  const { db, workspaceId, notesDir } = args
+  const { db, workspaceId, syncedFolderId, notesDir } = args
 
   const files = await listMarkdownFiles(notesDir)
   const notePaths = new Set<string>()
   for (const absolutePath of files) {
-    await handleFileUpsert({ db, workspaceId, notesDir, absolutePath })
+    await handleFileUpsert({ db, workspaceId, syncedFolderId, notesDir, absolutePath })
     notePaths.add(toNotePath(notesDir, absolutePath))
   }
 
@@ -297,13 +309,13 @@ export async function startupScan(args: {
   const dbNotes = await db
     .selectFrom('notes')
     .select('path')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .execute()
   for (const row of dbNotes) {
     if (!notePaths.has(row.path)) {
       await db
         .deleteFrom('notes')
-        .where('workspace_id', '=', workspaceId)
+        .where('synced_folder_id', '=', syncedFolderId)
         .where('path', '=', row.path)
         .execute()
     }
@@ -321,6 +333,6 @@ export async function startupScan(args: {
       ? `/${FOLDER_COVER_FILENAME}`
       : `${folder.path}/${FOLDER_COVER_FILENAME}`
     if (!notePaths.has(coverNotePath))
-      await handleCoverUnlink(db, workspaceId, coverNotePath)
+      await handleCoverUnlink(db, workspaceId, syncedFolderId, coverNotePath)
   }
 }

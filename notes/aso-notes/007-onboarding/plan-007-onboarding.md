@@ -29,6 +29,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 - Removing a synced folder = partial wipe of its notes + orphan GC of derived graph rows (not a full rebuild).
 - The running sync plugin learns of synced-folder changes via an in-process event from the settings/folder endpoints (no polling, no restart).
 - [Embedding dims detection](ticket-embedding-dims-detection.md) — probe-always at save time for both providers (no metadata source exists); accept iff length == 2048; expect frequent rejects since most hosted embedding models aren't 2048-dim.
+- Synced Folder data model closed: see [ticket-synced-folder-data-model.md](ticket-synced-folder-data-model.md). `notes` carries a per-root `synced_folder_id` FK; uniqueness is `(synced_folder_id, path)`; `folders` stays workspace-scoped in Phase 2; two roots display as a merged list with a known collision quirk; path edits = remove + re-add.
 
 ## Tickets
 
@@ -44,7 +45,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 ## Not yet specified
 
 - Legacy org→workspace cleanup onboarding forces: signup auto-provisioning of the workspace, redirect into the wizard, the pending `organizations`→`workspaces` migration touchpoints (product.md decision 2/14).
-- Post-clean-break env surface: which `NUXT_*` vars remain (DB, Redis, LLM API keys, auth), `.env.example` and README rewrite.
+- Post-clean-break env surface: `NUXT_NOTES_DIR` is retired; the remaining `NUXT_*` vars (DB, Redis, LLM API keys, auth) and `.env.example` / README rewrite are still TBD.
 - Danger-zone interplay: the rebuild button must not touch synced-folder config; does rebuild re-trigger onboarding state? (Suspected: no — config is not derived data.)
 - Test strategy for the gated wizard: the mandatory e2e proof needs queue + LLM, awkward in the transactional harness — likely stubbed boundaries, but the shape isn't sharp yet.
 - i18n key layout for all new wizard UI (mechanical, but large).
@@ -88,3 +89,24 @@ Divergences / kept items:
 - DB migrations and `schema.sql` for `todos` / `notifications` / `read_notifications` were left in place. No code references them; deleting them risks migration-history drift on the dev DB, so removal is deferred to a clean-break migration pass.
 - `@nuxt/content` dependency remains in `package.json` but is no longer loaded in `nuxt.config.ts`.
 - `packages/testing/README.md` updated to remove the obsolete `todos.ws.spec.ts` reference; `server-caller.ts` cleaned up the stale `_sitemap-urls.ts` exclusion.
+
+### Phase 2 — Synced Folder data model (2026-07-30)
+
+Status: **closed** (ticket: [Synced Folder data model](ticket-synced-folder-data-model.md)).
+
+Built:
+- Migration `20260730000000_synced_folders.ts` adds `synced_folders` table, `notes.synced_folder_id` FK, switches note uniqueness to `(synced_folder_id, path)`, and backfills one default folder per workspace. A BEFORE INSERT trigger fills a fallback `synced_folder_id` so legacy/test fixtures don't break.
+- Sync engine multi-root: `server/plugins/notes-sync.ts` now loads all `synced_folders` rows, starts one chokidar watcher per root, and sweeps per workspace. `server/lib/sync/files.ts` scopes upsert/unlink/rename/startup-scan by `synced_folder_id`.
+- In-process reload seam: `server/lib/sync/synced-folders.ts` exports `syncedFolderEvents`; `POST /api/synced-folders` emits `added`, `DELETE` emits `removed`. The plugin starts/stops watchers in response.
+- Folder CRUD API: `GET /api/synced-folders`, `POST /api/synced-folders`, `DELETE /api/synced-folders/:id` with absolute-path, directory-exists, duplicate, and nesting validations. Interim delete returns 409 when notes exist.
+- Retired `NUXT_NOTES_DIR`: removed from `nuxt.config.ts` runtime config and `.env.example`. `server/api/notes/[...slug].ts` resolves the root from the note's `synced_folder` (or falls back to the workspace's first folder for new notes).
+- Updated tests: `notes-sync.spec.ts`, `folder-sync.spec.ts`, `notes-api.spec.ts`, `notes-schema.spec.ts`; added `test/e2e/synced-folders-api.spec.ts` and `test/unit/synced-folders.validation.spec.ts`.
+
+Test result:
+- Full suite: **74 test files / 570 tests passed** (`pnpm test`).
+
+Divergences / kept items:
+- `folders` table was intentionally left workspace-scoped, not per-synced-folder. This means two Synced Folders with the same relative folder path share one `folders` row and the notes UI merges their trees. Root `__folder-cover.md` files would also collide on the `/` folder row. Recorded as a known interim quirk for Phase 4 UI to resolve.
+- A BEFORE INSERT trigger provides a fallback `synced_folder_id` for test fixtures and legacy inserts; application code always supplies the value explicitly. This avoids a broad test-fixture churn while keeping the column NOT NULL in the DB.
+- Interim deletion of a Synced Folder returns 409 if notes exist; Phase 6 will replace this with note wipe + orphan GC.
+- The `DELETE` endpoint uses `ON DELETE CASCADE` on `notes.synced_folder_id` as a safety net, but the 409 guard prevents the cascade from firing through the API.

@@ -13,7 +13,6 @@ const tempDirs: string[] = []
 function givenNotesDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aso-notes-api-'))
   tempDirs.push(dir)
-  process.env.NUXT_NOTES_DIR = dir
   return dir
 }
 
@@ -22,8 +21,17 @@ afterAll(() => {
     rmSync(dir, { recursive: true, force: true })
 })
 
-async function seedNotesDomain(trx: any, workspaceId: string): Promise<string> {
+async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string): Promise<string> {
   await ensureNotesGraphCatalog(trx)
+
+  const syncedFolder = await trx
+    .insertInto('synced_folders')
+    .values({
+      workspace_id: workspaceId,
+      path: notesDir || '/__default_synced_folder__',
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow()
 
   const folders = ['/project-a', '/project-b', '/project-a/engineering']
   for (const p of folders) {
@@ -69,6 +77,7 @@ async function seedNotesDomain(trx: any, workspaceId: string): Promise<string> {
       .insertInto('notes')
       .values({
         workspace_id: workspaceId,
+        synced_folder_id: syncedFolder.id,
         folder_id: n.folder_id,
         path: n.path,
         title: n.title,
@@ -164,7 +173,6 @@ describe.sequential('notes API', () => {
   describe('gET /api/folders', () => {
     test('returns nested folder tree with covers and note counts', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      givenNotesDir()
       await seedNotesDomain(trx, workspace.id)
 
       const res = await server('/api/folders', { headers: { cookie: cookies } })
@@ -321,7 +329,7 @@ describe.sequential('notes API', () => {
         { role: 'system', content: 'extract' },
         { role: 'user', content: 'note body' },
       ])
-      expect(lastRun.extraction.response).toBe('{\"concepts\":[]}')
+      expect(lastRun.extraction.response).toBe('{"concepts":[]}')
     })
 
     test('malformed last_run on detail endpoint returns null without 500', async ({ server, trx }) => {
@@ -356,8 +364,8 @@ describe.sequential('notes API', () => {
   describe('pUT /api/notes/:path', () => {
     test('writes raw markdown to the notes dir and returns the pre-ingestion row', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      await seedNotesDomain(trx, workspace.id)
       const notesDir = givenNotesDir()
+      await seedNotesDomain(trx, workspace.id, notesDir)
 
       // Seed the file on disk so the PUT can update it.
       const abs = path.join(notesDir, 'project-a/plan.md')
@@ -381,8 +389,8 @@ describe.sequential('notes API', () => {
 
     test('creates a new note when the file does not exist yet', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      await seedNotesDomain(trx, workspace.id)
       const notesDir = givenNotesDir()
+      await seedNotesDomain(trx, workspace.id, notesDir)
 
       const res = await server('/api/notes/project-a/brand-new.md', {
         method: 'PUT',
@@ -409,8 +417,8 @@ describe.sequential('notes API', () => {
 
     test('rejects traversal attempts when writing', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      await seedNotesDomain(trx, workspace.id)
       const notesDir = givenNotesDir()
+      await seedNotesDomain(trx, workspace.id, notesDir)
 
       // Encoded dot segments must never resolve to a writable path —
       // rejected either by the router (404) or the path guard (400)
