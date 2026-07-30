@@ -52,6 +52,8 @@ const showRebuildDialog = ref(false)
 const rebuildConfirmText = ref('')
 const rebuildStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 const rebuildError = ref('')
+const verifyComplete = ref(false)
+const showReverify = ref(false)
 
 const isRebuildConfirmed = computed(() => isRebuildConfirmation(rebuildConfirmText.value))
 
@@ -205,7 +207,7 @@ const isWizardMode = computed(() => {
 const wizardSteps = computed(() => [
   { id: 'folder', label: t('settings.wizard.steps.folder.title'), complete: hasFolder.value },
   { id: 'llm', label: t('settings.wizard.steps.llm.title'), complete: llmConfigured.value },
-  { id: 'verify', label: t('settings.wizard.steps.verify.title'), complete: false },
+  { id: 'verify', label: t('settings.wizard.steps.verify.title'), complete: verifyComplete.value || !isWizardMode.value },
 ])
 
 const llmTestStatus = reactive<Record<LlmRole, TestStatus>>({
@@ -366,6 +368,8 @@ const wizardStepActive = ref('folder')
 function setWizardStep(id: string) {
   if (id === 'llm' && !hasFolder.value)
     return
+  if (id === 'verify' && (!hasFolder.value || !llmConfigured.value || !hasRedis.value))
+    return
   wizardStepActive.value = id
 }
 
@@ -396,6 +400,8 @@ function stepNumberDisplay(complete: boolean, number: number) {
 function stepCursorClass(id: string) {
   if (id === 'llm' && !hasFolder.value)
     return 'cursor-not-allowed'
+  if (id === 'verify' && (!hasFolder.value || !llmConfigured.value || !hasRedis.value))
+    return 'cursor-not-allowed'
   return 'cursor-pointer'
 }
 
@@ -408,6 +414,20 @@ function stepCombinedClasses(step: { id: string, complete: boolean }) {
 }
 
 const { refresh: refreshOnboarding } = useOnboardingStatus()
+
+async function onVerifyComplete() {
+  verifyComplete.value = true
+  await refreshSettings()
+  await refreshOnboarding()
+}
+
+function openReverify() {
+  showReverify.value = true
+}
+
+function closeReverify() {
+  showReverify.value = false
+}
 
 watch(isWizardMode, async (wizard) => {
   if (!wizard)
@@ -465,7 +485,7 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
             class="text-left"
             :class="stepCombinedClasses(step)"
             :data-testid="`wizard-step-${step.id}`"
-            :disabled="step.id === 'llm' && !hasFolder"
+            :disabled="(step.id === 'llm' && !hasFolder) || (step.id === 'verify' && (!hasFolder || !llmConfigured || !hasRedis))"
             @click="setWizardStep(step.id)"
           >
             <span :class="stepNumberClasses(step.complete)">
@@ -549,9 +569,14 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
           </div>
         </div>
 
-        <!-- Step 3: Verify (placeholder) -->
+        <!-- Step 3: Verify -->
         <div v-if="isWizardStepActive('verify')" class="mt-6">
-          <WizardStepVerify />
+          <WizardStepVerify
+            :has-folder="hasFolder"
+            :has-redis="hasRedis"
+            :llm-configured="llmConfigured"
+            @complete="onVerifyComplete"
+          />
         </div>
       </div>
 
@@ -605,6 +630,37 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
               @update:base-url="(v: string | null) => llmBaseUrl[role] = v ?? ''"
               @test="testConnection(role)"
               @save="saveRole(role)"
+            />
+          </div>
+        </section>
+
+        <!-- Re-verify setup -->
+        <section class="mt-8">
+          <h2 class="text-lg font-semibold text-gray-900">
+            {{ t('settings.wizard.reverify.title') }}
+          </h2>
+          <p class="mt-1 text-sm text-gray-600">
+            {{ t('settings.wizard.reverify.help') }}
+          </p>
+
+          <div class="mt-4">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              data-testid="reverify-open-button"
+              @click="openReverify"
+            >
+              {{ t('settings.wizard.reverify.button') }}
+            </button>
+          </div>
+
+          <div v-if="showReverify" class="mt-4 rounded-lg border border-gray-200 bg-white p-5">
+            <WizardStepVerify
+              :has-folder="hasFolder"
+              :has-redis="hasRedis"
+              :llm-configured="llmConfigured"
+              is-reverify
+              @complete="closeReverify"
             />
           </div>
         </section>

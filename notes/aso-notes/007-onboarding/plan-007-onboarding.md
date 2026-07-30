@@ -30,6 +30,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 - The running sync plugin learns of synced-folder changes via an in-process event from the settings/folder endpoints (no polling, no restart).
 - [Embedding dims detection](ticket-embedding-dims-detection.md) — probe-always at save time for both providers (no metadata source exists); accept iff length == 2048; expect frequent rejects since most hosted embedding models aren't 2048-dim.
 - Synced Folder data model closed: see [ticket-synced-folder-data-model.md](ticket-synced-folder-data-model.md). `notes` carries a per-root `synced_folder_id` FK; uniqueness is `(synced_folder_id, path)`; `folders` stays workspace-scoped in Phase 2; two roots display as a merged list with a known collision quirk; path edits = remove + re-add.
+- Smoke-test note flow closed: see [ticket-smoke-test-note-flow.md](ticket-smoke-test-note-flow.md). File is `__aso-smoke-test.md` at the first synced folder root; endpoints `POST /api/onboarding/smoke-test` + `GET /api/onboarding/smoke-test?attemptId=...`; phases `written` → `pending` → `queued` → `processing` → `ingested` → `deleting` → `done` / `failed`; 3-minute timeout; Redis and synced-folder prerequisites are 409 hard-blocks; retry starts a fresh attempt and re-verify does not clear `onboarding.completed_at`.
 
 ## Tickets
 
@@ -37,7 +38,7 @@ Locked during exploration + charting (pre-ticket, so no links):
 
 - [Synced Folder data model](ticket-synced-folder-data-model.md) — grilling
 - ~~[Wizard-mode UX options](ticket-wizard-mode-ux-options.md)~~ — prototype — **CLOSED 2026-07-30** (see Phase 4 implementation log)
-- [Smoke-test note flow](ticket-smoke-test-note-flow.md) — grilling
+- ~~[Smoke-test note flow](ticket-smoke-test-note-flow.md)~~ — grilling — **CLOSED 2026-07-31** (see Phase 5 implementation log)
 - ~~[Embedding dims detection](ticket-embedding-dims-detection.md)~~ — research — **CLOSED 2026-07-30** (see Decisions so far)
 - [Orphan GC rules](ticket-orphan-gc-rules.md) — grilling (blocked by Synced Folder data model)
 - [Author plan-007](ticket-author-plan-007.md) — task (blocked by all above)
@@ -58,6 +59,32 @@ Locked during exploration + charting (pre-ticket, so no links):
 - Server-side directory browser for folder picking (free-text absolute path + validation is the decision).
 
 ## Implementation log
+
+### Phase 5 — Smoke-test note flow (2026-07-31)
+
+Status: **closed** (ticket: [Smoke-test note flow](ticket-smoke-test-note-flow.md)).
+
+Built:
+- `server/lib/onboarding/smoke-test.ts`: state machine, prerequisites check, file write/cleanup, onboarding completion. Pure `deriveSmokeTestPhase` for testability.
+- API endpoints: `POST /api/onboarding/smoke-test` (starts attempt), `GET /api/onboarding/smoke-test?attemptId=...` (polls state). 409 codes: `redis_required`, `no_synced_folder`, `stale_attempt`.
+- File: `__aso-smoke-test.md` written to the first synced folder root; content is a minimal heading + sentence, wikilink-free.
+- UI: `wizard-step-verify.vue` is now interactive — starts the test, polls the GET endpoint (1.5s), shows per-phase progress, surfaces last_run error detail with Retry. Steady-state settings gained a "Re-verify setup" section that runs the same flow in a card without clearing `onboarding.completed_at`.
+- State phases: `written` → `pending` → `queued` → `processing` → `ingested` → `deleting` → `done` / `failed`. On `ingested`, the first GET response deletes the file; the next poll(s) wait for the unlink row to disappear, then set `onboarding.completed_at`.
+- Timeout: 3 minutes → `failed` with guidance copy.
+- Retry: a new POST deletes the stale file and note row, generates a new attempt id, and starts over.
+
+Specs:
+- `test/e2e/onboarding-smoke-test.spec.ts` (7 tests): full happy path, no-Redis 409, no-synced-folder 409, retry after failure.
+- `test/unit/onboarding-smoke-test.spec.ts` (10 tests): pure state-derivation matrix + timeouts.
+- `test/components/wizard-step-verify.nuxt.spec.ts` (4 tests): disabled state, start, done emission, failure + retry.
+
+Test result:
+- Full suite: **83 test files / 651 tests passed** (`pnpm test`).
+
+Divergences / kept items:
+- Tests drive `ingestNote` directly with stubbed LLM/embedding providers, rather than enqueueing through the queue fixture, because the ingestion pipeline uses raw BullMQ (not the `@base/jobs` `ApplicationJob` abstraction). This mirrors the existing plan-006 divergence.
+- The first `GET` response after ingestion returns `ingested` and performs the file deletion; the client therefore sees `ingested` once before the `deleting`/`done` transition.
+- Re-verify does **not** unset `onboarding.completed_at`; it only runs the smoke test again and reports the result.
 
 ### Phase 1 — Boilerplate rip-out + `/` redirect (2026-07-30)
 
