@@ -14,6 +14,10 @@ _Avoid_: Account, profile, identity
 The top-level tenant boundary that owns Folders, Notes, and Sources.
 _Avoid_: Organization, vault, space
 
+**Onboarding**:
+The first-run setup flow: the settings page runs in wizard mode and gates the app until the user has configured a Synced Folder and LLM providers, and a smoke-test Note has completed Ingestion. Recorded as `onboarding.completed_at` in workspace settings; first-run only, never re-gates.
+_Avoid_: Setup wizard, getting started
+
 ### Notes & Content
 
 **Note**:
@@ -90,8 +94,12 @@ _Avoid_: Session, chat, thread
 
 ### Ingestion
 
+**Synced Folder**:
+A top-level directory on disk registered in the database (per Workspace) whose contents are synced. Replaces the old `NUXT_NOTES_DIR` env var; multiple Synced Folders per Workspace are supported. Removing one wipes its Notes and garbage-collects orphaned graph rows.
+_Avoid_: Sync root, vault, notes dir
+
 **Sync**:
-The process of ingesting Notes from a Folder on disk, watching for changes with a debounce.
+The process of ingesting Notes from Synced Folders on disk, watching for changes with a debounce.
 _Avoid_: Watch, import, poll
 
 **Ingestion**:
