@@ -1,6 +1,7 @@
 ---
 type: wayfinder:task
-claimed:
+claimed: documentation-closeout (2026-07-30)
+status: closed (2026-07-30)
 blocked-by: [ticket-synced-folder-data-model.md, ticket-wizard-mode-ux-options.md, ticket-smoke-test-note-flow.md, ticket-embedding-dims-detection.md, ticket-orphan-gc-rules.md]
 ---
 
@@ -21,3 +22,10 @@ Must incorporate:
 - Fog that resolved during ticketing gets folded in; anything still foggy stays in Deferred/open honestly.
 
 Done when: the spec is unambiguous enough to hand to an implementation session without further questions.
+
+## Resolution
+
+- Restructured `plan-007-onboarding.md` into final-spec form: Problem → Locked decisions → Data model changes → AGE graph changes → Parts changing per area → Build order/milestones (Phase 1–6, all DONE with commit hashes and test counts) → Divergences per phase → Deferred/open → Wayfinder record.
+- Merged `research-embedding-dims.md` from branch `research/embedding-dims-detection` (commit `4d906cd`) onto main via `git cherry-pick 4d906cd --no-commit`.
+- Verified `CONTEXT.md` already contains accurate **Onboarding** and **Synced Folder** definitions post-implementation; no terminology drift.
+- Stale README/AGENTS/.env.example references to retired features (`NUXT_NOTES_DIR`, admin, articles, todos, dashboard, notifications, content module) cleaned up in the same close-out pass.

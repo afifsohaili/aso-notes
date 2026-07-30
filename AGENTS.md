@@ -38,7 +38,7 @@ Most root scripts just proxy to `apps/web`:
 | Fast e2e only | `pnpm test:e2e` |
 | Component tests | `pnpm test:components` |
 | Run a single test | `pnpm --filter web vitest run --project e2e test/e2e/healthcheck.get.spec.ts` |
-| Run component spec | `pnpm --filter web vitest run --project nuxt test/components/landing-page.nuxt.spec.ts` |
+| Run component spec | `pnpm --filter web vitest run --project nuxt test/components/settings-page.nuxt.spec.ts` |
 | Dev-loop against running server | `TEST_HOST=http://localhost:3001 pnpm --filter web vitest run test/e2e/...` |
 
 ## Database
@@ -54,15 +54,15 @@ Most root scripts just proxy to `apps/web`:
 Copy `apps/web/.env.example` to `apps/web/.env.local` and fill required values:
 
 - `DATABASE_URL` / `NUXT_DATABASE_URL`
-- `NUXT_NOTES_DIR` — absolute path to the folder synced for Markdown notes
 - `BETTER_AUTH_SECRET` / `NUXT_BETTER_AUTH_SECRET`
 - `NUXT_REDIS_URL` — required for ingestion; without it synced notes stay `pending`
-- `NUXT_LLM_AGENT_API_KEY`, `NUXT_LLM_EXTRACTION_API_KEY`, `NUXT_LLM_EMBEDDING_API_KEY` — OpenRouter by default
+- `NUXT_LLM_AGENT_API_KEY`, `NUXT_LLM_EXTRACTION_API_KEY`, `NUXT_LLM_EMBEDDING_API_KEY` — OpenRouter by default (provider/model/base_url can be overridden per workspace from `/settings`; API keys are env-only)
 
 Dev notes:
 
 - Email verification and Turnstile are bypassed in `development`.
 - Without Redis, folder sync still runs, but ingestion never executes.
+- Synced folders are configured in-app from `/settings`; `NUXT_NOTES_DIR` is retired.
 
 ## Code conventions
 
@@ -70,7 +70,7 @@ Dev notes:
 - Vue 3 Composition API, `<script setup lang="ts">`.
 - Use `ref()` for primitives, `reactive()` for objects.
 - Tailwind CSS only — no inline styles.
-- Icons via `unplugin-icons`: `import BellIcon from '~icons/heroicons/bell'` then `<BellIcon class="h-6 w-6" />`. No inline SVGs or `<img>` icons.
+- Icons via `unplugin-icons`: `import CogIcon from '~icons/heroicons/cog-6-tooth'` then `<CogIcon class="h-6 w-6" />`. No inline SVGs or `<img>` icons.
 - Auth composable: `useSession()` from better-auth/vue (e.g. `const { session } = await useSession()`).
 - DB access: `useDatabase({ databaseUrl })` in `utils/db.ts`.
 - Error handling: `error instanceof Error`.
@@ -90,7 +90,8 @@ Dev notes:
 
 ## Architecture gotchas
 
-- Background sync/ingestion: `server/plugins/notes-sync.ts` syncs `NUXT_NOTES_DIR`, then a sweeper enqueues `IngestNoteJobData` to BullMQ, consumed by `server/plugins/ingestion-worker.ts`.
+- Background sync/ingestion: `server/plugins/notes-sync.ts` syncs every row in `synced_folders` for the workspace, then a sweeper enqueues `IngestNoteJobData` to BullMQ, consumed by `server/plugins/ingestion-worker.ts`.
+- The sync plugin learns about in-app synced-folder changes via an in-process EventEmitter from the folder CRUD endpoints; no restart is needed.
 - Set `NUXT_DISABLE_NOTES_SYNC=1` / `NUXT_DISABLE_EMAIL_WORKER=1` to disable background workers.
 - The graph is stored in Apache AGE and queried with Cypher; embeddings live in `pgvector`.
 - LLM provider config is per-use-case: `{AGENT|EXTRACTION|EMBEDDING}_{PROVIDER|BASE_URL|MODEL|API_KEY}`. Default provider is OpenRouter.

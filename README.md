@@ -11,7 +11,7 @@ Inspired by LightRAG, but retrieval is driven by an Agent with Tools rather than
 ![System overview](docs/assets/overview.png)
 
 - **Note-first.** Every Note is a file (Markdown primary) living inside a Folder. Notes can reference Sources (external material) and Link to other Notes.
-- **Sync.** Notes are ingested from a synced local folder, watched for changes with a 5-minute debounce plus a manual "Sync now". Renames are detected via content hash.
+- **Sync.** Notes are ingested from synced local folders, watched for changes with a 5-minute debounce plus a manual "Sync now". Renames are detected via content hash.
 - **Derived graph.** The system extracts Concepts, Relations, and Mentions from Notes into a read-only graph. You influence it via Links and Tags, not manual editing.
 - **Agentic retrieval.** Ask a Query in a Conversation; the Agent uses Tools (`search_notes`, `search_concepts`, `get_concept_neighbors`, `get_mentions`, `read_note`, `find_paths_between`, `search_sources`) to gather Context and generate an Answer with source Notes.
 
@@ -21,7 +21,7 @@ Inspired by LightRAG, but retrieval is driven by an Agent with Tools rather than
 - **Backend**: Nitro (Nuxt server), Kysely, PostgreSQL
 - **Auth**: BetterAuth (email/password with verification)
 - **Storage**: `pgvector` for Embeddings, Apache AGE for graph storage and traversal (Cypher)
-- **AI**: OpenRouter — LLM `deepseek/deepseek-v4-flash`, Embeddings `nvidia/llama-nemotron-embed-vl-1b-v2:free`, behind a strategy pattern for swappable providers
+- **AI**: OpenRouter by default — LLM and Embeddings behind a per-use-case provider registry
 - **Testing**: Vitest (in-process transactional e2e via `@base/testing`)
 
 ## Repository layout
@@ -74,12 +74,11 @@ Then fill in the values:
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` / `NUXT_DATABASE_URL` | yes | Postgres connection string — the Docker default works as-is |
-| `NUXT_NOTES_DIR` | yes | Absolute path of the local folder to watch for notes (Markdown files) |
-| `NUXT_LLM_AGENT_API_KEY` | yes | OpenRouter key (https://openrouter.ai/keys) for the chat agent |
 | `BETTER_AUTH_SECRET` / `NUXT_BETTER_AUTH_SECRET` | yes | Auth session secret — `openssl rand -base64 32` |
 | `NUXT_REDIS_URL` | yes | Ingestion queue + sweeper — the Docker default works as-is. Without it, synced notes stay `pending` and are never ingested |
-| `NUXT_LLM_EXTRACTION_API_KEY` | yes | OpenRouter key for ingestion extraction (may duplicate the agent key) |
-| `NUXT_LLM_EMBEDDING_API_KEY` | yes | OpenRouter key for embeddings (may duplicate the others) |
+| `NUXT_LLM_AGENT_API_KEY` | yes* | OpenRouter key (https://openrouter.ai/keys) for the chat agent |
+| `NUXT_LLM_EXTRACTION_API_KEY` | yes* | OpenRouter key for ingestion extraction (may duplicate the agent key) |
+| `NUXT_LLM_EMBEDDING_API_KEY` | yes* | OpenRouter key for embeddings (may duplicate the others) |
 | `NUXT_LLM_AGENT_PROVIDER` / `NUXT_LLM_AGENT_BASE_URL` / `NUXT_LLM_AGENT_MODEL` | no | Chat agent backend: `openrouter` (default) or `ollama`, optional base-URL override, model ID |
 | `NUXT_LLM_EXTRACTION_PROVIDER` / `NUXT_LLM_EXTRACTION_BASE_URL` / `NUXT_LLM_EXTRACTION_MODEL` | no | Ingestion extraction backend — same quad, independent of the agent |
 | `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Local embedding models need a schema migration (2048-dim columns) |
@@ -87,6 +86,8 @@ Then fill in the values:
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, `NUXT_TURNSTILE_SECRET_KEY` | no | Signup captcha — skipped entirely in dev (`NODE_ENV=development`) |
 | `NUXT_PUBLIC_POSTHOG_API_KEY`, `NUXT_POSTHOG_API_KEY` | no | PostHog analytics |
 | `NUXT_PUBLIC_SITE_URL` | no | SEO / sitemap |
+
+\* Required only when the corresponding provider is `openrouter`. Provider, model, and base URL can be overridden per workspace from `/settings`; API keys are env-only and never stored in the UI.
 
 ### 4. Migrate the database
 
@@ -106,7 +107,7 @@ The `dev` script runs through [portless](https://github.com/vercel-labs/portless
 pnpm --filter web dev:app    # http://localhost:3000, no proxy
 ```
 
-Sign up (email verification and Turnstile are bypassed in dev), then drop Markdown files into `NUXT_NOTES_DIR`. Files are picked up as `pending` and ingested in the background (chunked, embedded, and mined for Concepts/Relations). Ask questions on the **Chat** page, browse files on **Notes**, explore the derived graph on **Graph**.
+Sign up (email verification and Turnstile are bypassed in dev). The onboarding wizard on `/settings` will guide you through adding a synced folder, configuring LLM roles, and running a verification test. Drop Markdown files into any synced folder; files are picked up as `pending` and ingested in the background (chunked, embedded, and mined for Concepts/Relations). Ask questions on the **Chat** page, browse files on **Notes**, explore the derived graph on **Graph**, and monitor the ingestion queue on **Queue**.
 
 ## Using it yourself
 
