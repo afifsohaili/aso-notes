@@ -1,6 +1,6 @@
 # Plan 006: AI Provider Resilience
 
-> Status: **Phase 1 done, Phase 2 done, Phase 3 done** — Phase 4 pending.
+> Status: **Phase 1 done, Phase 2 done, Phase 3 done, Phase 4 done** — complete.
 
 ## Problem
 
@@ -91,7 +91,20 @@ before a Note can fail, plus the 18/min limiter preventing most 429s.
    Feature specs (in-process e2e via `@base/testing`: enqueue → rate-limited
    provider → note NOT failed, job paused; recovered → ingested). Commit.
 4. **Phase 4 — close-out**: full test suite green, update this doc's status,
-   record divergences. Commit.
+   record divergences. Commit. **Status: done.**
+
+## Final verification
+
+- Full suite (`pnpm test`):
+  - unit: 30 files / 311 tests passed
+  - e2e: 33 files / 228 tests passed
+  - e2e-built: 1 file / 3 tests passed, 4 skipped
+  - nuxt (components): 14 files / 50 tests passed
+  - totals: 78 files / 596 tests (592 passed, 4 skipped)
+- Lint (`pnpm lint`): clean.
+- Typecheck (`pnpm --filter web exec tsc --noEmit`):
+  - Fixed one type error in `apps/web/server/lib/ai/resilient-fetch.ts` (see Divergences).
+  - 26 pre-existing errors remain in files untouched by this plan; left as-is per instructions.
 
 ## Test strategy
 
@@ -125,3 +138,4 @@ before a Note can fail, plus the 18/min limiter preventing most 429s.
 - `ingest.ts` keeps the note status at `processing` for `RateLimitError` (it does not roll back to `queued`) because BullMQ moves the rate-limited job back to the wait list and the next attempt will flip status consistently.
 - Default job backoff was changed to a 30-second exponential base (minutes-scale outer net) rather than the previous 5-second base.
 - Feature/integration specs drive `ingestNote` directly instead of enqueue → worker → pause, because the ingestion pipeline uses raw BullMQ rather than the `@base/jobs` `ApplicationJob` abstraction, so the queue fixture's inline/real adapters cannot consume it.
+- **Phase 4 forward-fix:** `composeTimeoutSignal` in `server/lib/ai/resilient-fetch.ts` now accepts `AbortSignal | null | undefined` (was `AbortSignal | undefined`). `init?.signal` can be `null`, so `tsc --noEmit` rejected the call to `AbortSignal.any([timeoutSignal, callerSignal])`; widening the parameter type is the minimal correct fix.

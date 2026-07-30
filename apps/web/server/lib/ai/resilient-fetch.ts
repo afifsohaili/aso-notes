@@ -73,7 +73,7 @@ function parseRetryAfter(value: string | null): number | null {
  * If the caller supplied an AbortSignal, both signals are combined with
  * AbortSignal.any so either aborting stops the request.
  */
-function composeTimeoutSignal(timeoutMs: number, callerSignal: AbortSignal | undefined): AbortSignal {
+function composeTimeoutSignal(timeoutMs: number, callerSignal: AbortSignal | null | undefined): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs)
   if (!callerSignal)
     return timeoutSignal
