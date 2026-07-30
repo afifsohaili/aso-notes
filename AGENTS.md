@@ -54,7 +54,7 @@ Most root scripts just proxy to `apps/web`:
 Copy `apps/web/.env.example` to `apps/web/.env.local` and fill required values:
 
 - `DATABASE_URL` / `NUXT_DATABASE_URL`
-- `NUXT_NOTES_DIR` — absolute path to the folder watched for Markdown notes
+- `NUXT_NOTES_DIR` — absolute path to the folder synced for Markdown notes
 - `BETTER_AUTH_SECRET` / `NUXT_BETTER_AUTH_SECRET`
 - `NUXT_REDIS_URL` — required for ingestion; without it synced notes stay `pending`
 - `NUXT_LLM_AGENT_API_KEY`, `NUXT_LLM_EXTRACTION_API_KEY`, `NUXT_LLM_EMBEDDING_API_KEY` — OpenRouter by default
@@ -62,7 +62,7 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` and fill required values:
 Dev notes:
 
 - Email verification and Turnstile are bypassed in `development`.
-- Without Redis, the notes watcher still runs, but ingestion never executes.
+- Without Redis, folder sync still runs, but ingestion never executes.
 
 ## Code conventions
 
@@ -90,7 +90,7 @@ Dev notes:
 
 ## Architecture gotchas
 
-- Background sync/ingestion: `server/plugins/notes-sync.ts` watches `NUXT_NOTES_DIR`, then a sweeper enqueues `IngestNoteJobData` to BullMQ, consumed by `server/plugins/ingestion-worker.ts`.
+- Background sync/ingestion: `server/plugins/notes-sync.ts` syncs `NUXT_NOTES_DIR`, then a sweeper enqueues `IngestNoteJobData` to BullMQ, consumed by `server/plugins/ingestion-worker.ts`.
 - Set `NUXT_DISABLE_NOTES_SYNC=1` / `NUXT_DISABLE_EMAIL_WORKER=1` to disable background workers.
 - The graph is stored in Apache AGE and queried with Cypher; embeddings live in `pgvector`.
 - LLM provider config is per-use-case: `{AGENT|EXTRACTION|EMBEDDING}_{PROVIDER|BASE_URL|MODEL|API_KEY}`. Default provider is OpenRouter.

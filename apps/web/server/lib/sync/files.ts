@@ -275,7 +275,7 @@ async function listMarkdownFiles(dir: string): Promise<string[]> {
 /**
  * Startup reconciliation (plan §Sync service: "startup scan fires add per
  * existing file → restart recovery"). Runs the same per-file upsert logic as
- * the watcher for every file on disk, deletes DB note rows whose files
+ * folder sync for every file on disk, deletes DB note rows whose files
  * vanished, and clears folder covers whose cover file vanished.
  */
 export async function startupScan(args: {

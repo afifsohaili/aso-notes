@@ -3,9 +3,9 @@ import path from 'node:path'
 import { watch } from 'chokidar'
 
 /**
- * Chokidar wiring for the notes dir (plan-002-system §Sync service). Kept
+ * Chokidar wiring for a Synced Folder (plan-002-system §Sync service). Kept
  * thin: events are translated into handler calls; all sync logic lives in
- * files.ts so tests can drive it without watcher timing.
+ * files.ts so tests can drive it without chokidar timing.
  */
 
 /**
@@ -16,29 +16,29 @@ import { watch } from 'chokidar'
  */
 export const UNLINK_GRACE_MS = 1000
 
-export interface NotesWatcherHandlers {
+export interface FolderSyncHandlers {
   onUpsert: (absolutePath: string) => Promise<void> | void
   onUnlink: (absolutePath: string) => Promise<void> | void
   /** Fires once the initial chokidar scan completes (startup scan hook). */
   onReady?: () => Promise<void> | void
 }
 
-/** Watch **\/*.md under notesDir, ignoring node_modules and dotfiles. */
-export function createNotesWatcher(args: {
+/** Sync **\/*.md under notesDir, ignoring node_modules and dotfiles. */
+export function createFolderSync(args: {
   notesDir: string
-  handlers: NotesWatcherHandlers
+  handlers: FolderSyncHandlers
   unlinkGraceMs?: number
 }): FSWatcher {
   const { notesDir, handlers } = args
   const unlinkGraceMs = args.unlinkGraceMs ?? UNLINK_GRACE_MS
 
-  const watcher = watch(notesDir, {
+  const fsWatcher = watch(notesDir, {
     ignoreInitial: true,
-    ignored: (watchedPath, stats) => {
-      const base = path.basename(watchedPath)
+    ignored: (candidate, stats) => {
+      const base = path.basename(candidate)
       if (base.startsWith('.') || base === 'node_modules')
         return true
-      // Directories must pass through so their .md children get watched;
+      // Directories must pass through so their .md children get synced;
       // only files (or extension-bearing paths) are filtered by suffix.
       if (stats ? stats.isFile() : path.extname(base) !== '')
         return !base.endsWith('.md')
@@ -52,11 +52,11 @@ export function createNotesWatcher(args: {
       .catch(error => console.error('notes-sync: handler error:', error))
   }
 
-  watcher.on('add', absolutePath => safe(() => handlers.onUpsert(absolutePath)))
-  watcher.on('change', absolutePath => safe(() => handlers.onUpsert(absolutePath)))
+  fsWatcher.on('add', absolutePath => safe(() => handlers.onUpsert(absolutePath)))
+  fsWatcher.on('change', absolutePath => safe(() => handlers.onUpsert(absolutePath)))
 
   const pendingUnlinks = new Map<string, NodeJS.Timeout>()
-  watcher.on('unlink', (absolutePath) => {
+  fsWatcher.on('unlink', (absolutePath) => {
     clearTimeout(pendingUnlinks.get(absolutePath))
     pendingUnlinks.set(absolutePath, setTimeout(() => {
       pendingUnlinks.delete(absolutePath)
@@ -64,7 +64,7 @@ export function createNotesWatcher(args: {
     }, unlinkGraceMs))
   })
 
-  watcher.on('ready', () => safe(() => handlers.onReady?.()))
+  fsWatcher.on('ready', () => safe(() => handlers.onReady?.()))
 
-  return watcher
+  return fsWatcher
 }

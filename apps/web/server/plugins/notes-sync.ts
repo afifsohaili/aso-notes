@@ -4,27 +4,28 @@ import process from 'node:process'
 import { useDatabase } from '~~/utils/db'
 import { createSyncDispatcher } from '../lib/sync/dispatcher'
 import { handleFileUnlink, handleFileUpsert, startupScan } from '../lib/sync/files'
+import { createFolderSync } from '../lib/sync/folder-sync'
 import { runSweeperOnce, SWEEP_INTERVAL_MS } from '../lib/sync/sweeper'
-import { createNotesWatcher } from '../lib/sync/watcher'
 import { resolveSyncWorkspace } from '../lib/sync/workspace'
 
 /**
- * Notes sync daemon (plan-002-system §Sync service): chokidar watcher on the
- * notes dir feeding the notes-table fast path, startup scan after the
- * watcher's initial pass, and the 30s sweeper dispatching settled pending
- * notes for ingestion.
+ * Notes sync daemon (plan-002-system §Sync service): chokidar-based folder
+ * sync on the notes dir feeding the notes-table fast path, startup scan
+ * after the initial chokidar pass, and the 30s sweeper dispatching settled
+ * pending notes for ingestion.
  *
  * Redis is optional infrastructure: without NUXT_REDIS_URL there is no
  * dispatcher, the sweep is skipped (logged once), and notes simply sit at
  * status='pending'.
  */
 export default defineNitroPlugin(() => {
-  // skip initialising the watcher on pre-render
+  // skip initialising folder sync on pre-render
   if (import.meta.prerender)
     return
 
-  // Test harnesses spawn the built server per file; the watcher/sweeper are
-  // covered by in-process e2e specs, so keep them out of those processes.
+  // Test harnesses spawn the built server per file; folder sync and the
+  // sweeper are covered by in-process e2e specs, so keep them out of those
+  // processes.
   if (process.env.NUXT_DISABLE_NOTES_SYNC === '1')
     return
 
@@ -51,7 +52,7 @@ export default defineNitroPlugin(() => {
     if (!dispatcher)
       console.warn('notes-sync: NUXT_REDIS_URL is not set; sweeper disabled — pending notes will not be ingested')
 
-    createNotesWatcher({
+    createFolderSync({
       notesDir,
       handlers: {
         onUpsert: absolutePath => handleFileUpsert({ db, workspaceId, notesDir, absolutePath }),
@@ -68,6 +69,6 @@ export default defineNitroPlugin(() => {
       timer.unref?.()
     }
 
-    console.warn(`notes-sync: watching ${notesDir} (workspace ${workspaceId})`)
+    console.warn(`notes-sync: syncing ${notesDir} (workspace ${workspaceId})`)
   })().catch(error => console.error('notes-sync: boot failed:', error))
 })

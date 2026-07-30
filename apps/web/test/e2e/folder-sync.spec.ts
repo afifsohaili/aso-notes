@@ -4,20 +4,20 @@ import path from 'node:path'
 import { test } from '@base/testing/test'
 import { afterAll, describe, expect } from 'vitest'
 import { handleFileUnlink, handleFileUpsert } from '../../server/lib/sync/files'
-import { createNotesWatcher } from '../../server/lib/sync/watcher'
+import { createFolderSync } from '../../server/lib/sync/folder-sync'
 import { resolveSyncWorkspace } from '../../server/lib/sync/workspace'
 
 /**
- * M3 smoke spec: the real chokidar watcher end-to-end against a temp notes
- * dir. Timing-sensitive behavior (settle sweeps, rename ordering) is covered
- * by driving handlers directly in notes-sync.spec.ts — here we only prove
- * chokidar events reach the sync handlers.
+ * M3 smoke spec: real chokidar-based folder sync end-to-end against a temp
+ * notes dir. Timing-sensitive behavior (settle sweeps, rename ordering) is
+ * covered by driving handlers directly in notes-sync.spec.ts — here we only
+ * prove chokidar events reach the sync handlers.
  */
 
 const tempDirs: string[] = []
 
 function givenNotesDir(): string {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aso-notes-watch-'))
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aso-notes-sync-'))
   tempDirs.push(dir)
   return dir
 }
@@ -61,12 +61,12 @@ async function noteAt(trx: any, workspaceId: string, notePath: string) {
     .executeTakeFirst()
 }
 
-describe('notes watcher (chokidar smoke)', () => {
+describe('folder sync (chokidar smoke)', () => {
   test('a written .md file is upserted and a deleted file removes the row', async ({ trx }) => {
-    const workspaceId = await givenWorkspace(trx, 'watch-smoke')
+    const workspaceId = await givenWorkspace(trx, 'sync-smoke')
     const notesDir = givenNotesDir()
 
-    const watcher = createNotesWatcher({
+    const folderSync = createFolderSync({
       notesDir,
       unlinkGraceMs: 10,
       handlers: {
@@ -74,7 +74,7 @@ describe('notes watcher (chokidar smoke)', () => {
         onUnlink: absolutePath => handleFileUnlink({ db: trx, workspaceId, notesDir, absolutePath }),
       },
     })
-    await new Promise<void>(resolve => watcher.on('ready', () => resolve()))
+    await new Promise<void>(resolve => folderSync.on('ready', () => resolve()))
 
     try {
       writeFileSync(path.join(notesDir, 'hello.md'), '# hello')
@@ -95,7 +95,7 @@ describe('notes watcher (chokidar smoke)', () => {
       })
     }
     finally {
-      await watcher.close()
+      await folderSync.close()
     }
   }, 15_000)
 })

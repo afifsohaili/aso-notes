@@ -9,8 +9,8 @@ import { handleFileUnlink, handleFileUpsert, startupScan } from '../../server/li
 /**
  * M3 feature spec: the sync fast path (plan-002-system §Sync service).
  * Chokidar events are simulated by writing real files to a temp notes dir and
- * driving the internal handlers directly — watcher timing stays out of the
- * assertions (one real chokidar smoke test lives in notes-watcher.spec.ts).
+ * driving the internal handlers directly — chokidar timing stays out of the
+ * assertions (one real chokidar smoke test lives in folder-sync.spec.ts).
  */
 
 const tempDirs: string[] = []
