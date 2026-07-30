@@ -19,7 +19,7 @@ export async function runPipeline(
   ctx: PipelineContext,
   options?: RunPipelineOptions,
 ): Promise<PipelineContext> {
-  const registry = options?.registry ?? getStageRegistry()
+  const registry = options?.registry ?? await getStageRegistry(ctx.db)
   const pipelines = options?.pipelines ?? PIPELINES
 
   const stageIds = pipelines[pipelineId]

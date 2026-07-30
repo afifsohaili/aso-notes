@@ -16,12 +16,14 @@ describe('settings API', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
 
-      expect(body).toEqual({
-        settings: {
-          'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
-          'extraction.blind_merge_threshold': { value: 0.85, source: 'default' },
-        },
-      })
+      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'top-k', source: 'default' })
+      expect(body.settings['extraction.blind_merge_threshold']).toEqual({ value: 0.85, source: 'default' })
+      expect(body.settings['llm.agent.provider']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.agent.model']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.agent.base_url']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.embedding.provider']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.embedding.model']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.embedding.base_url']).toEqual({ value: expect.any(String), source: 'default' })
     })
   })
 
@@ -117,6 +119,70 @@ describe('settings API', () => {
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
       const body = await getRes.json()
       expect(body.settings['extraction.blind_merge_threshold']).toEqual({ value: 0.92, source: 'workspace' })
+    })
+
+    test('persists llm provider and model keys and GET reflects them with source workspace', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const keys = [
+        { key: 'llm.agent.provider', value: 'ollama' },
+        { key: 'llm.agent.model', value: 'gemma3:4b' },
+        { key: 'llm.agent.base_url', value: 'http://localhost:11434' },
+        { key: 'llm.extraction.provider', value: 'ollama' },
+        { key: 'llm.extraction.model', value: 'qwen2.5:7b' },
+        { key: 'llm.embedding.provider', value: 'ollama' },
+        { key: 'llm.embedding.model', value: 'nomic-embed-text' },
+      ]
+
+      for (const { key, value } of keys) {
+        const patchRes = await server('/api/settings', {
+          method: 'PATCH',
+          body: JSON.stringify({ key, value }),
+          headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        })
+        expect(patchRes.status).toBe(200)
+      }
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      expect(getRes.status).toBe(200)
+      const body = await getRes.json()
+
+      expect(body.settings['llm.agent.provider']).toEqual({ value: 'ollama', source: 'workspace' })
+      expect(body.settings['llm.agent.model']).toEqual({ value: 'gemma3:4b', source: 'workspace' })
+      expect(body.settings['llm.agent.base_url']).toEqual({ value: 'http://localhost:11434', source: 'workspace' })
+      expect(body.settings['llm.extraction.provider']).toEqual({ value: 'ollama', source: 'workspace' })
+      expect(body.settings['llm.embedding.provider']).toEqual({ value: 'ollama', source: 'workspace' })
+      expect(body.settings['llm.embedding.model']).toEqual({ value: 'nomic-embed-text', source: 'workspace' })
+    })
+
+    test('rejects an invalid llm provider with 400 and does not persist', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'llm.agent.provider', value: 'mistral' }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(400)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      const body = await getRes.json()
+      expect(body.settings['llm.agent.provider'].source).toBe('default')
+    })
+
+    test('rejects an empty llm model with 400 and does not persist', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'llm.embedding.model', value: '   ' }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(400)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      const body = await getRes.json()
+      expect(body.settings['llm.embedding.model'].source).toBe('default')
     })
   })
 })

@@ -1,5 +1,5 @@
 import { AGENT_TOOLS, runAgent } from '~~/server/lib/agent'
-import { createAgentProviders } from '~~/server/lib/agent/providers'
+import { getAgentProviders } from '~~/server/lib/agent/providers'
 import { useDatabase } from '~~/utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
 
   const workspaceId = membership.workspace_id
 
-  const { llm, embedding } = createAgentProviders()
+  const { llm, embedding } = await getAgentProviders(db, workspaceId)
 
   setResponseHeader(event, 'content-type', 'text/event-stream')
   setResponseHeader(event, 'cache-control', 'no-cache, no-transform')

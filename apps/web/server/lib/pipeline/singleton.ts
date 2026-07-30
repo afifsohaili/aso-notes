@@ -1,6 +1,9 @@
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
+import type { PipelineDb } from './types'
 import process from 'node:process'
-import { createEmbeddingProvider, createLLMProvider } from '../ai/registry'
+import { createEmbeddingProvider, createLLMProvider, resolveEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
+import { resolveEmbeddingProviderSettings, resolveLLMProviderSettings } from '../settings'
+import { resolveSyncWorkspace } from '../sync/workspace'
 import {
   CHUNK_MARKDOWN_AWARE_STAGE,
   EMBED_CHUNKS_STAGE,
@@ -45,19 +48,46 @@ export function createStageRegistry(deps: StageDeps): StageRegistry {
   return registry
 }
 
+async function createWorkspaceStageRegistry(db?: PipelineDb): Promise<StageRegistry> {
+  if (db) {
+    const workspaceId = await resolveSyncWorkspace(db)
+    if (workspaceId) {
+      const llmSettings = await resolveLLMProviderSettings(db, workspaceId, 'extraction', process.env)
+      const embeddingSettings = await resolveEmbeddingProviderSettings(db, workspaceId, process.env)
+      return createStageRegistry({
+        llmProvider: resolveLLMProvider('extraction', process.env, llmSettings).provider,
+        embeddingProvider: resolveEmbeddingProvider(process.env, embeddingSettings).provider,
+      })
+    }
+  }
+
+  return createStageRegistry({
+    embeddingProvider: createEmbeddingProvider(process.env).provider,
+    llmProvider: createLLMProvider('extraction', process.env).provider,
+  })
+}
+
 /**
- * Lazily-built process-wide registry. The providers are constructed from
- * runtime config on first use so importing this module is side-effect free
- * (unit tests never call this — they inject their own registry).
+ * Lazily-built process-wide registry. When a DB is supplied, the providers are
+ * resolved from workspace_settings → env → code default for the single-tenant
+ * MVP workspace. Without a DB, env-only resolution is used (tests / legacy).
+ *
+ * Call `clearStageRegistry()` after any `llm.*` setting changes so the next use
+ * re-resolves the providers.
  */
-export function getStageRegistry(): StageRegistry {
+export async function getStageRegistry(db?: PipelineDb): Promise<StageRegistry> {
   if (!singleton) {
-    singleton = createStageRegistry({
-      embeddingProvider: createEmbeddingProvider(process.env).provider,
-      llmProvider: createLLMProvider('extraction', process.env).provider,
-    })
+    singleton = await createWorkspaceStageRegistry(db)
   }
   return singleton
+}
+
+/**
+ * Discard the cached stage registry. The next call to `getStageRegistry` will
+ * re-resolve providers from the current workspace settings and env.
+ */
+export function clearStageRegistry(): void {
+  singleton = null
 }
 
 export {

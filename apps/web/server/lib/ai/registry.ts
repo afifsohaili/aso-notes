@@ -5,8 +5,12 @@ import { DEFAULT_EMBEDDING_MODEL, OPENROUTER_BASE_URL, OpenRouterEmbeddingProvid
 import { DEFAULT_CHAT_MODEL, OpenRouterLLMProvider } from './openrouter-llm'
 import { DEFAULT_RESILIENCE } from './resilient-fetch'
 
+export { OLLAMA_BASE_URL } from './ollama'
+export { DEFAULT_EMBEDDING_MODEL } from './openrouter-embedding'
+export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
+
 /**
- * AI provider registry (plan-002-system M10).
+ * AI provider registry (plan-002-system M10 + plan-007 Phase 3).
  *
  * Three call sites — agent conversation, ingestion extraction, embeddings —
  * each resolve an independent provider quad from env, following the
@@ -20,12 +24,25 @@ import { DEFAULT_RESILIENCE } from './resilient-fetch'
  * API key is required for openrouter and ignored for ollama. Model falls
  * back to the provider default (openrouter only — ollama requires an
  * explicit model). No legacy env vars are honored.
+ *
+ * Phase 3 adds workspace_settings overrides: caller supplies a settings
+ * object (provider, model, base_url) and it wins over env, which wins over
+ * code defaults. Use `createLLMProvider` / `createEmbeddingProvider` for
+ * env-only resolution, or `resolveLLMProvider` / `resolveEmbeddingProvider`
+ * when workspace settings are available.
  */
 
 export type ProviderKind = 'openrouter' | 'ollama'
 export type LlmRole = 'agent' | 'extraction'
 
 export type EnvMap = Record<string, string | undefined>
+
+/** Settings overrides coming from workspace_settings (Phase 3). */
+export interface ResolvedProviderSettings {
+  provider?: string
+  model?: string
+  base_url?: string
+}
 
 export interface ResolvedLLM {
   kind: ProviderKind
@@ -41,7 +58,7 @@ export interface ResolvedEmbedding {
   provider: EmbeddingProvider
 }
 
-const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string, timeoutMs: string, maxAttempts: string, baseDelayMs: string }> = {
+export const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string, timeoutMs: string, maxAttempts: string, baseDelayMs: string }> = {
   agent: {
     provider: 'NUXT_LLM_AGENT_PROVIDER',
     baseUrl: 'NUXT_LLM_AGENT_BASE_URL',
@@ -71,6 +88,11 @@ const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, bas
   },
 }
 
+export interface ResolveOptions {
+  timeoutMs?: number
+  maxAttempts?: number
+}
+
 function providerKind(value: string | undefined): ProviderKind {
   if (value === undefined || value === '' || value === 'openrouter')
     return 'openrouter'
@@ -79,48 +101,51 @@ function providerKind(value: string | undefined): ProviderKind {
   throw new Error(`Unknown LLM provider "${value}" — expected 'openrouter' or 'ollama'`)
 }
 
-function resolveApiKey(env: EnvMap, apiKeyKey: string): string {
+export function resolveApiKey(env: EnvMap, apiKeyKey: string): string {
   const apiKey = env[apiKeyKey] ?? ''
   if (!apiKey)
     throw new Error(`${apiKeyKey} is required when using the openrouter provider`)
   return apiKey
 }
 
-function resolveLLMModel(env: EnvMap, keys: { model: string }, kind: ProviderKind): string {
-  const model = env[keys.model]
-  if (model)
-    return model
+function resolveLLMModelDefault(kind: ProviderKind, role: LlmRole): string {
   if (kind === 'openrouter')
     return DEFAULT_CHAT_MODEL
-  throw new Error(`${keys.model} is required when using the ollama provider (e.g. ${keys.model}=gemma3:4b)`)
+  throw new Error(`${KEYS[role].model} is required when using the ollama provider`)
+}
+
+function resolveEmbeddingModelDefault(kind: ProviderKind): string {
+  if (kind === 'openrouter')
+    return DEFAULT_EMBEDDING_MODEL
+  throw new Error(`${KEYS.embedding.model} is required when using the ollama provider`)
 }
 
 function resolveResilienceOptions(
   env: EnvMap,
   keys: { timeoutMs: string, maxAttempts: string, baseDelayMs: string },
+  options?: ResolveOptions,
 ): Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>> {
   const baseDelayEnv = env[keys.baseDelayMs]
   return {
-    timeoutMs: Number.parseInt(env[keys.timeoutMs] ?? String(DEFAULT_RESILIENCE.timeoutMs), 10),
-    maxAttempts: Number.parseInt(env[keys.maxAttempts] ?? String(DEFAULT_RESILIENCE.maxAttempts), 10),
+    timeoutMs: options?.timeoutMs ?? Number.parseInt(env[keys.timeoutMs] ?? String(DEFAULT_RESILIENCE.timeoutMs), 10),
+    maxAttempts: options?.maxAttempts ?? Number.parseInt(env[keys.maxAttempts] ?? String(DEFAULT_RESILIENCE.maxAttempts), 10),
     baseDelayMs: baseDelayEnv !== undefined
       ? Number.parseInt(baseDelayEnv, 10)
       : DEFAULT_RESILIENCE.baseDelayMs,
   }
 }
 
-export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
+export function resolveLLMProvider(role: LlmRole, env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions): ResolvedLLM {
   const keys = KEYS[role]
-  const kind = providerKind(env[keys.provider])
-  const model = resolveLLMModel(env, keys, kind)
-  const resilience = resolveResilienceOptions(env, keys)
+  const kind = providerKind(settings.provider || env[keys.provider])
+  const model = settings.model || env[keys.model] || resolveLLMModelDefault(kind, role)
+  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
+  const resilience = resolveResilienceOptions(env, keys, options)
 
   if (kind === 'ollama') {
-    const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
     return { kind, model, baseUrl, provider: new OllamaLLMProvider({ model, baseUrl, ...resilience }) }
   }
 
-  const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
   return {
     kind,
     model,
@@ -129,25 +154,29 @@ export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
   }
 }
 
-export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
-  const keys = KEYS.embedding
-  const kind = providerKind(env[keys.provider])
-  const resilience = resolveResilienceOptions(env, keys)
+export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
+  return resolveLLMProvider(role, env)
+}
 
-  const model = env[keys.model] || (kind === 'openrouter' ? DEFAULT_EMBEDDING_MODEL : '')
-  if (!model)
-    throw new Error(`${keys.model} is required when using the ollama provider (e.g. ${keys.model}=nomic-embed-text)`)
+export function resolveEmbeddingProvider(env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions): ResolvedEmbedding {
+  const keys = KEYS.embedding
+  const kind = providerKind(settings.provider || env[keys.provider])
+  const model = settings.model || env[keys.model] || resolveEmbeddingModelDefault(kind)
+  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
+  const resilience = resolveResilienceOptions(env, keys, options)
 
   if (kind === 'ollama') {
-    const baseUrl = env[keys.baseUrl] || OLLAMA_BASE_URL
     return { kind, model, baseUrl, provider: new OllamaEmbeddingProvider({ model, baseUrl, ...resilience }) }
   }
 
-  const baseUrl = env[keys.baseUrl] || OPENROUTER_BASE_URL
   return {
     kind,
     model,
     baseUrl,
     provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...resilience }),
   }
+}
+
+export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {
+  return resolveEmbeddingProvider(env)
 }

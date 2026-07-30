@@ -1,15 +1,24 @@
+import type { EnvMap } from '../../server/lib/ai/registry'
 import type { PipelineDb } from '../../server/lib/pipeline/types'
 import type { KnownSettingKey } from '../../server/lib/settings'
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OLLAMA_BASE_URL, OPENROUTER_BASE_URL } from '../../server/lib/ai/registry'
 import {
   assertKnownSettingKey,
   DEFAULT_BLIND_MERGE_THRESHOLD,
+  DEFAULT_LLM_PROVIDER,
   getWorkspaceSetting,
   normalizeSettingValue,
   resolveBlindMergeThreshold,
+  resolveEmbeddingProviderSettings,
+  resolveLLMProviderSettings,
   resolveVocabularyStrategy,
   resolveWorkspaceSettings,
 } from '../../server/lib/settings'
+
+function env(overrides: Record<string, string | undefined> = {}): EnvMap {
+  return { ...overrides }
+}
 
 function fakeDb(rows: { workspace_id: string, key: string, value: unknown }[] = []): PipelineDb {
   const query = () => {
@@ -107,11 +116,20 @@ describe('resolveVocabularyStrategy', () => {
 describe('resolveWorkspaceSettings', () => {
   it('returns defaults with source default when no workspace rows exist', async () => {
     const db = fakeDb([])
-    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
 
     expect(settings).toEqual({
       'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
       'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
+      'llm.agent.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.agent.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
+      'llm.agent.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'llm.extraction.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.extraction.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
+      'llm.extraction.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'llm.embedding.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.embedding.model': { value: DEFAULT_EMBEDDING_MODEL, source: 'default' },
+      'llm.embedding.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
     })
   })
 
@@ -119,13 +137,45 @@ describe('resolveWorkspaceSettings', () => {
     const db = fakeDb([
       { workspace_id: 'ws-1', key: 'extraction.vocabulary_strategy', value: 'blind-merge' },
       { workspace_id: 'ws-1', key: 'extraction.blind_merge_threshold', value: 0.92 },
+      { workspace_id: 'ws-1', key: 'llm.agent.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.agent.model', value: 'gemma3:4b' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.model', value: 'nomic-embed-text' },
     ])
-    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
 
     expect(settings).toEqual({
       'extraction.vocabulary_strategy': { value: 'blind-merge', source: 'workspace' },
       'extraction.blind_merge_threshold': { value: 0.92, source: 'workspace' },
+      'llm.agent.provider': { value: 'ollama', source: 'workspace' },
+      'llm.agent.model': { value: 'gemma3:4b', source: 'workspace' },
+      'llm.agent.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
+      'llm.extraction.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.extraction.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
+      'llm.extraction.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'llm.embedding.provider': { value: 'ollama', source: 'workspace' },
+      'llm.embedding.model': { value: 'nomic-embed-text', source: 'workspace' },
+      'llm.embedding.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
     })
+  })
+
+  it('uses env values as default source for unsaved llm keys', async () => {
+    const db = fakeDb([])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env({
+      NUXT_LLM_AGENT_PROVIDER: 'ollama',
+      NUXT_LLM_AGENT_MODEL: 'qwen2.5:7b',
+      NUXT_LLM_AGENT_BASE_URL: 'http://ollama:11434',
+      NUXT_LLM_EXTRACTION_PROVIDER: 'ollama',
+      NUXT_LLM_EXTRACTION_MODEL: 'qwen2.5:7b',
+      NUXT_LLM_EMBEDDING_PROVIDER: 'ollama',
+      NUXT_LLM_EMBEDDING_MODEL: 'nomic-embed-text',
+    }))
+
+    expect(settings['llm.agent.provider']).toEqual({ value: 'ollama', source: 'default' })
+    expect(settings['llm.agent.model']).toEqual({ value: 'qwen2.5:7b', source: 'default' })
+    expect(settings['llm.agent.base_url']).toEqual({ value: 'http://ollama:11434', source: 'default' })
+    expect(settings['llm.embedding.provider']).toEqual({ value: 'ollama', source: 'default' })
+    expect(settings['llm.embedding.base_url']).toEqual({ value: OLLAMA_BASE_URL, source: 'default' })
   })
 
   it('ignores unknown keys from the database', async () => {
@@ -133,12 +183,11 @@ describe('resolveWorkspaceSettings', () => {
       { workspace_id: 'ws-1', key: 'extraction.vocabulary_strategy', value: 'full' },
       { workspace_id: 'ws-1', key: 'future.key', value: 'ignored' },
     ])
-    const settings = await resolveWorkspaceSettings(db, 'ws-1')
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
 
-    expect(settings).toEqual({
-      'extraction.vocabulary_strategy': { value: 'full', source: 'workspace' },
-      'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
-    })
+    expect(settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'workspace' })
+    expect(settings['extraction.blind_merge_threshold']).toEqual({ value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' })
+    expect(settings['llm.agent.provider']).toEqual({ value: DEFAULT_LLM_PROVIDER, source: 'default' })
   })
 })
 
@@ -146,6 +195,12 @@ describe('assertKnownSettingKey', () => {
   it('accepts known keys', () => {
     expect(assertKnownSettingKey('extraction.vocabulary_strategy')).toBe('extraction.vocabulary_strategy')
     expect(assertKnownSettingKey('extraction.blind_merge_threshold')).toBe('extraction.blind_merge_threshold')
+    expect(assertKnownSettingKey('llm.agent.provider')).toBe('llm.agent.provider')
+    expect(assertKnownSettingKey('llm.agent.model')).toBe('llm.agent.model')
+    expect(assertKnownSettingKey('llm.agent.base_url')).toBe('llm.agent.base_url')
+    expect(assertKnownSettingKey('llm.embedding.provider')).toBe('llm.embedding.provider')
+    expect(assertKnownSettingKey('llm.embedding.model')).toBe('llm.embedding.model')
+    expect(assertKnownSettingKey('llm.embedding.base_url')).toBe('llm.embedding.base_url')
   })
 
   it('throws for unknown keys', () => {
@@ -194,6 +249,114 @@ describe('normalizeSettingValue', () => {
 
   it('rejects unknown keys', () => {
     expect(() => normalizeSettingValue('unknown.key' as KnownSettingKey, 'x')).toThrow('unknown setting key')
+  })
+
+  describe('llm keys', () => {
+    it('accepts a known provider', () => {
+      expect(normalizeSettingValue('llm.agent.provider', 'openrouter')).toBe('openrouter')
+      expect(normalizeSettingValue('llm.embedding.provider', 'ollama')).toBe('ollama')
+    })
+
+    it('rejects an unknown provider', () => {
+      expect(() => normalizeSettingValue('llm.extraction.provider', 'mistral')).toThrow('invalid provider')
+    })
+
+    it('rejects a non-string provider', () => {
+      expect(() => normalizeSettingValue('llm.agent.provider', 123)).toThrow('invalid provider')
+    })
+
+    it('accepts a non-empty model string', () => {
+      expect(normalizeSettingValue('llm.agent.model', 'deepseek/deepseek-v4-flash')).toBe('deepseek/deepseek-v4-flash')
+      expect(normalizeSettingValue('llm.embedding.model', 'nomic-embed-text')).toBe('nomic-embed-text')
+    })
+
+    it('rejects an empty or whitespace model', () => {
+      expect(() => normalizeSettingValue('llm.agent.model', '')).toThrow('model must be a non-empty string')
+      expect(() => normalizeSettingValue('llm.agent.model', '   ')).toThrow('model must be a non-empty string')
+    })
+
+    it('rejects a non-string model', () => {
+      expect(() => normalizeSettingValue('llm.embedding.model', 123)).toThrow('model must be a non-empty string')
+    })
+
+    it('accepts a string base_url', () => {
+      expect(normalizeSettingValue('llm.agent.base_url', 'http://localhost:11434')).toBe('http://localhost:11434')
+    })
+
+    it('allows null or undefined base_url to clear an override', () => {
+      expect(normalizeSettingValue('llm.agent.base_url', null)).toBeNull()
+      expect(normalizeSettingValue('llm.embedding.base_url', undefined)).toBeNull()
+    })
+
+    it('rejects a non-string base_url', () => {
+      expect(() => normalizeSettingValue('llm.extraction.base_url', 123)).toThrow('base_url must be a string')
+    })
+  })
+})
+
+describe('resolveLLMProviderSettings', () => {
+  it('prefers workspace rows over env', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.agent.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.agent.model', value: 'gemma3:4b' },
+      { workspace_id: 'ws-1', key: 'llm.agent.base_url', value: 'http://workspace:11434' },
+    ])
+    const settings = await resolveLLMProviderSettings(db, 'ws-1', 'agent', env({
+      NUXT_LLM_AGENT_PROVIDER: 'openrouter',
+      NUXT_LLM_AGENT_MODEL: 'deepseek/deepseek-v4-flash',
+      NUXT_LLM_AGENT_BASE_URL: 'http://env:11434',
+    }))
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'gemma3:4b',
+      base_url: 'http://workspace:11434',
+    })
+  })
+
+  it('falls back to env when workspace rows are absent', async () => {
+    const db = fakeDb([])
+    const settings = await resolveLLMProviderSettings(db, 'ws-1', 'extraction', env({
+      NUXT_LLM_EXTRACTION_PROVIDER: 'ollama',
+      NUXT_LLM_EXTRACTION_MODEL: 'qwen2.5:7b',
+      NUXT_LLM_EXTRACTION_BASE_URL: 'http://env:11434',
+    }))
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'qwen2.5:7b',
+      base_url: 'http://env:11434',
+    })
+  })
+
+  it('falls back to null when no workspace or env value exists', async () => {
+    const db = fakeDb([])
+    const settings = await resolveLLMProviderSettings(db, 'ws-1', 'agent', env())
+
+    expect(settings).toEqual({
+      provider: undefined,
+      model: undefined,
+      base_url: undefined,
+    })
+  })
+})
+
+describe('resolveEmbeddingProviderSettings', () => {
+  it('prefers workspace rows over env', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.embedding.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.model', value: 'nomic-embed-text' },
+    ])
+    const settings = await resolveEmbeddingProviderSettings(db, 'ws-1', env({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'openrouter',
+      NUXT_LLM_EMBEDDING_MODEL: 'openai/text-embedding-3-small',
+    }))
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'nomic-embed-text',
+      base_url: undefined,
+    })
   })
 })
 

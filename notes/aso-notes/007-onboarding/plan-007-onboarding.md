@@ -110,3 +110,26 @@ Divergences / kept items:
 - A BEFORE INSERT trigger provides a fallback `synced_folder_id` for test fixtures and legacy inserts; application code always supplies the value explicitly. This avoids a broad test-fixture churn while keeping the column NOT NULL in the DB.
 - Interim deletion of a Synced Folder returns 409 if notes exist; Phase 6 will replace this with note wipe + orphan GC.
 - The `DELETE` endpoint uses `ON DELETE CASCADE` on `notes.synced_folder_id` as a safety net, but the 409 guard prevents the cascade from firing through the API.
+
+### Phase 3 — LLM provider settings + test-connection (2026-07-30)
+
+Built:
+- New `workspace_settings` keys: `llm.agent.{provider,model,base_url}`, `llm.extraction.{provider,model,base_url}`, `llm.embedding.{provider,model,base_url}`. Registered in `assertKnownSettingKey`/`normalizeSettingValue` with validation (provider ∈ {openrouter,ollama}; model non-empty string; base_url optional string/null).
+- Resolution chain implemented in `server/lib/ai/registry.ts` (`resolveLLMProvider`, `resolveEmbeddingProvider`) and `server/lib/settings.ts` (`resolveLLMProviderSettings`, `resolveEmbeddingProviderSettings`, `resolveWorkspaceSettings`): workspace_settings → env (`NUXT_LLM_*`) → code default. `createLLMProvider`/`createEmbeddingProvider` remain env-only shorthands for tests.
+- Singleton invalidation: `getStageRegistry()` (pipeline) and `getAgentProviders()` (agent) are now workspace-aware and cached. `PATCH /api/settings` calls `clearStageRegistry()` + `clearAgentProviders()` whenever an `llm.*` key changes so the next use re-resolves.
+- `POST /api/settings/test-connection` tests a given `{ role, provider, model, base_url? }` without saving: chat roles do a minimal completion; embedding probes with one tiny input and no `dimensions` param, accepting only 2048 dims (mismatch returns `{ ok: false, dims, expected: 2048 }`). All provider errors return `{ ok: false, error }`; 4xx reserved for malformed/authz.
+- Updated call sites: `runPipeline` awaits `getStageRegistry(ctx.db)`; `POST /api/conversations` awaits `getAgentProviders(db, workspaceId)`.
+
+Specs:
+- Updated `test/unit/settings.spec.ts` (37 tests) and new `test/unit/llm-registry.spec.ts` (13 tests) for validation, resolution-chain precedence, and defaults.
+- New `test/e2e/settings-test-connection.spec.ts` (6 tests) covering authz, malformed body, ollama chat success, embedding success/dims-mismatch, and unreachable error.
+- Updated `test/e2e/settings-api.spec.ts` for LLM PATCH persistence and invalid-value rejection.
+
+Test result:
+- Full suite: **76 test files / 607 tests passed** when run isolated; **606 passed + 1 flake** in full run (`test/e2e/folder-sync.spec.ts` chokidar timing; passes isolated as before).
+
+Divergences / kept items:
+- `resolveWorkspaceSettings` reports env-derived effective values as `source: 'default'` (there is no separate 'env' source; the existing two-source contract was preserved).
+- Timeout for test-connection is hardcoded: 30s for ollama, 15s for openrouter. Not exposed as a setting in Phase 3.
+- The Ollama embedding probe uses raw `fetch` to `/api/embed` so we can omit the `dimensions` param; the OpenRouter probe uses the provider class because it already omits `dimensions`.
+- No UI work in this phase; Phase 4 will wire the test-connection call before save.

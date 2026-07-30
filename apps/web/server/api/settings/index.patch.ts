@@ -1,6 +1,8 @@
 import { sql } from 'kysely'
 import { useDatabase } from '~~/utils/db'
-import { assertKnownSettingKey, normalizeSettingValue } from '../../lib/settings'
+import { clearAgentProviders } from '../../lib/agent/providers'
+import { clearStageRegistry } from '../../lib/pipeline/singleton'
+import { assertKnownSettingKey, isLLMSettingKey, normalizeSettingValue } from '../../lib/settings'
 
 async function resolveWorkspaceId(db: any, userId: string): Promise<string | null> {
   const membership = await db
@@ -46,6 +48,11 @@ export default defineEventHandler(async (event) => {
         value: valueSql,
       }))
       .execute()
+
+    if (isLLMSettingKey(key)) {
+      clearStageRegistry()
+      clearAgentProviders()
+    }
   }
   catch (err) {
     if (err instanceof Error) {
