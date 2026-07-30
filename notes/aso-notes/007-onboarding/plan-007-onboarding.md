@@ -106,6 +106,7 @@ Each milestone was TDD-driven; full suite green before the next.
 - [x] **Phase 4 — Wizard-mode settings + first-run chat + onboarding gate** — DONE 2026-07-30 (`743861b`). Wizard UI, gate middleware, providers endpoint, first-run chat state. Full suite: **80 test files / 630 tests passed**.
 - [x] **Phase 5 — Smoke-test note flow** — DONE 2026-07-31 (`deff817`). State machine, endpoints, auto-delete, retry, re-verify. Full suite: **83 test files / 651 tests passed**.
 - [x] **Phase 6 — Orphan GC on synced-folder removal** — DONE 2026-07-30 (`6ab36c4`). Decision core, inline GC, AGE cleanup, REMOVE confirmation UI. Full suite: **85 test files / 663 tests passed**.
+- [x] **Phase 7 — Close-out + browser verification** — DONE 2026-07-31 (`eeff440`, `501c424`, `0ed3bfe`, `e4edc08`). Final spec authored, env/README/AGENTS cleaned, full onboarding flow verified in a real browser against real infra (fresh DB, real OpenRouter LLM): signup → email verify → gate → wizard (synced folder + LLM config) → smoke-test verify → gate release → first-run chat → agent answer with citations from ingested notes → /notes, /graph, /notes/queue all live. Browser verification caught and fixed four real bugs (see Divergences → Phase 7). Full suite: **86 test files / 669 tests passed**.
 
 ## Divergences / kept items
 
