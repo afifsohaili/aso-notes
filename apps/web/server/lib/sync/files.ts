@@ -1,4 +1,5 @@
 import type { SyncDb } from './sweeper'
+import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { sql } from 'kysely'
@@ -248,9 +249,17 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
  * mentions, links, sources, and note_tags cascade via FK (M1). After a
  * rename the row has already moved to the new path, so the trailing unlink
  * for the old path is a no-op.
+ *
+ * The unlink runs after a grace delay (folder-sync UNLINK_GRACE_MS), so a
+ * delete+recreate within the window (e.g. the smoke-test rewrite) can
+ * deliver the upsert BEFORE this handler — a blind delete would then wipe
+ * the freshly recreated row. Stat the path first: if the file exists again,
+ * the row stays.
  */
 export async function handleFileUnlink(event: FileEvent): Promise<void> {
   const { db, workspaceId, syncedFolderId, notesDir, absolutePath } = event
+  if (existsSync(absolutePath))
+    return
   const notePath = toNotePath(notesDir, absolutePath)
   if (isFolderCoverPath(notePath))
     return handleCoverUnlink(db, workspaceId, syncedFolderId, notePath)

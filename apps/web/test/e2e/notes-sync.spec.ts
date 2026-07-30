@@ -250,8 +250,27 @@ describe('sync fast path: file unlink', () => {
     await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     expect(await getNoteByPath(trx, workspaceId, '/gone.md')).toBeTruthy()
 
+    rmSync(abs, { force: true })
     await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
     expect(await getNoteByPath(trx, workspaceId, '/gone.md')).toBeUndefined()
+  })
+
+  test('an unlink for a file that exists again is a no-op (delete+recreate race, e.g. smoke-test rewrite)', async ({ trx }) => {
+    // Browser-verification bug (Phase 7b): chokidar can deliver the upsert for
+    // a recreated file BEFORE the grace-delayed unlink handler runs; a blind
+    // delete then wipes the freshly recreated row and the note is stuck until
+    // the next startup scan. The unlink handler must stat the path first.
+    const workspaceId = await givenWorkspace(trx, 'sync-delete-recreate')
+    const notesDir = givenNotesDir()
+    const syncedFolderId = await givenSyncedFolder(trx, workspaceId, notesDir)
+    const abs = writeNote(notesDir, 'recreated.md', '# v2')
+
+    await handleFileUpsert({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
+    expect(await getNoteByPath(trx, workspaceId, '/recreated.md')).toBeTruthy()
+
+    // delayed unlink fires while the file already exists again
+    await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: abs })
+    expect(await getNoteByPath(trx, workspaceId, '/recreated.md')).toBeTruthy()
   })
 })
 
@@ -375,6 +394,7 @@ describe('folder covers', () => {
       .where('workspace_id', '=', workspaceId)
       .execute()
 
+    rmSync(coverAbs, { force: true })
     await handleFileUnlink({ db: trx, workspaceId, syncedFolderId, notesDir, absolutePath: coverAbs })
 
     const folder = await trx
