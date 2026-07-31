@@ -106,10 +106,10 @@ describe('resolveVocabularyStrategy', () => {
     expect(strategy.id).toBe('blind-merge')
   })
 
-  it('falls back to top-k when setting is absent', async () => {
+  it('falls back to full when setting is absent', async () => {
     const db = fakeDb([])
     const strategy = await resolveVocabularyStrategy(db, 'ws-1')
-    expect(strategy.id).toBe('top-k')
+    expect(strategy.id).toBe('full')
   })
 })
 
@@ -119,7 +119,7 @@ describe('resolveWorkspaceSettings', () => {
     const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
 
     expect(settings).toEqual({
-      'extraction.vocabulary_strategy': { value: 'top-k', source: 'default' },
+      'extraction.vocabulary_strategy': { value: 'full', source: 'default' },
       'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
       'llm.agent.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.agent.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },

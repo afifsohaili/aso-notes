@@ -76,4 +76,27 @@ describe('app-header', () => {
     expect(notesLink?.classes()).toContain('underline')
     expect(queueLink?.classes()).not.toContain('underline')
   })
+
+  it('renders an icon inside every nav link', async () => {
+    useSessionMock.mockResolvedValue({ session: { user: { id: 'u1' } } })
+    const component = await mountSuspended(AppHeader)
+
+    const navLinks = component.findAll('nav a')
+    expect(navLinks.length).toBe(5)
+    for (const link of navLinks) {
+      expect(link.find('svg').exists()).toBe(true)
+    }
+  })
+
+  it('gives inactive links a visible hover background', async () => {
+    useSessionMock.mockResolvedValue({ session: { user: { id: 'u1' } } })
+    useRouteMock.mockReturnValue(makeRoute('/chat'))
+    const component = await mountSuspended(AppHeader)
+
+    const inactive = component.findAll('nav a').filter(a => !a.classes().includes('underline'))
+    expect(inactive.length).toBeGreaterThan(0)
+    for (const link of inactive) {
+      expect(link.classes()).toContain('hover:bg-gray-100')
+    }
+  })
 })

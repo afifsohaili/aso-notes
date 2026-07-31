@@ -24,7 +24,7 @@ export function getVocabularyStrategy(id: string): VocabularyStrategy {
 
 /** The code default vocabulary strategy. */
 export function defaultVocabularyStrategy(): VocabularyStrategy {
-  return topKStrategy()
+  return fullVocabularyStrategy
 }
 
 export { blindMergeStrategy, fullVocabularyStrategy, topKStrategy }

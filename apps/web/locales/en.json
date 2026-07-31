@@ -82,6 +82,7 @@
   "settings.rebuild.cancel": "Cancel",
   "settings.rebuild.confirmPlaceholder": "REBUILD",
   "settings.rebuild.success": "Graph cleared. Re-ingestion will begin shortly.",
+  "settings.rebuild.jobsPurged": "Cleared {count} stuck ingestion job(s) from the queue.",
   "chat.newConversation": "New conversation",
   "chat.placeholder": "Ask anything about your notes...",
   "chat.send": "Send",

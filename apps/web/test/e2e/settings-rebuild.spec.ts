@@ -1,7 +1,7 @@
 import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
-import { describe, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { queryCypher } from '../../server/lib/graph/age'
 import {
   mergeConceptNode,
@@ -155,6 +155,16 @@ async function rowCount(trx: any, table: string, where?: (q: any) => any): Promi
 }
 
 describe('settings rebuild API', () => {
+  // Keep the spec hermetic: the endpoint purges ingestion jobs via the real
+  // queue when NUXT_REDIS_URL is set; stub it out everywhere except the
+  // purge-wiring test, which fakes the queue boundary instead.
+  beforeEach(() => {
+    vi.stubEnv('NUXT_REDIS_URL', '')
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   test('POST /api/settings/rebuild returns 401 when unauthenticated', async ({ server }) => {
     const res = await server('/api/settings/rebuild', {
       method: 'POST',
@@ -177,6 +187,7 @@ describe('settings rebuild API', () => {
 
     const body = await res.json()
     expect(body.notesReset).toBe(1)
+    expect(body.jobsPurged).toBe(0)
     expect(body.wiped).toEqual({
       mentions: 1,
       relations: 1,

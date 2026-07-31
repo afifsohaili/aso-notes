@@ -1,7 +1,7 @@
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
 import { describe, expect } from 'vitest'
-import { createBullMqDispatcher, createInlineDispatcher, INGEST_NOTE_JOB } from '../../server/lib/sync/dispatcher'
+import { createBullMqDispatcher, createInlineDispatcher, INGEST_NOTE_JOB, purgeIngestionJobs } from '../../server/lib/sync/dispatcher'
 
 /**
  * Feature spec for the ingestion dispatcher seam. Uses a fake queue and a real
@@ -167,5 +167,40 @@ describe('ingestion dispatcher', () => {
 
     expect(calls).toEqual([`${noteId}:queued`])
     expect(await getStatus(trx, noteId)).toBe('queued')
+  })
+})
+
+describe('purgeIngestionJobs', () => {
+  test('removes one job per existing note id and returns the purged count', async () => {
+    const removed: string[] = []
+    const queue = {
+      getJob: async (jobId: string) => jobId === 'note-gone'
+        ? undefined
+        : ({ getState: async () => 'failed', remove: async () => { removed.push(jobId) } }),
+    }
+
+    const purged = await purgeIngestionJobs(queue, ['note-a', 'note-gone', 'note-b'])
+
+    expect(removed).toEqual(['note-a', 'note-b'])
+    expect(purged).toBe(2)
+  })
+
+  test('skips jobs that refuse removal (locked/active) without failing', async () => {
+    const removed: string[] = []
+    const queue = {
+      getJob: async (jobId: string) => ({
+        getState: async () => 'active',
+        remove: async () => {
+          if (jobId === 'note-locked')
+            throw new Error('Cannot remove job when it is locked')
+          removed.push(jobId)
+        },
+      }),
+    }
+
+    const purged = await purgeIngestionJobs(queue, ['note-a', 'note-locked', 'note-b'])
+
+    expect(removed).toEqual(['note-a', 'note-b'])
+    expect(purged).toBe(2)
   })
 })

@@ -80,7 +80,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Resolve the active vocabulary strategy for a workspace.
  * Reads `extraction.vocabulary_strategy` from workspace_settings;
- * falls back to the code default `top-k`.
+ * falls back to the code default `full`.
  */
 export async function resolveVocabularyStrategy(db: PipelineDb, workspaceId: string) {
   const raw = await getWorkspaceSetting<unknown>(db, workspaceId, 'extraction.vocabulary_strategy', null)

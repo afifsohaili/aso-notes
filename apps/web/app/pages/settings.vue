@@ -44,7 +44,7 @@ const { data: folders, pending: foldersPending, refresh: refreshFolders } = awai
 const { data: availabilityPayload } = await useFetch<ProviderAvailabilityPayload>('/api/settings/providers')
 const { data: ingestionStatus } = await useFetch<IngestionStatusResponse>('/api/ingestion/status')
 
-const strategy = ref<typeof VOCABULARY_STRATEGIES[number]>('top-k')
+const strategy = ref<typeof VOCABULARY_STRATEGIES[number]>('full')
 const threshold = ref<number | ''>('')
 const strategySaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
@@ -52,6 +52,7 @@ const showRebuildDialog = ref(false)
 const rebuildConfirmText = ref('')
 const rebuildStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 const rebuildError = ref('')
+const rebuildJobsPurged = ref(0)
 const verifyComplete = ref(false)
 const showReverify = ref(false)
 
@@ -101,7 +102,8 @@ async function rebuild() {
     return
   rebuildStatus.value = 'loading'
   try {
-    await $fetch('/api/settings/rebuild', { method: 'POST' })
+    const res = await $fetch<{ jobsPurged?: number }>('/api/settings/rebuild', { method: 'POST' })
+    rebuildJobsPurged.value = res.jobsPurged ?? 0
     rebuildStatus.value = 'success'
     await refreshStatusCounts()
   }
@@ -812,6 +814,14 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
           role="status"
         >
           {{ t('settings.rebuild.success') }}
+        </p>
+
+        <p
+          v-if="rebuildStatus === 'success' && rebuildJobsPurged > 0"
+          class="mt-1 text-sm text-green-600"
+          role="status"
+        >
+          {{ t('settings.rebuild.jobsPurged', { count: rebuildJobsPurged }) }}
         </p>
 
         <p

@@ -283,7 +283,7 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
     expect(lastRun!.chunks).toBe(2)
     expect(lastRun!.duration_ms).toBeGreaterThan(0)
     expect(lastRun!.extraction).toMatchObject({
-      strategy: 'top-k',
+      strategy: 'full',
       model: 'unknown',
       usage: null,
       response: JSON.stringify(EXTRACTION),

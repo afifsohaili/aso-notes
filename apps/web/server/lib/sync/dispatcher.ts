@@ -24,6 +24,7 @@ export interface IngestionDispatcher {
 /** Minimal BullMQ Job surface the dispatcher needs. */
 export interface IngestionJobLike {
   getState: () => Promise<string>
+  remove?: () => Promise<unknown>
 }
 
 /** Structural subset of BullMQ's Queue — keeps the dispatcher testable without Redis. */
@@ -86,6 +87,38 @@ export function createInlineDispatcher(args: {
       await run(noteId)
     },
   }
+}
+
+/**
+ * Remove ingestion jobs for the given note ids regardless of state (used by
+ * graph rebuild). BullMQ's jobId=noteId dedupe makes add() a silent no-op
+ * while ANY job with the same id lingers — failed, completed, delayed retry,
+ * or stuck active — so a rebuild must clear them or the re-dispatched notes
+ * never reach a worker. Jobs that refuse removal (locked by a worker) are
+ * skipped and not counted; the sweeper's terminal-state removal covers them
+ * on the next dispatch.
+ */
+export async function purgeIngestionJobs(
+  queue: IngestionQueueLike,
+  noteIds: string[],
+): Promise<number> {
+  let purged = 0
+  for (const noteId of noteIds) {
+    try {
+      const existing = queue.getJob ? await queue.getJob(noteId) : undefined
+      if (!existing)
+        continue
+      // Job#remove (not Queue#remove): Queue#remove silently no-ops on
+      // locked jobs while still resolving, so it can't be counted. Job#remove
+      // throws when locked — caught below and skipped.
+      await (existing.remove ? existing.remove() : queue.remove?.(noteId))
+      purged++
+    }
+    catch {
+      // Locked/active jobs refuse removal; skip without failing the rebuild.
+    }
+  }
+  return purged
 }
 
 /**

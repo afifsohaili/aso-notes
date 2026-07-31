@@ -16,7 +16,7 @@ describe('settings API', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
 
-      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'top-k', source: 'default' })
+      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'default' })
       expect(body.settings['extraction.blind_merge_threshold']).toEqual({ value: 0.85, source: 'default' })
       expect(body.settings['llm.agent.provider']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.agent.model']).toEqual({ value: expect.any(String), source: 'default' })
@@ -74,7 +74,7 @@ describe('settings API', () => {
 
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
       const body = await getRes.json()
-      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'top-k', source: 'default' })
+      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'default' })
     })
 
     test('rejects an invalid strategy with 400 and does not persist', async ({ server }) => {
@@ -89,7 +89,7 @@ describe('settings API', () => {
 
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
       const body = await getRes.json()
-      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'top-k', source: 'default' })
+      expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'default' })
     })
 
     test('rejects an out-of-range threshold with 400 and does not persist', async ({ server }) => {
