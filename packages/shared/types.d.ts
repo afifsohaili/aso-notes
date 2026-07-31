@@ -98,6 +98,7 @@ export interface Folders {
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   path: string;
+  synced_folder_id: string;
   updated_at: Generated<Timestamp>;
   workspace_id: string;
 }

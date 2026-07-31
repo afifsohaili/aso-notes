@@ -53,4 +53,21 @@ describe('buildFolderTree', () => {
     expect(tree[0]!.path).toBe('/a/b')
     expect(tree[0]!.children).toEqual([])
   })
+
+  it('never emits an empty-name node for the root path', () => {
+    const tree = buildFolderTree([{ path: '/', hasCover: true, noteCount: 3 }])
+    expect(tree).toHaveLength(1)
+    expect(tree[0]!.name).toBe('root')
+    expect(tree[0]!.path).toBe('/')
+    expect(tree[0]!.noteCount).toBe(3)
+    expect(tree[0]!.hasCover).toBe(true)
+  })
+
+  it('extracts the basename as the folder name', () => {
+    const tree = buildFolderTree([
+      { path: '/foo/bar/baz', hasCover: false, noteCount: 0 },
+    ])
+    expect(tree[0]!.name).toBe('baz')
+    expect(tree[0]!.path).toBe('/foo/bar/baz')
+  })
 })

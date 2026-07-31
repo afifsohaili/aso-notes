@@ -37,13 +37,16 @@ export interface ProcessPendingResult {
 
 export async function processPendingNotes(
   db: SyncDb,
-  args: { workspaceId: string, folderId: string | null, dispatcher: IngestionDispatcher },
+  args: { workspaceId: string, syncedFolderId?: string | null, folderId: string | null, dispatcher: IngestionDispatcher },
 ): Promise<ProcessPendingResult> {
   let query = db
     .selectFrom('notes')
     .select('id')
     .where('workspace_id', '=', args.workspaceId)
     .where('status', '=', 'pending')
+
+  if (args.syncedFolderId)
+    query = query.where('synced_folder_id', '=', args.syncedFolderId)
 
   if (args.folderId === null)
     query = query.where('folder_id', 'is', null)

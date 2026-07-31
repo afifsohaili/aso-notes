@@ -107,6 +107,7 @@ Each milestone was TDD-driven; full suite green before the next.
 - [x] **Phase 5 — Smoke-test note flow** — DONE 2026-07-31 (`deff817`). State machine, endpoints, auto-delete, retry, re-verify. Full suite: **83 test files / 651 tests passed**.
 - [x] **Phase 6 — Orphan GC on synced-folder removal** — DONE 2026-07-30 (`6ab36c4`). Decision core, inline GC, AGE cleanup, REMOVE confirmation UI. Full suite: **85 test files / 663 tests passed**.
 - [x] **Phase 7 — Close-out + browser verification** — DONE 2026-07-31 (`eeff440`, `501c424`, `0ed3bfe`, `e4edc08`). Final spec authored, env/README/AGENTS cleaned, full onboarding flow verified in a real browser against real infra (fresh DB, real OpenRouter LLM): signup → email verify → gate → wizard (synced folder + LLM config) → smoke-test verify → gate release → first-run chat → agent answer with citations from ingested notes → /notes, /graph, /notes/queue all live. Browser verification caught and fixed four real bugs (see Divergences → Phase 7). Full suite: **86 test files / 669 tests passed**.
+- [x] **Phase 8 — Per-root folder trees** — DONE 2026-07-31. Added `folders.synced_folder_id`, changed uniqueness to `(synced_folder_id, path)`, backfilled split by member-note roots, updated sync/resolve/notes/process/retry endpoints to carry `syncedFolder` context, reshaped `GET /api/folders` to one root per Synced Folder named by basename, and updated `/notes` sidebar to render grouped per-root trees. Full suite: green.
 
 ## Divergences / kept items
 
@@ -116,7 +117,7 @@ Each milestone was TDD-driven; full suite green before the next.
 - `packages/testing/README.md` and `server-caller.ts` cleaned up stale references.
 
 ### Phase 2
-- `folders` table was intentionally left workspace-scoped, not per-synced-folder. Two Synced Folders with the same relative folder path share one `folders` row and the notes UI merges their trees. Root `__folder-cover.md` files also collide on the `/` folder row. Recorded as a known interim quirk.
+- `folders` table was intentionally left workspace-scoped in Phase 2, not per-synced-folder. **Fixed in Phase 8**: added `folders.synced_folder_id`, switched uniqueness to `(synced_folder_id, path)`, and backfilled a split by each folder's member-note roots. The `/notes` sidebar now renders one tree per Synced Folder.
 - A `BEFORE INSERT` trigger provides a fallback `synced_folder_id` for test fixtures and legacy inserts; application code always supplies it explicitly.
 - Interim deletion returned 409 if notes exist; Phase 6 replaced this with orphan GC.
 - `DELETE` endpoint uses `ON DELETE CASCADE` on `notes.synced_folder_id` as a safety net, but the 409 guard prevented the cascade from firing through the API.
@@ -150,12 +151,22 @@ Each milestone was TDD-driven; full suite green before the next.
 
 ## Deferred / open
 
-- **Merged-tree folder path-collision quirk.** Two Synced Folders with overlapping relative paths share a `folders` row and the notes UI merges them. Either per-synced-folder `folders` rows or root-prefix rendering in the UI is needed.
 - **Stale embeddings on surviving concepts.** A Concept that survives orphan GC keeps its embedding/description. If the surviving mention set changes meaningfully, the embedding may become stale; no backfill or re-embed trigger exists.
 - **Pipeline raw-BullMQ test divergence.** The ingestion pipeline uses raw BullMQ instead of the `@base/jobs` `ApplicationJob` abstraction, so tests stub `ingestNote` directly rather than using the `queue` fixture.
 - **Rebuild / danger-zone interplay.** `POST /api/settings/rebuild` truncates graph-derived relational rows and recreates the shared AGE graph; it intentionally does not touch synced-folder config. Rebuild does not re-trigger onboarding state because config is not derived data.
 - **i18n `my-locale` coverage.** Wizard keys were added to `en.json`; `my.json` coverage is incomplete.
 - **Env source reporting.** Effective env-derived LLM values are reported as `source: 'default'`. A separate `'env'` source would be more honest but would require changing the two-source contract in settings responses.
+
+### Phase 8 divergences
+
+- **Backfill default for empty folders.** Folder rows that were empty from the start were attached to the workspace's first-created Synced Folder. This preserves existing covers but means root `/` covers from other roots follow the first root; any missing root covers for non-first roots are recreated by the next sync scan.
+- **Route query param for synced-folder context.** Note/folder URLs carry `?syncedFolder=<id>` to disambiguate colliding relative paths. Old URLs without the parameter fall back to the first matching Synced Folder (by `created_at`) for backward compatibility.
+- **Folder rows are not garbage-collected when empty.** Deleting the last note in a folder leaves an empty `folders` row; it is cleaned only when its Synced Folder is removed (CASCADE). This matches the pre-Phase 8 behavior and is acceptable for now.
+
+### Phase 8 bugs found by browser verification (2026-07-31, kimi-webbridge on the dev env)
+
+1. **Migration backfill created phantom folders in the first-created Synced Folder.** Step 3's "rows with no notes" check ran AFTER the step-2 repoint, at which point every old row had zero member notes — so every pre-existing folder path was duplicated into the first-created Synced Folder as a 0-count row (tiktok's expand showed aso-notes' subfolders). Fixed by snapshotting the genuinely-empty rows into a temp table before step 1; dev DB repaired by deleting the 6 phantom rows. Not caught by tests because template DBs migrate an empty `folders` table — backfill never executes.
+2. **`/notes` index page never reacted to folder selection.** `index.vue` captured `?syncedFolder` into refs at setup and its `selectFolder` only navigated — query-only navigations don't remount, so the notes list never refetched and folder clicks appeared dead (URL changed, list static). Fixed by deriving selection from `route.query` via computed (mirroring the catch-all page). Component test added: selection follows route-query change.
 
 ## Wayfinder record
 

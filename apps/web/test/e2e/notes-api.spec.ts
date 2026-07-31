@@ -21,7 +21,7 @@ afterAll(() => {
     rmSync(dir, { recursive: true, force: true })
 })
 
-async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string): Promise<string> {
+async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string): Promise<{ planNoteId: string, syncedFolderId: string }> {
   await ensureNotesGraphCatalog(trx)
 
   const syncedFolder = await trx
@@ -39,30 +39,31 @@ async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string)
       .insertInto('folders')
       .values({
         workspace_id: workspaceId,
+        synced_folder_id: syncedFolder.id,
         path: p,
         cover_content: p === '/project-a' ? 'Project A cover' : null,
         cover_hash: p === '/project-a' ? 'abc123' : null,
       })
-      .onConflict(oc => oc.columns(['workspace_id', 'path']).doNothing())
+      .onConflict(oc => oc.columns(['synced_folder_id', 'path']).doNothing())
       .execute()
   }
 
   const folderA = await trx
     .selectFrom('folders')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', '/project-a')
     .executeTakeFirstOrThrow()
   const folderB = await trx
     .selectFrom('folders')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', '/project-b')
     .executeTakeFirstOrThrow()
   const folderEng = await trx
     .selectFrom('folders')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', '/project-a/engineering')
     .executeTakeFirstOrThrow()
 
@@ -97,7 +98,7 @@ async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string)
   const planNote = await trx
     .selectFrom('notes')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', '/project-a/plan.md')
     .executeTakeFirstOrThrow()
 
@@ -109,7 +110,7 @@ async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string)
   const ideasNote = await trx
     .selectFrom('notes')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', '/project-b/ideas.md')
     .executeTakeFirstOrThrow()
 
@@ -124,7 +125,7 @@ async function seedNotesDomain(trx: any, workspaceId: string, notesDir?: string)
     })
     .execute()
 
-  return planNote.id
+  return { planNoteId: planNote.id, syncedFolderId: syncedFolder.id }
 }
 
 async function taggedEdgeExists(trx: any, noteId: string, tagId: string): Promise<boolean> {
@@ -173,7 +174,7 @@ describe.sequential('notes API', () => {
   describe('gET /api/folders', () => {
     test('returns nested folder tree with covers and note counts', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
-      await seedNotesDomain(trx, workspace.id)
+      const { syncedFolderId } = await seedNotesDomain(trx, workspace.id)
 
       const res = await server('/api/folders', { headers: { cookie: cookies } })
       expect(res.status).toBe(200)
@@ -181,28 +182,145 @@ describe.sequential('notes API', () => {
       const body = await res.json()
       expect(body).toEqual([
         {
-          name: 'project-a',
-          path: '/project-a',
-          hasCover: true,
-          noteCount: 1,
+          syncedFolderId,
+          name: '__default_synced_folder__',
+          absolutePath: '/__default_synced_folder__',
+          hasCover: false,
+          noteCount: 0,
           children: [
             {
-              name: 'engineering',
-              path: '/project-a/engineering',
+              name: 'project-a',
+              path: '/project-a',
+              hasCover: true,
+              noteCount: 1,
+              children: [
+                {
+                  name: 'engineering',
+                  path: '/project-a/engineering',
+                  hasCover: false,
+                  noteCount: 1,
+                  children: [],
+                },
+              ],
+            },
+            {
+              name: 'project-b',
+              path: '/project-b',
               hasCover: false,
               noteCount: 1,
               children: [],
             },
           ],
         },
-        {
-          name: 'project-b',
-          path: '/project-b',
-          hasCover: false,
-          noteCount: 1,
-          children: [],
-        },
       ])
+    })
+
+    test('returns one root per synced folder with separate subtrees when relative paths collide', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+
+      const rootA = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/notes-a' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const rootB = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/notes-b' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      const folderA = await trx
+        .insertInto('folders')
+        .values({ workspace_id: workspace.id, synced_folder_id: rootA.id, path: '/ideas' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const folderB = await trx
+        .insertInto('folders')
+        .values({ workspace_id: workspace.id, synced_folder_id: rootB.id, path: '/ideas' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .insertInto('notes')
+        .values([
+          {
+            workspace_id: workspace.id,
+            synced_folder_id: rootA.id,
+            folder_id: folderA.id,
+            path: '/ideas/a.md',
+            title: 'A',
+            content_hash: 'h1',
+            status: 'ingested',
+          },
+          {
+            workspace_id: workspace.id,
+            synced_folder_id: rootB.id,
+            folder_id: folderB.id,
+            path: '/ideas/b.md',
+            title: 'B',
+            content_hash: 'h2',
+            status: 'ingested',
+          },
+          {
+            workspace_id: workspace.id,
+            synced_folder_id: rootA.id,
+            folder_id: null,
+            path: '/root-a-only.md',
+            title: 'Root A only',
+            content_hash: 'h3',
+            status: 'ingested',
+          },
+        ])
+        .execute()
+
+      const res = await server('/api/folders', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body).toHaveLength(2)
+
+      const byId = new Map(body.map((g: any) => [g.syncedFolderId, g]))
+      const groupA = byId.get(rootA.id)
+      const groupB = byId.get(rootB.id)
+
+      expect(groupA).toBeTruthy()
+      expect(groupB).toBeTruthy()
+      expect(groupA.name).toBe('notes-a')
+      expect(groupB.name).toBe('notes-b')
+      expect(groupA.noteCount).toBe(1) // root-a-only.md
+      expect(groupB.noteCount).toBe(0)
+      expect(groupA.children).toHaveLength(1)
+      expect(groupA.children[0]).toMatchObject({ name: 'ideas', path: '/ideas', noteCount: 1 })
+      expect(groupB.children).toHaveLength(1)
+      expect(groupB.children[0]).toMatchObject({ name: 'ideas', path: '/ideas', noteCount: 1 })
+    })
+
+    test('does not emit an empty-name root node: the synced folder root replaces the / row', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const root = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/root' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      // Simulate a root cover creating the / row.
+      await trx
+        .insertInto('folders')
+        .values({ workspace_id: workspace.id, synced_folder_id: root.id, path: '/', cover_content: 'root cover', cover_hash: 'h' })
+        .execute()
+
+      const res = await server('/api/folders', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body).toHaveLength(1)
+      expect(body[0].name).toBe('root')
+      expect(body[0].hasCover).toBe(true)
+      expect(body[0].children).toEqual([])
+
+      // No empty-name node appears anywhere in the response.
+      const hasEmptyName = JSON.stringify(body).includes('"name":""')
+      expect(hasEmptyName).toBe(false)
     })
   })
 
@@ -249,6 +367,68 @@ describe.sequential('notes API', () => {
       const body = await res.json()
       expect(body).toHaveLength(1)
       expect(body[0].path).toBe('/inbox.md')
+    })
+
+    test('scopes the notes list to the selected synced folder when relative paths collide', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+
+      const rootA = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/a' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const rootB = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/b' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      const folderA = await trx
+        .insertInto('folders')
+        .values({ workspace_id: workspace.id, synced_folder_id: rootA.id, path: '/ideas' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const folderB = await trx
+        .insertInto('folders')
+        .values({ workspace_id: workspace.id, synced_folder_id: rootB.id, path: '/ideas' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .insertInto('notes')
+        .values([
+          {
+            workspace_id: workspace.id,
+            synced_folder_id: rootA.id,
+            folder_id: folderA.id,
+            path: '/ideas/plan.md',
+            title: 'Plan A',
+            content_hash: 'h1',
+            status: 'ingested',
+          },
+          {
+            workspace_id: workspace.id,
+            synced_folder_id: rootB.id,
+            folder_id: folderB.id,
+            path: '/ideas/plan.md',
+            title: 'Plan B',
+            content_hash: 'h2',
+            status: 'ingested',
+          },
+        ])
+        .execute()
+
+      const resA = await server(`/api/notes?syncedFolder=${rootA.id}&folder=/ideas`, { headers: { cookie: cookies } })
+      expect(resA.status).toBe(200)
+      const bodyA = await resA.json()
+      expect(bodyA).toHaveLength(1)
+      expect(bodyA[0].title).toBe('Plan A')
+
+      const resB = await server(`/api/notes?syncedFolder=${rootB.id}&folder=/ideas`, { headers: { cookie: cookies } })
+      expect(resB.status).toBe(200)
+      const bodyB = await resB.json()
+      expect(bodyB).toHaveLength(1)
+      expect(bodyB[0].title).toBe('Plan B')
     })
 
     test('last_run summary strips messages and response', async ({ server, trx }) => {

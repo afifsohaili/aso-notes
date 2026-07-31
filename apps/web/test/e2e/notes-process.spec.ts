@@ -20,9 +20,15 @@ async function seedFolderWithNotes(
   folderPath: string,
   notes: { path: string, status?: string, pipeline?: string }[],
 ) {
+  const syncedFolder = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: `/tmp/${crypto.randomUUID()}` })
+    .returning('id')
+    .executeTakeFirstOrThrow()
+
   const [folder] = await trx
     .insertInto('folders')
-    .values({ workspace_id: workspaceId, path: folderPath })
+    .values({ workspace_id: workspaceId, synced_folder_id: syncedFolder.id, path: folderPath })
     .returning('id')
     .execute()
 
@@ -31,6 +37,7 @@ async function seedFolderWithNotes(
       .insertInto('notes')
       .values({
         workspace_id: workspaceId,
+        synced_folder_id: syncedFolder.id,
         folder_id: folder.id,
         path: note.path,
         title: note.path,

@@ -25,7 +25,7 @@ A file written or uploaded by the User — Markdown, plain text, PDF, anything. 
 _Avoid_: Document, page, file
 
 **Folder**:
-A directory containing Notes and optionally a Folder Cover. Folders can nest.
+A directory containing Notes and optionally a Folder Cover. Folders can nest. A Folder belongs to exactly one Synced Folder; the tree rendered in the /notes sidebar is per-root, so the same relative path in two Synced Folders produces two separate Folders.
 _Avoid_: Directory, vault, collection
 
 **Folder Cover**:

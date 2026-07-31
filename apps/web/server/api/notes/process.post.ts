@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   const db = useDatabase(config)
   const body = await readBody(event)
   const folder = typeof body?.folder === 'string' ? body.folder : null
+  const syncedFolderId = typeof body?.syncedFolder === 'string' ? body.syncedFolder : null
 
   const membership = await db
     .selectFrom('memberships')
@@ -24,12 +25,16 @@ export default defineEventHandler(async (event) => {
 
   let folderId: string | null = null
   if (folder && folder !== '/') {
-    const folderRow = await db
+    let q = db
       .selectFrom('folders')
       .select('id')
       .where('workspace_id', '=', membership.workspace_id)
       .where('path', '=', folder)
-      .executeTakeFirst()
+
+    if (syncedFolderId)
+      q = q.where('synced_folder_id', '=', syncedFolderId)
+
+    const folderRow = await q.executeTakeFirst()
 
     if (!folderRow) {
       throw createError({ statusCode: 404, statusMessage: 'Folder not found' })
@@ -45,6 +50,7 @@ export default defineEventHandler(async (event) => {
 
   return await processPendingNotes(db, {
     workspaceId: membership.workspace_id,
+    syncedFolderId,
     folderId,
     dispatcher,
   })

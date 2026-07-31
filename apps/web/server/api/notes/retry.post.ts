@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const notePath = typeof body?.path === 'string' ? body.path : null
+  const syncedFolderId = typeof body?.syncedFolder === 'string' ? body.syncedFolder : null
   if (!notePath) {
     throw createError({ statusCode: 400, statusMessage: 'path is required' })
   }
@@ -33,12 +34,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Note not found' })
   }
 
-  const note = await db
+  let noteQuery = db
     .selectFrom('notes')
     .select(['id', 'status'])
     .where('workspace_id', '=', membership.workspace_id)
     .where('path', '=', notePath)
-    .executeTakeFirst()
+
+  if (syncedFolderId)
+    noteQuery = noteQuery.where('synced_folder_id', '=', syncedFolderId)
+
+  const note = await noteQuery.executeTakeFirst()
 
   if (!note) {
     throw createError({ statusCode: 404, statusMessage: 'Note not found' })

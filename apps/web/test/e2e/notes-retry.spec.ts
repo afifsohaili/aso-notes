@@ -15,9 +15,15 @@ function recordingDispatcher(): IngestionDispatcher & { calls: string[] } {
 }
 
 async function seedNote(trx: any, workspaceId: string, notePath: string, status: string) {
+  const syncedFolder = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: `/tmp/${crypto.randomUUID()}` })
+    .returning('id')
+    .executeTakeFirstOrThrow()
+
   const [folder] = await trx
     .insertInto('folders')
-    .values({ workspace_id: workspaceId, path: '/proj' })
+    .values({ workspace_id: workspaceId, synced_folder_id: syncedFolder.id, path: '/proj' })
     .returning('id')
     .execute()
 
@@ -25,6 +31,7 @@ async function seedNote(trx: any, workspaceId: string, notePath: string, status:
     .insertInto('notes')
     .values({
       workspace_id: workspaceId,
+      synced_folder_id: syncedFolder.id,
       folder_id: folder.id,
       path: notePath,
       title: notePath,

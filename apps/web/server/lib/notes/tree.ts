@@ -14,10 +14,17 @@ export interface FolderNode {
   children: FolderNode[]
 }
 
+function folderName(path: string): string {
+  if (path === '/')
+    return 'root'
+  return path.split('/').pop() ?? path
+}
+
 /**
  * Build a nested folder tree from flat folder rows. Folders are linked by
  * their path-string parent (folderPathOf). Any folder whose parent is not in
- * the input becomes a top-level node. Children are sorted by name.
+ * the input becomes a top-level node. Children are sorted by name. The root
+ * path `/` is named `root` so an empty-name node is never emitted.
  */
 export function buildFolderTree(folders: FolderTreeInput[]): FolderNode[] {
   const byPath = new Map<string, FolderNode>()
@@ -27,7 +34,7 @@ export function buildFolderTree(folders: FolderTreeInput[]): FolderNode[] {
   const sorted = [...folders].sort((a, b) => a.path.split('/').length - b.path.split('/').length)
 
   for (const folder of sorted) {
-    const name = folder.path.split('/').pop() ?? folder.path
+    const name = folderName(folder.path)
     const node: FolderNode = {
       name,
       path: folder.path,

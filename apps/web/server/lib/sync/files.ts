@@ -33,21 +33,21 @@ export type UpsertOutcome = 'skip' | 'insert' | 'update' | 'rename'
  * (path-string model, no parent_id; root notes get folder_id null — M1).
  * Returns the immediate parent folder id, or null for root-level notes.
  *
- * Folders remain workspace-scoped in Phase 2; the same relative folder path in
- * two Synced Folders maps to a single folders row. This is an interim
- * simplification documented in the plan.
+ * Folders are per-Synced-Folder: the same relative path in two roots maps to
+ * distinct rows.
  */
 export async function ensureFolderRows(
   db: SyncDb,
   workspaceId: string,
+  syncedFolderId: string,
   notePath: string,
 ): Promise<string | null> {
   const folders = ancestorFolderPaths(notePath)
   for (const folderPath of folders) {
     await db
       .insertInto('folders')
-      .values({ workspace_id: workspaceId, path: folderPath })
-      .onConflict(oc => oc.columns(['workspace_id', 'path']).doNothing())
+      .values({ workspace_id: workspaceId, synced_folder_id: syncedFolderId, path: folderPath })
+      .onConflict(oc => oc.columns(['synced_folder_id', 'path']).doNothing())
       .execute()
   }
   const parentPath = folderPathOf(notePath)
@@ -56,7 +56,7 @@ export async function ensureFolderRows(
   const parent = await db
     .selectFrom('folders')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', parentPath)
     .executeTakeFirstOrThrow()
   return parent.id
@@ -76,16 +76,16 @@ function descendantNotesPredicate(db: SyncDb, syncedFolderId: string, folderPath
 }
 
 /** Ensure a single folder row exists (used for covers, including the '/' root row). */
-async function ensureFolderRow(db: SyncDb, workspaceId: string, folderPath: string): Promise<string> {
+async function ensureFolderRow(db: SyncDb, workspaceId: string, syncedFolderId: string, folderPath: string): Promise<string> {
   await db
     .insertInto('folders')
-    .values({ workspace_id: workspaceId, path: folderPath })
-    .onConflict(oc => oc.columns(['workspace_id', 'path']).doNothing())
+    .values({ workspace_id: workspaceId, synced_folder_id: syncedFolderId, path: folderPath })
+    .onConflict(oc => oc.columns(['synced_folder_id', 'path']).doNothing())
     .execute()
   const row = await db
     .selectFrom('folders')
     .select('id')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', folderPath)
     .executeTakeFirstOrThrow()
   return row.id
@@ -106,12 +106,12 @@ async function handleCoverUpsert(
 ): Promise<UpsertOutcome> {
   const folderPath = folderPathOf(notePath)
   const hash = contentHash(content)
-  await ensureFolderRow(db, workspaceId, folderPath)
+  await ensureFolderRow(db, workspaceId, syncedFolderId, folderPath)
 
   const folder = await db
     .selectFrom('folders')
     .select(['id', 'cover_hash'])
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', folderPath)
     .executeTakeFirstOrThrow()
 
@@ -134,7 +134,7 @@ async function handleCoverUnlink(db: SyncDb, workspaceId: string, syncedFolderId
   const folder = await db
     .selectFrom('folders')
     .select(['id', 'cover_hash'])
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', folderPath)
     .executeTakeFirst()
   if (!folder || folder.cover_hash === null)
@@ -189,7 +189,7 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
     case 'skip':
       return 'skip'
     case 'update': {
-      const folderId = await ensureFolderRows(db, workspaceId, notePath)
+      const folderId = await ensureFolderRows(db, workspaceId, syncedFolderId, notePath)
       await db
         .updateTable('notes')
         .set({
@@ -208,7 +208,7 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
     case 'rename': {
       // Move the row: preserve id, status, ingested_hash, links, and all
       // derived data — identical content needs no re-ingestion.
-      const folderId = await ensureFolderRows(db, workspaceId, notePath)
+      const folderId = await ensureFolderRows(db, workspaceId, syncedFolderId, notePath)
       await db
         .updateTable('notes')
         .set({
@@ -223,7 +223,7 @@ export async function handleFileUpsert(event: FileEvent): Promise<UpsertOutcome>
       return 'rename'
     }
     case 'insert': {
-      const folderId = await ensureFolderRows(db, workspaceId, notePath)
+      const folderId = await ensureFolderRows(db, workspaceId, syncedFolderId, notePath)
       await db
         .insertInto('notes')
         .values({
@@ -334,7 +334,7 @@ export async function startupScan(args: {
   const coveredFolders = await db
     .selectFrom('folders')
     .select('path')
-    .where('workspace_id', '=', workspaceId)
+    .where('synced_folder_id', '=', syncedFolderId)
     .where('cover_hash', 'is not', null)
     .execute()
   for (const folder of coveredFolders) {

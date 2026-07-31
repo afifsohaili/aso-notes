@@ -17,7 +17,7 @@ async function givenNote(trx: any, workspaceId: string, path: string) {
   return trx
     .insertInto('notes')
     .values({ workspace_id: workspaceId, path, title: path, content: '# hello\n\nworld' })
-    .returning(['id', 'workspace_id', 'folder_id', 'path', 'title', 'content', 'pipeline'])
+    .returning(['id', 'workspace_id', 'synced_folder_id', 'folder_id', 'path', 'title', 'content', 'pipeline'])
     .executeTakeFirstOrThrow()
 }
 

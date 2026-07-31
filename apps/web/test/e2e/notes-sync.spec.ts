@@ -464,7 +464,7 @@ describe('startup scan', () => {
     writeNote(notesDir, 'proj/__folder-cover.md', 'proj cover')
     await trx
       .insertInto('folders')
-      .values({ workspace_id: workspaceId, path: '/stale', cover_content: 'old', cover_hash: 'h' })
+      .values({ workspace_id: workspaceId, synced_folder_id: syncedFolderId, path: '/stale', cover_content: 'old', cover_hash: 'h' })
       .execute()
 
     await startupScan({ db: trx, workspaceId, syncedFolderId, notesDir })

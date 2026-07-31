@@ -41,17 +41,19 @@ export class ResolveCoversStage implements Stage {
         SELECT f.path, f.cover_content, 0 AS depth
         FROM folders f
         WHERE f.workspace_id = ${ctx.workspaceId}
+          AND f.synced_folder_id = ${ctx.note.synced_folder_id}
           AND f.path = ${startPath}
         UNION ALL
         SELECT p.path, p.cover_content, c.depth + 1
         FROM folders p
         JOIN chain c
           ON p.workspace_id = ${ctx.workspaceId}
-         AND c.path <> '/'
-         AND p.path = CASE
-           WHEN position('/' IN substring(c.path FROM 2)) = 0 THEN '/'
-           ELSE regexp_replace(c.path, '/[^/]+$', '')
-         END
+          AND p.synced_folder_id = ${ctx.note.synced_folder_id}
+          AND c.path <> '/'
+          AND p.path = CASE
+            WHEN position('/' IN substring(c.path FROM 2)) = 0 THEN '/'
+            ELSE regexp_replace(c.path, '/[^/]+$', '')
+          END
         WHERE c.depth < ${MAX_COVER_CHAIN_DEPTH - 1}
       )
       SELECT path, cover_content, depth FROM chain ORDER BY depth DESC

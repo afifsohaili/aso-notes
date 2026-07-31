@@ -16,13 +16,17 @@ async function resolveWorkspaceId(db: any, userId: string): Promise<string | nul
   return membership?.workspace_id ?? null
 }
 
-async function loadNoteByPath(db: any, workspaceId: string, notePath: string) {
-  return db
+async function loadNoteByPath(db: any, workspaceId: string, notePath: string, syncedFolderId?: string | null) {
+  let q = db
     .selectFrom('notes')
     .select(['id', 'path', 'title', 'content', 'status', 'updated_at', 'folder_id', 'last_run', 'synced_folder_id'])
     .where('workspace_id', '=', workspaceId)
     .where('path', '=', notePath)
-    .executeTakeFirst()
+
+  if (syncedFolderId)
+    q = q.where('synced_folder_id', '=', syncedFolderId)
+
+  return q.executeTakeFirst()
 }
 
 async function loadNoteTags(db: any, workspaceId: string, noteId: string) {
@@ -58,11 +62,28 @@ async function loadFolderPath(db: any, workspaceId: string, folderId: string | n
 
 /**
  * Resolve the Synced Folder root to use for a note path.
- * If the path already exists in the DB, use its root. Otherwise fall back to
- * the first Synced Folder for the workspace. This keeps the existing PUT flow
- * working while multi-root UI ambiguity is resolved in Phase 4.
+ * If the caller supplied a syncedFolder query param, use it. Otherwise, if the
+ * path already exists in the DB, use its root. Otherwise fall back to the first
+ * Synced Folder for the workspace.
  */
-async function resolveNoteRoot(db: any, workspaceId: string, notePath: string): Promise<{ syncedFolderId: string, rootPath: string } | null> {
+async function resolveNoteRoot(
+  db: any,
+  workspaceId: string,
+  notePath: string,
+  requestedSyncedFolderId?: string | null,
+): Promise<{ syncedFolderId: string, rootPath: string } | null> {
+  if (requestedSyncedFolderId) {
+    const folder = await db
+      .selectFrom('synced_folders')
+      .select(['id', 'path'])
+      .where('workspace_id', '=', workspaceId)
+      .where('id', '=', requestedSyncedFolderId)
+      .executeTakeFirst()
+
+    if (folder)
+      return { syncedFolderId: folder.id, rootPath: folder.path }
+  }
+
   const fromNote = await db
     .selectFrom('notes')
     .innerJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
@@ -105,9 +126,12 @@ export default defineEventHandler(async (event) => {
   const segments = slug.split('/').filter(Boolean)
 
   try {
+    const query = getQuery(event)
+    const syncedFolderId = typeof query.syncedFolder === 'string' ? query.syncedFolder : null
+
     if (event.method === 'POST' && isTagsRoute(segments)) {
       const notePath = parseTagsRoute(segments)
-      const note = await loadNoteByPath(db, workspaceId, notePath)
+      const note = await loadNoteByPath(db, workspaceId, notePath, syncedFolderId)
       if (!note) {
         throw createError({ statusCode: 404, statusMessage: 'Note not found' })
       }
@@ -118,7 +142,7 @@ export default defineEventHandler(async (event) => {
 
     if (event.method === 'DELETE' && isTagDeleteRoute(segments)) {
       const { notePath, tagId } = parseTagDeleteRoute(segments)
-      const note = await loadNoteByPath(db, workspaceId, notePath)
+      const note = await loadNoteByPath(db, workspaceId, notePath, syncedFolderId)
       if (!note) {
         throw createError({ statusCode: 404, statusMessage: 'Note not found' })
       }
@@ -133,7 +157,7 @@ export default defineEventHandler(async (event) => {
       const body = await readBody(event)
       const content = typeof body.content === 'string' ? body.content : ''
 
-      const root = await resolveNoteRoot(db, workspaceId, notePath)
+      const root = await resolveNoteRoot(db, workspaceId, notePath, syncedFolderId)
       if (!root) {
         throw createError({ statusCode: 400, statusMessage: 'No synced folder configured' })
       }
@@ -144,7 +168,7 @@ export default defineEventHandler(async (event) => {
 
       await handleFileUpsert({ db, workspaceId, syncedFolderId: root.syncedFolderId, notesDir: root.rootPath, absolutePath })
 
-      const updated = await loadNoteByPath(db, workspaceId, notePath)
+      const updated = await loadNoteByPath(db, workspaceId, notePath, root.syncedFolderId)
       if (!updated) {
         throw createError({ statusCode: 500, statusMessage: 'Failed to update note' })
       }
@@ -158,7 +182,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const note = await loadNoteByPath(db, workspaceId, notePath)
+    const note = await loadNoteByPath(db, workspaceId, notePath, syncedFolderId)
     if (!note) {
       throw createError({ statusCode: 404, statusMessage: 'Note not found' })
     }

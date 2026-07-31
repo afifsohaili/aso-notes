@@ -11,6 +11,7 @@ function fakeNote(overrides: Partial<PipelineNote> = {}): PipelineNote {
   return {
     id: 'note-1',
     workspace_id: 'ws-1',
+    synced_folder_id: 'sf-1',
     folder_id: null,
     path: '/a.md',
     title: 'a',

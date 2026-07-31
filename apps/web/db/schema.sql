@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict YVEl2lWCZPCSHglap9EfcGy5yfRFa61Mjeeyf128C2jcLt256xsvQCiYnscugdy
+\restrict UzZ0N1JjWN1VoYqEkMl6YVdBjGi7aLWFTmlh1YkZSv9YmH3D6EGn9ZujONDDkEQ
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -52,6 +52,7 @@ ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_workspac
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_to_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_from_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_synced_folder_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.conversations DROP CONSTRAINT IF EXISTS conversations_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concepts DROP CONSTRAINT IF EXISTS concepts_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_workspace_id_fkey;
@@ -86,7 +87,8 @@ DROP INDEX IF EXISTS public.idx_links_from_note_id;
 DROP INDEX IF EXISTS public.idx_concepts_embedding_hnsw;
 DROP INDEX IF EXISTS public.idx_chunks_note_id;
 DROP INDEX IF EXISTS public.idx_chunks_embedding_hnsw;
-DROP INDEX IF EXISTS public.folders_workspace_path_unique;
+DROP INDEX IF EXISTS public.folders_synced_folder_path_unique;
+DROP INDEX IF EXISTS public.folders_synced_folder_id_idx;
 DROP INDEX IF EXISTS public.concepts_workspace_name_normalized_unique;
 ALTER TABLE IF EXISTS ONLY public.workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
 ALTER TABLE IF EXISTS ONLY public.workspace_settings DROP CONSTRAINT IF EXISTS workspace_settings_pkey;
@@ -397,7 +399,8 @@ CREATE TABLE public.folders (
     cover_content text,
     cover_hash character varying,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    synced_folder_id uuid NOT NULL
 );
 
 
@@ -540,7 +543,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-30 12:18:51.885199'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-07-31 11:02:38.268485'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -573,7 +576,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-30 12:18:51.885199'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-07-31 11:02:38.268485'::timestamp without time zone NOT NULL
 );
 
 
@@ -1076,10 +1079,17 @@ CREATE UNIQUE INDEX concepts_workspace_name_normalized_unique ON public.concepts
 
 
 --
--- Name: folders_workspace_path_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: folders_synced_folder_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX folders_workspace_path_unique ON public.folders USING btree (workspace_id, path);
+CREATE INDEX folders_synced_folder_id_idx ON public.folders USING btree (synced_folder_id);
+
+
+--
+-- Name: folders_synced_folder_path_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX folders_synced_folder_path_unique ON public.folders USING btree (synced_folder_id, path);
 
 
 --
@@ -1326,6 +1336,14 @@ ALTER TABLE ONLY public.concepts
 
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: folders folders_synced_folder_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.folders
+    ADD CONSTRAINT folders_synced_folder_id_fkey FOREIGN KEY (synced_folder_id) REFERENCES public.synced_folders(id) ON DELETE CASCADE;
 
 
 --
@@ -1604,5 +1622,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict YVEl2lWCZPCSHglap9EfcGy5yfRFa61Mjeeyf128C2jcLt256xsvQCiYnscugdy
+\unrestrict UzZ0N1JjWN1VoYqEkMl6YVdBjGi7aLWFTmlh1YkZSv9YmH3D6EGn9ZujONDDkEQ
 

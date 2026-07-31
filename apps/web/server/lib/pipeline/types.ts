@@ -9,6 +9,7 @@ export type PipelineId = string
 export interface PipelineNote {
   id: string
   workspace_id: string
+  synced_folder_id: string
   folder_id: string | null
   path: string
   title: string

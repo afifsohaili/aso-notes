@@ -31,7 +31,7 @@ const NOTES_DOMAIN_TABLES = [
 ] as const
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
-  folders: ['id', 'workspace_id', 'path', 'cover_content', 'cover_hash', 'created_at', 'updated_at'],
+  folders: ['id', 'workspace_id', 'synced_folder_id', 'path', 'cover_content', 'cover_hash', 'created_at', 'updated_at'],
   notes: ['id', 'workspace_id', 'synced_folder_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'ingested_hash', 'status', 'pipeline', 'last_run', 'created_at', 'updated_at'],
   chunks: ['id', 'workspace_id', 'note_id', 'seq', 'text', 'token_count', 'embedding', 'created_at', 'updated_at'],
   concepts: ['id', 'workspace_id', 'name', 'name_normalized', 'description', 'embedding', 'created_at', 'updated_at'],
@@ -318,9 +318,15 @@ describe('notes domain schema (M1)', () => {
   test('deleting a workspace cascade-deletes the whole notes domain', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'doomed')
 
+    const syncedFolder = await trx
+      .insertInto('synced_folders')
+      .values({ workspace_id: workspaceId, path: '/tmp/doomed' })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+
     const folder = await trx
       .insertInto('folders')
-      .values({ workspace_id: workspaceId, path: '/proj' })
+      .values({ workspace_id: workspaceId, synced_folder_id: syncedFolder.id, path: '/proj' })
       .returning('id')
       .executeTakeFirstOrThrow()
     const noteId = await givenNote(trx, workspaceId, '/proj/a.md')

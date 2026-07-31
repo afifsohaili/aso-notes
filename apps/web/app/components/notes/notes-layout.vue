@@ -4,10 +4,23 @@ import type { NoteDetailNote } from '~/components/notes/note-detail.vue'
 import type { NoteListItem } from '~/components/notes/note-list.vue'
 import { useI18n } from 'vue-i18n'
 import BoltIcon from '~icons/heroicons/bolt'
+import ChevronDownIcon from '~icons/heroicons/chevron-down'
+import ChevronRightIcon from '~icons/heroicons/chevron-right'
+import FolderIcon from '~icons/heroicons/folder'
 import PlusIcon from '~icons/heroicons/plus'
 
+export interface SyncedFolderGroup {
+  syncedFolderId: string
+  name: string
+  absolutePath: string
+  hasCover: boolean
+  noteCount: number
+  children: FolderNode[]
+}
+
 const props = defineProps<{
-  folders: FolderNode[]
+  groups: SyncedFolderGroup[]
+  selectedSyncedFolderId: string | null
   selectedFolderPath: string | null
   selectedNotePath: string | null
   notes: NoteListItem[]
@@ -18,14 +31,14 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'selectFolder', path: string): void
+  (e: 'selectFolder', syncedFolderId: string, path: string): void
   (e: 'selectNote', path: string): void
   (e: 'saveNote', content: string): void
   (e: 'addTag', name: string): void
   (e: 'removeTag', tagId: string): void
   (e: 'retry', path: string): void
   (e: 'createNote', path: string): void
-  (e: 'processFolder', folder: string): void
+  (e: 'processFolder', path: string): void
   (e: 'editingStarted'): void
 }>()
 
@@ -79,6 +92,29 @@ async function createNote() {
   cancelAddNote()
   emit('createNote', path)
 }
+
+const expandedGroups = ref<Set<string>>(new Set())
+
+function isGroupExpanded(group: SyncedFolderGroup): boolean {
+  return expandedGroups.value.has(group.syncedFolderId) || props.selectedSyncedFolderId === group.syncedFolderId
+}
+
+function toggleGroup(group: SyncedFolderGroup) {
+  const next = new Set(expandedGroups.value)
+  if (next.has(group.syncedFolderId))
+    next.delete(group.syncedFolderId)
+  else
+    next.add(group.syncedFolderId)
+  expandedGroups.value = next
+}
+
+function isGroupSelected(group: SyncedFolderGroup): boolean {
+  return props.selectedSyncedFolderId === group.syncedFolderId && (props.selectedFolderPath === null || props.selectedFolderPath === '/')
+}
+
+function selectFolder(group: SyncedFolderGroup, folderPath: string) {
+  emit('selectFolder', group.syncedFolderId, folderPath)
+}
 </script>
 
 <template>
@@ -89,11 +125,43 @@ async function createNote() {
         <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
           {{ t('notes.folders') }}
         </h2>
-        <folder-tree
-          :folders="folders"
-          :selected-path="selectedFolderPath"
-          @select="emit('selectFolder', $event)"
-        />
+        <div class="p-2">
+          <ul class="space-y-1">
+            <li v-for="group in groups" :key="group.syncedFolderId" data-testid="folder-tree-group">
+              <div class="group">
+                <div
+                  class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer"
+                  :class="isGroupSelected(group) ? 'bg-indigo-50 text-indigo-900' : 'text-gray-700'"
+                  data-testid="folder-tree-row"
+                  @click="selectFolder(group, '/')"
+                >
+                  <button
+                    type="button"
+                    class="p-0.5 rounded hover:bg-gray-200"
+                    @click.stop="toggleGroup(group)"
+                  >
+                    <ChevronDownIcon v-if="isGroupExpanded(group)" class="h-3.5 w-3.5 text-gray-500" />
+                    <ChevronRightIcon v-else-if="group.children.length > 0" class="h-3.5 w-3.5 text-gray-500" />
+                    <span v-else class="inline-block w-3.5" />
+                  </button>
+                  <FolderIcon class="h-4 w-4 text-gray-400" />
+                  <span class="flex-1 text-left truncate">{{ group.name }}</span>
+                  <span class="text-xs text-gray-400">{{ group.noteCount }}</span>
+                </div>
+                <div
+                  v-if="isGroupExpanded(group) && group.children.length > 0"
+                  class="ml-4 pl-2 border-l border-gray-200"
+                >
+                  <folder-tree
+                    :folders="group.children"
+                    :selected-path="selectedFolderPath"
+                    @select="selectFolder(group, $event)"
+                  />
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
       </aside>
 
       <!-- Note list -->

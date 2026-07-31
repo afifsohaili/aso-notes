@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { FolderNode } from '~/components/notes/folder-tree.vue'
 import type { NoteDetailNote } from '~/components/notes/note-detail.vue'
 import type { NoteListItem } from '~/components/notes/note-list.vue'
+import type { SyncedFolderGroup } from '~/components/notes/notes-layout.vue'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({
@@ -18,30 +18,34 @@ if (typeof route.query.note === 'string' && route.query.note) {
   await navigateTo(`/notes${route.query.note}`, { replace: true })
 }
 
-const { data: folders } = await useFetch<FolderNode[]>('/api/folders')
+const { data: groups } = await useFetch<SyncedFolderGroup[]>('/api/folders')
 
-const selectedFolderPath = ref<string | null>(null)
+// Selection follows the route: folder clicks navigate (?syncedFolder=...),
+// so derive state from the query reactively instead of capturing it once.
+const selectedSyncedFolderId = computed(() => typeof route.query.syncedFolder === 'string' && route.query.syncedFolder !== '' ? route.query.syncedFolder : null)
+const selectedFolderPath = computed(() => selectedSyncedFolderId.value ? '/' : null)
 const selectedNotePath = ref<string | null>(null)
 
 const { data: notes, refresh: refreshNotes } = await useFetch<NoteListItem[]>('/api/notes', {
   query: computed(() => ({
+    syncedFolder: selectedSyncedFolderId.value ?? '',
     folder: selectedFolderPath.value ?? '',
   })),
-  watch: [selectedFolderPath],
+  watch: [selectedSyncedFolderId, selectedFolderPath],
 })
 
-const { data: note, refresh: refreshNote } = useFetch<NoteDetailNote>(() => selectedNotePath.value ? `/api/notes${selectedNotePath.value}` : null, {
-  key: computed(() => `note-${selectedNotePath.value ?? 'none'}`),
-  watch: [selectedNotePath],
+const { data: note, refresh: refreshNote } = useFetch<NoteDetailNote>(() => selectedNotePath.value && selectedSyncedFolderId.value ? `/api/notes${selectedNotePath.value}?syncedFolder=${selectedSyncedFolderId.value}` : null, {
+  key: computed(() => `note-${selectedNotePath.value ?? 'none'}-${selectedSyncedFolderId.value ?? 'none'}`),
+  watch: [selectedNotePath, selectedSyncedFolderId],
 })
 
 const processing = ref(false)
 const processMessage = ref('')
 
 async function saveNote(content: string) {
-  if (!selectedNotePath.value)
+  if (!selectedNotePath.value || !selectedSyncedFolderId.value)
     return
-  await $fetch(`/api/notes${selectedNotePath.value}`, {
+  await $fetch(`/api/notes${selectedNotePath.value}?syncedFolder=${selectedSyncedFolderId.value}`, {
     method: 'PUT',
     body: { content },
   })
@@ -50,9 +54,9 @@ async function saveNote(content: string) {
 }
 
 async function addTag(name: string) {
-  if (!selectedNotePath.value)
+  if (!selectedNotePath.value || !selectedSyncedFolderId.value)
     return
-  await $fetch(`/api/notes${selectedNotePath.value}/tags`, {
+  await $fetch(`/api/notes${selectedNotePath.value}/tags?syncedFolder=${selectedSyncedFolderId.value}`, {
     method: 'POST',
     body: { name },
   })
@@ -61,9 +65,9 @@ async function addTag(name: string) {
 }
 
 async function removeTag(tagId: string) {
-  if (!selectedNotePath.value)
+  if (!selectedNotePath.value || !selectedSyncedFolderId.value)
     return
-  await $fetch(`/api/notes${selectedNotePath.value}/tags/${tagId}`, {
+  await $fetch(`/api/notes${selectedNotePath.value}/tags/${tagId}?syncedFolder=${selectedSyncedFolderId.value}`, {
     method: 'DELETE',
   })
   await refreshNote()
@@ -75,7 +79,7 @@ async function retryNote(path: string) {
   try {
     await $fetch('/api/notes/retry', {
       method: 'POST',
-      body: { path },
+      body: { path, syncedFolder: selectedSyncedFolderId.value },
     })
     processMessage.value = t('notes.retryDispatched')
   }
@@ -87,20 +91,16 @@ async function retryNote(path: string) {
 }
 
 async function createNote(path: string) {
-  await $fetch(`/api/notes${path}`, {
-    method: 'PUT',
-    body: { content: '' },
-  })
-  await navigateTo(`/notes${path}?edit=1`, { replace: true })
+  await navigateTo(`/notes${path}?edit=1&syncedFolder=${selectedSyncedFolderId.value ?? ''}`, { replace: true })
 }
 
-async function processFolder(folder: string) {
+async function processFolder(path: string) {
   processing.value = true
   processMessage.value = ''
   try {
     const res = await $fetch<{ dispatched: number }>('/api/notes/process', {
       method: 'POST',
-      body: { folder },
+      body: { folder: path, syncedFolder: selectedSyncedFolderId.value },
     })
     processMessage.value = t('notes.processDispatched', { count: res.dispatched })
     await refreshNotes()
@@ -119,18 +119,20 @@ function onEditingStarted() {
   }
 }
 
-function selectFolder(path: string) {
-  navigateTo(`/notes${path}`)
+function selectFolder(syncedFolderId: string, folderPath: string) {
+  const pathParam = folderPath === '/' ? '' : folderPath
+  navigateTo(`/notes${pathParam}?syncedFolder=${syncedFolderId}`)
 }
 
 function selectNote(path: string) {
-  navigateTo(`/notes${path}`)
+  navigateTo(`/notes${path}?syncedFolder=${selectedSyncedFolderId.value ?? ''}`)
 }
 </script>
 
 <template>
   <notes-layout
-    :folders="folders ?? []"
+    :groups="groups ?? []"
+    :selected-synced-folder-id="selectedSyncedFolderId"
     :selected-folder-path="selectedFolderPath"
     :selected-note-path="selectedNotePath"
     :notes="notes ?? []"

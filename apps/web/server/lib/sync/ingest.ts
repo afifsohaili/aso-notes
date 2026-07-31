@@ -30,7 +30,7 @@ export async function ingestNote(args: {
 
   const note = await db
     .selectFrom('notes')
-    .select(['id', 'workspace_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'pipeline'])
+    .select(['id', 'workspace_id', 'synced_folder_id', 'folder_id', 'path', 'title', 'content', 'content_hash', 'pipeline'])
     .where('id', '=', noteId)
     .executeTakeFirst()
 

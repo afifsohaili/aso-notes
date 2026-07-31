@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const folder = typeof query.folder === 'string' ? query.folder : ''
+  const syncedFolderId = typeof query.syncedFolder === 'string' ? query.syncedFolder : null
   const workspaceId = membership.workspace_id
 
   let noteQuery = db
@@ -30,13 +31,20 @@ export default defineEventHandler(async (event) => {
     .where('workspace_id', '=', workspaceId)
     .orderBy('updated_at', 'desc')
 
+  if (syncedFolderId) {
+    noteQuery = noteQuery.where('synced_folder_id', '=', syncedFolderId)
+  }
+
   if (folder && folder !== '/') {
-    const folderRow = await db
+    const folderQuery = db
       .selectFrom('folders')
       .select('id')
       .where('workspace_id', '=', workspaceId)
       .where('path', '=', folder)
-      .executeTakeFirst()
+
+    const folderRow = syncedFolderId
+      ? await folderQuery.where('synced_folder_id', '=', syncedFolderId).executeTakeFirst()
+      : await folderQuery.executeTakeFirst()
 
     if (!folderRow) {
       return []

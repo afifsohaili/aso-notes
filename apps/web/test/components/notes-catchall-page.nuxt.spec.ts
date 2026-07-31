@@ -4,6 +4,8 @@ import { flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import NotesCatchAllPage from '../../app/pages/notes/[...path].vue'
 
+const SYNCED_FOLDER_ID = 'sf-1'
+
 const { useAsyncDataMock, useRouteMock, navigateToMock, $fetchMock, makeRoute } = vi.hoisted(() => {
   function makeRoute(params: Record<string, string[]>, query: Record<string, string> = {}) {
     return {
@@ -37,6 +39,15 @@ function mockRoute(params: Record<string, string[]>, query: Record<string, strin
   useRouteMock.mockReturnValue(makeRoute(params, query))
 }
 
+const baseGroup = {
+  syncedFolderId: SYNCED_FOLDER_ID,
+  name: 'project-a',
+  absolutePath: '/tmp/project-a',
+  hasCover: false,
+  noteCount: 1,
+  children: [{ name: 'project-a', path: '/project-a', hasCover: false, noteCount: 1, children: [] }],
+}
+
 const baseNote = {
   path: '/project-a/plan.md',
   title: 'Plan',
@@ -62,10 +73,11 @@ const baseNoteDetail = {
 function mockAsyncDataForNote() {
   useAsyncDataMock.mockImplementation(() => ({
     data: ref({
-      resolved: { type: 'note', path: '/project-a/plan.md', folder: '/project-a' },
-      folders: [{ name: 'project-a', path: '/project-a', hasCover: false, noteCount: 1, children: [] }],
+      resolved: { type: 'note', path: '/project-a/plan.md', folder: '/project-a', syncedFolderId: SYNCED_FOLDER_ID },
+      groups: [baseGroup],
       notes: [baseNote],
       note: baseNoteDetail,
+      selectedSyncedFolderId: SYNCED_FOLDER_ID,
       selectedFolderPath: '/project-a',
       selectedNotePath: '/project-a/plan.md',
     }) as Ref<unknown>,
@@ -77,10 +89,11 @@ function mockAsyncDataForNote() {
 function mockAsyncDataForFolder() {
   useAsyncDataMock.mockImplementation(() => ({
     data: ref({
-      resolved: { type: 'folder', path: '/project-a' },
-      folders: [{ name: 'project-a', path: '/project-a', hasCover: false, noteCount: 1, children: [] }],
+      resolved: { type: 'folder', path: '/project-a', syncedFolderId: SYNCED_FOLDER_ID },
+      groups: [baseGroup],
       notes: [baseNote],
       note: null,
+      selectedSyncedFolderId: SYNCED_FOLDER_ID,
       selectedFolderPath: '/project-a',
       selectedNotePath: null,
     }) as Ref<unknown>,
@@ -112,7 +125,7 @@ describe('notes catch-all page', () => {
     expect(html).toContain('Plan')
   })
 
-  it('navigates to a note when a note is selected in the list', async () => {
+  it('navigates to a note with synced-folder context when a note is selected', async () => {
     mockRoute({ path: ['project-a'] })
     mockAsyncDataForFolder()
 
@@ -123,20 +136,22 @@ describe('notes catch-all page', () => {
     expect(noteItem.exists()).toBe(true)
     await noteItem.trigger('click')
 
-    expect(navigateToMock).toHaveBeenCalledWith('/notes/project-a/plan.md')
+    expect(navigateToMock).toHaveBeenCalledWith(`/notes/project-a/plan.md?syncedFolder=${SYNCED_FOLDER_ID}`)
   })
 
-  it('navigates to a folder when a folder is selected in the tree', async () => {
+  it('navigates to a folder with synced-folder context when a folder is selected', async () => {
     mockRoute({ path: ['project-a'] })
     mockAsyncDataForFolder()
 
     const component = await mountSuspended(NotesCatchAllPage)
     await flushPromises()
 
-    const folderItem = component.find('[data-testid="folder-tree-row"]')
-    expect(folderItem.exists()).toBe(true)
-    await folderItem.trigger('click')
+    const rows = component.findAll('[data-testid="folder-tree-row"]')
+    expect(rows.length).toBeGreaterThanOrEqual(2)
+    const folderItem = rows[1]
+    expect(folderItem).toBeTruthy()
+    await folderItem!.trigger('click')
 
-    expect(navigateToMock).toHaveBeenCalledWith('/notes/project-a')
+    expect(navigateToMock).toHaveBeenCalledWith(`/notes/project-a?syncedFolder=${SYNCED_FOLDER_ID}`)
   })
 })
