@@ -51,8 +51,12 @@ export function useAuth(env: AuthEnv) {
       },
       autoSignInAfterVerification: true,
     },
+    session: {
+      expiresIn: 60 * 60 * 24 * 365,
+      updateAge: 60 * 60 * 24,
+      modelName: 'sessions',
+    },
     user: { modelName: 'users' },
-    session: { modelName: 'sessions' },
     account: { modelName: 'accounts' },
     verification: { modelName: 'user_verifications' },
     databaseHooks: {

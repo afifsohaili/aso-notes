@@ -7,6 +7,5 @@ if (session.value) {
 </script>
 
 <template>
-  <pre-dev>{{ session || 'null' }}</pre-dev>
   <login-form />
 </template>

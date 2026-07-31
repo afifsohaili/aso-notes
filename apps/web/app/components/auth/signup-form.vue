@@ -1,13 +1,22 @@
-<script lang="ts" setup>
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+import EyeIcon from '~icons/heroicons/eye'
+import EyeSlashIcon from '~icons/heroicons/eye-slash'
+import AuthCard from './auth-card.vue'
+import AuthToast from './auth-toast.vue'
+
 const loading = ref(false)
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
-const alert = ref({
-  message: '',
-  type: '' as 'error' | 'success' | '',
-})
+const showPassword = ref(false)
+const showConfirmPassword = ref(false)
+const toast = ref<{ message: string, type: 'error' | 'success' } | null>(null)
+const verifyEmailState = ref(false)
+
+const { t } = useI18n()
 const config = useRuntimeConfig()
+
 // Turnstile is not shown or required in local development
 const isDev = process.env.NODE_ENV === 'development'
 if (!isDev) {
@@ -22,24 +31,29 @@ if (!isDev) {
   })
 }
 
+function showToast(message: string, type: 'error' | 'success') {
+  toast.value = { message, type }
+}
+
+function clearToast() {
+  toast.value = null
+}
+
 async function handleSignup() {
   try {
+    clearToast()
+    verifyEmailState.value = false
+
     // Basic validation
     if (password.value !== confirmPassword.value) {
-      alert.value = {
-        message: 'Passwords do not match',
-        type: 'error',
-      }
+      showToast(t('signup-form.errors.passwordMismatch'), 'error')
       return
     }
 
     if (!isDev) {
       const turnstileToken = (window as any)?.turnstile?.getResponse()
       if (!turnstileToken) {
-        alert.value = {
-          message: 'Please complete the Turnstile challenge',
-          type: 'error',
-        }
+        showToast(t('signup-form.errors.turnstileRequired'), 'error')
         return
       }
 
@@ -53,10 +67,7 @@ async function handleSignup() {
         })
       }
       catch {
-        alert.value = {
-          message: 'Failed to validate security check. Please try again.',
-          type: 'error',
-        }
+        showToast(t('signup-form.errors.captchaFailed'), 'error')
         return
       }
     }
@@ -64,7 +75,6 @@ async function handleSignup() {
       loading.value = true
     }
 
-    // Using the signUp function directly
     const result = await useAuthClient().signUp.email({
       email: email.value,
       password: password.value,
@@ -72,99 +82,129 @@ async function handleSignup() {
     })
 
     if (result.error) {
-      alert.value = {
-        message: result.error?.message || 'Sign up failed',
-        type: 'error',
-      }
+      showToast(result.error?.message || t('signup-form.submit.error'), 'error')
       return
     }
 
-    alert.value = { message: 'Sign up successful! You can now log in.', type: 'success' }
+    // Dev/verified path: better-auth created a session immediately
+    if (result.data?.token || (result.data as any)?.session?.token) {
+      showToast(t('signup-form.submit.success'), 'success')
+      navigateTo('/chat')
+      return
+    }
 
-    // navigate to the chat home
-    navigateTo('/chat')
+    // Email-verification path: no session yet
+    verifyEmailState.value = true
+    showToast(t('signup-form.submit.verifyEmail'), 'success')
   }
   catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-    alert.value = { message: errorMessage, type: 'error' }
+    const errorMessage = error instanceof Error ? error.message : t('signup-form.submit.error')
+    showToast(errorMessage, 'error')
   }
   finally {
     loading.value = false
   }
 }
-
-const floatingDialogRef = ref(null)
-
-const floatingDialogClasses = {
-  error: 'bg-red-500 block translate-y-0',
-  success: 'bg-green-500 block translate-y-0',
-}
-
-const floatingDialogClass = computed(() => {
-  return alert.value.type ? floatingDialogClasses[alert.value.type] || 'translate-y-full' : 'translate-y-full'
-})
 </script>
 
 <template>
-  <form class="grid h-screen place-items-center" @submit.prevent="handleSignup">
-    <div class="p-8 center flex flex-col items-center rounded-lg shadow-lg">
-      <logo class="text-4xl" />
-      <h2 class="text-2xl font-bold mt-4">
-        Sign Up
-      </h2>
-      <div class="mt-8 mb-4">
-        <label for="email" class="block mb-1">Email</label>
+  <AuthCard :title="t('signup-form.title')">
+    <form class="space-y-5" @submit.prevent="handleSignup">
+      <div>
+        <label for="email" class="block text-sm font-medium text-gray-700">
+          {{ t('signup-form.email.label') }}
+        </label>
         <input
-          id="email" v-model="email" class="w-full border p-2 rounded-lg shadow-inner"
-          type="email" placeholder="Enter your email"
+          id="email"
+          v-model="email"
+          class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+          type="email"
+          :placeholder="t('signup-form.email.placeholder')"
           required
+          :disabled="loading"
         >
       </div>
-      <div class="mb-4">
-        <label for="password" class="block mb-1">Password</label>
-        <input
-          id="password" v-model="password" class="w-full border p-2 rounded-lg shadow-inner"
-          type="password" placeholder="Create a password"
-          required
-        >
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700">
+          {{ t('signup-form.password.label') }}
+        </label>
+        <div class="relative mt-1">
+          <input
+            id="password"
+            v-model="password"
+            class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+            :type="showPassword ? 'text' : 'password'"
+            :placeholder="t('signup-form.password.placeholder')"
+            required
+            :disabled="loading"
+          >
+          <button
+            type="button"
+            class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+            :aria-label="showPassword ? t('signup-form.password.hide') : t('signup-form.password.show')"
+            :aria-pressed="showPassword"
+            @click="showPassword = !showPassword"
+          >
+            <EyeSlashIcon v-if="showPassword" class="h-4 w-4" />
+            <EyeIcon v-else class="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div class="mb-8">
-        <label for="confirmPassword" class="block mb-1">Confirm Password</label>
-        <input
-          id="confirmPassword" v-model="confirmPassword" class="w-full border p-2 rounded-lg shadow-inner"
-          type="password" placeholder="Confirm your password"
-          required
-        >
+      <div>
+        <label for="confirmPassword" class="block text-sm font-medium text-gray-700">
+          {{ t('signup-form.confirmPassword.label') }}
+        </label>
+        <div class="relative mt-1">
+          <input
+            id="confirmPassword"
+            v-model="confirmPassword"
+            class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder:text-gray-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+            :type="showConfirmPassword ? 'text' : 'password'"
+            :placeholder="t('signup-form.confirmPassword.placeholder')"
+            required
+            :disabled="loading"
+          >
+          <button
+            type="button"
+            class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+            :aria-label="showConfirmPassword ? t('signup-form.password.hide') : t('signup-form.password.show')"
+            :aria-pressed="showConfirmPassword"
+            @click="showConfirmPassword = !showConfirmPassword"
+          >
+            <EyeSlashIcon v-if="showConfirmPassword" class="h-4 w-4" />
+            <EyeIcon v-else class="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div v-if="!isDev" class="mb-8 flex justify-center">
+      <div v-if="!isDev" class="flex justify-center">
         <div
-          class="cf-turnstile" :data-sitekey="config.public.turnstileSiteKey" data-callback="e => console.log('cloudflare callback', e)"
+          class="cf-turnstile"
+          :data-sitekey="config.public.turnstileSiteKey"
+          data-callback="e => console.log('cloudflare callback', e)"
         />
       </div>
-      <input
+      <button
         type="submit"
-        class="bg-purple-900 text-white rounded-lg p-4 w-full"
-        :value="loading ? 'Creating account...' : 'Sign Up'"
+        class="flex w-full items-center justify-center rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
         :disabled="loading"
       >
-      <div class="mt-4 text-center">
-        <p>
-          Already have an account? <NuxtLink to="/login" class="text-purple-700">
-            Log in
-          </NuxtLink>
-        </p>
-      </div>
-    </div>
-  </form>
-  <Teleport to="body">
-    <floating-dialog
-      ref="floatingDialogRef" class="rounded-t-lg p-4 transition-transform fixed bottom-0"
-      :class="floatingDialogClass"
-      @close="alert.message = ''"
-    >
-      <p>
-        {{ alert.message }}
+        <span v-if="loading" class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        {{ loading ? t('signup-form.submit.loading') : t('signup-form.submit.text') }}
+      </button>
+      <p class="text-center text-sm text-gray-600">
+        {{ t('signup-form.hasAccount') }}
+        <NuxtLink to="/login" class="font-medium text-purple-600 hover:text-purple-500">
+          {{ t('signup-form.loginLink') }}
+        </NuxtLink>
       </p>
-    </floating-dialog>
-  </Teleport>
+    </form>
+    <div
+      v-if="verifyEmailState"
+      class="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 text-center text-sm text-green-800"
+      role="status"
+    >
+      {{ t('signup-form.verifyEmailState') }}
+    </div>
+  </AuthCard>
+  <AuthToast :toast="toast" @close="clearToast" />
 </template>

@@ -108,6 +108,7 @@ Each milestone was TDD-driven; full suite green before the next.
 - [x] **Phase 6 — Orphan GC on synced-folder removal** — DONE 2026-07-30 (`6ab36c4`). Decision core, inline GC, AGE cleanup, REMOVE confirmation UI. Full suite: **85 test files / 663 tests passed**.
 - [x] **Phase 7 — Close-out + browser verification** — DONE 2026-07-31 (`eeff440`, `501c424`, `0ed3bfe`, `e4edc08`). Final spec authored, env/README/AGENTS cleaned, full onboarding flow verified in a real browser against real infra (fresh DB, real OpenRouter LLM): signup → email verify → gate → wizard (synced folder + LLM config) → smoke-test verify → gate release → first-run chat → agent answer with citations from ingested notes → /notes, /graph, /notes/queue all live. Browser verification caught and fixed four real bugs (see Divergences → Phase 7). Full suite: **86 test files / 669 tests passed**.
 - [x] **Phase 8 — Per-root folder trees** — DONE 2026-07-31. Added `folders.synced_folder_id`, changed uniqueness to `(synced_folder_id, path)`, backfilled split by member-note roots, updated sync/resolve/notes/process/retry endpoints to carry `syncedFolder` context, reshaped `GET /api/folders` to one root per Synced Folder named by basename, and updated `/notes` sidebar to render grouped per-root trees. Full suite: green.
+- [x] **Phase 9 — Auth UX refresh** — DONE 2026-07-31. Redesigned login/signup UI around a shared `auth-card` layout, replaced `floating-dialog` with an `auth-toast` component, added password-visibility toggles, fixed signup to navigate straight to `/chat` when a session is created (dev) while showing a verify-email state when verification is required, moved all form strings into `en.json` + `my.json`, set better-auth session expiry to 1 year with daily rolling refresh, and fixed the `/signup` page-level already-logged-in redirect to await `useSession()`. Full suite: **89 test files / 684 tests passed**.
 
 ## Divergences / kept items
 
@@ -167,6 +168,14 @@ Each milestone was TDD-driven; full suite green before the next.
 
 1. **Migration backfill created phantom folders in the first-created Synced Folder.** Step 3's "rows with no notes" check ran AFTER the step-2 repoint, at which point every old row had zero member notes — so every pre-existing folder path was duplicated into the first-created Synced Folder as a 0-count row (tiktok's expand showed aso-notes' subfolders). Fixed by snapshotting the genuinely-empty rows into a temp table before step 1; dev DB repaired by deleting the 6 phantom rows. Not caught by tests because template DBs migrate an empty `folders` table — backfill never executes.
 2. **`/notes` index page never reacted to folder selection.** `index.vue` captured `?syncedFolder` into refs at setup and its `selectFolder` only navigated — query-only navigations don't remount, so the notes list never refetched and folder clicks appeared dead (URL changed, list static). Fixed by deriving selection from `route.query` via computed (mirroring the catch-all page). Component test added: selection follows route-query change.
+
+### Phase 9 divergences
+
+- **`my.json` language.** The file already contained Malay (`ms`) translations; new auth keys were added in Malay to stay consistent with the existing locale rather than switching the whole file to Burmese.
+- **Session detection heuristic.** Signup checks `result.data?.token` (better-auth's dev/no-verification shape) to decide whether to navigate immediately or show the verify-email state. A more robust seam would inspect the actual returned session object, but the token check is sufficient for the current dev and prod verification paths.
+- **Toast scope.** `auth-toast` is a local component consumed by the two auth forms, not a global toast manager. This matches the spec's "do not over-engineer" guidance.
+- **Login button copy changed.** `login-form.submit.text` was updated from "Send login link" to "Log in" because the app uses email+password authentication, not magic links.
+- **`/signup` page redirect fixed.** The page was treating the Promise returned by `useSession()` as a reactive ref, so it always redirected. It now mirrors `/login` by awaiting `useSession()` and redirecting only when `session.value` is truthy.
 
 ## Wayfinder record
 

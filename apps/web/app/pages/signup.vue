@@ -1,12 +1,9 @@
 <script setup>
-const session = useSession()
-const router = useRouter()
+const { session } = await useSession()
 
-// Redirect to chat home if already logged in
-watchEffect(() => {
-  if (session.value)
-    router.push('/chat')
-})
+if (session.value) {
+  await navigateTo('/chat', { replace: true })
+}
 </script>
 
 <template>
