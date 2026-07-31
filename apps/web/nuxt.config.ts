@@ -27,6 +27,9 @@ export default defineNuxtConfig({
       Icons(),
       tailwindcss(),
     ],
+    server: {
+      allowedHosts: ['afifs-macbook-pro.taila5c1b8.ts.net'],
+    },
   },
   runtimeConfig: {
     public: {
