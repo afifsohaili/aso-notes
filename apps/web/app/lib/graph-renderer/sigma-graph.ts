@@ -92,8 +92,13 @@ export function populateGraphologyGraph(graph: Graph, nodes: GraphNode[], edges:
     // so a bad payload cannot crash the renderer.
     if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target))
       continue
+    // Real workspace data can contain duplicate undirected pairs (e.g. A→B and
+    // B→A rows, or multiple relation types between the same concept pair). The
+    // graph is non-multi, so the first edge wins and the rest are ignored.
+    if (graph.hasEdge(edge.source, edge.target))
+      continue
     graph.addEdge(edge.source, edge.target, {
-      type: edge.type,
+      edgeType: edge.type,
       color: EDGE_COLOR,
       baseColor: EDGE_COLOR,
       size: EDGE_SIZE,

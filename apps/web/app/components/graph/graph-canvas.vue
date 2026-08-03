@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'selectNode', node: GraphNode): void
+  (e: 'error', message: string): void
 }>()
 
 const { t } = useI18n()
@@ -41,7 +42,9 @@ onMounted(async () => {
     renderer.highlight(props.selectedNodeId)
   }
   catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.error('Graph renderer init failed:', err)
+    emit('error', message)
   }
 })
 

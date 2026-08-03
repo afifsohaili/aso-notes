@@ -128,6 +128,7 @@ function openNote(path: string) {
             :edges="edges"
             :selected-node-id="selectedConceptId"
             @select-node="handleNodeClick"
+            @error="drilldownError = $event"
           />
           <div v-else class="h-full flex items-center justify-center text-gray-500">
             {{ t('graph.empty') }}

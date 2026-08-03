@@ -100,6 +100,44 @@ describe('buildGraphologyGraph', () => {
     expect(graph.order).toBe(1)
     expect(graph.size).toBe(0)
   })
+
+  it('does not throw when duplicate undirected edges are present and keeps the first edge', () => {
+    const edges: GraphEdge[] = [
+      { source: 't1', target: 'c1', type: 'GROUPED_UNDER' },
+      { source: 'c1', target: 't1', type: 'RELATES_TO' },
+      { source: 't1', target: 'c1', type: 'MENTIONS' },
+    ]
+    expect(() => buildGraphologyGraph(NODES, edges)).not.toThrow()
+    const graph = buildGraphologyGraph(NODES, edges)
+    expect(graph.size).toBe(1)
+    expect(graph.getEdgeAttribute(graph.edges()[0], 'edgeType')).toBe('GROUPED_UNDER')
+  })
+
+  it('stores edge type as edgeType, not the reserved sigma type attribute', () => {
+    const graph = buildGraphologyGraph(NODES, EDGES)
+    graph.forEachEdge((_edge, attrs) => {
+      expect(attrs).not.toHaveProperty('type')
+      expect(attrs.edgeType).toBeDefined()
+    })
+  })
+
+  it('runs the full pipeline with duplicate edges and yields a valid camera fit', () => {
+    const edges: GraphEdge[] = [
+      { source: 't1', target: 'c1', type: 'GROUPED_UNDER' },
+      { source: 'c1', target: 't1', type: 'RELATES_TO' },
+    ]
+    const graph = buildGraphologyGraph(NODES, edges)
+    circular.assign(graph, { scale: 1 })
+    forceAtlas2.assign(graph, {
+      iterations: 20,
+      settings: forceAtlas2.inferSettings(graph),
+    })
+    expectNumericPositions(graph)
+    const fit = computeCameraFit(graph, 833, 809)
+    expect(fit).not.toBeNull()
+    expect(Number.isFinite(fit!.ratio)).toBe(true)
+    expect(fit!.ratio).toBeGreaterThan(0)
+  })
 })
 
 describe('applyHighlightToGraph', () => {

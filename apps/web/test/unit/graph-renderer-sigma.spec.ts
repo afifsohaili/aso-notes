@@ -206,7 +206,7 @@ describe('sigma renderer contract', () => {
     expect(graph.getNodeAttributes('g1')).toMatchObject({ color: '#d97706', size: 5 })
 
     const edge = graph.getEdgeAttributes(graph.edges()[0])
-    expect(edge).toMatchObject({ color: '#94a3b8', size: 1.5, type: 'GROUPED_UNDER' })
+    expect(edge).toMatchObject({ color: '#94a3b8', size: 1.5, edgeType: 'GROUPED_UNDER' })
   })
 
   it('setGraph runs circular seed then bounded FA2 assign, then refreshes sigma', async () => {
