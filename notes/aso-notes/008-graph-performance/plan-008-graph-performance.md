@@ -1,6 +1,6 @@
 # Plan 008 — Graph Page Performance (Ego-Graph + WebGL Renderer)
 
-Status: decisions locked via option review (2026-08-03). In progress.
+Status: complete — all four phases shipped (ego-graph API, renderer seam, sigma WebGL renderer, drill-down + renderer flag). 2026-08-03.
 Glossary: see `../CONTEXT.md`.
 
 ## Problem
@@ -94,4 +94,12 @@ _(subagents update this section as phases complete; record divergences from plan
   - **Labels.** `labelRenderedSizeThreshold: 8` (sigma default 6) — labels render only when the node is large enough on screen, an intentional improvement over cytoscape's always-on labels.
   - **Sizes/edges.** Node px sizes Topic 12 / Concept 8 / Note 6 / Tag 5. Edges `#94a3b8` at size 1.5 with `type` kept in attributes (undirected graphology graph — edges are bidirectional for layout).
   - **mount() resolves after instance creation + initial `refresh()`** of the empty graph (sigma runs its render loop via rAF internally; cytoscape instead awaited its fcose `layoutstop`). Defensive edge skip: an edge whose endpoints aren't in the node list is dropped rather than crashing graphology's `addEdge`.
-- Phase 4: pending
+- Phase 4: done — page drill-down + renderer flag. `runtimeConfig.public.graphRenderer` (default `NUXT_PUBLIC_GRAPH_RENDERER || 'sigma'`); `graph-canvas.vue` reads it once at setup via `resolveGraphRenderer()` (`app/lib/graph-renderer/config.ts` — only `'sigma' | 'cytoscape'` valid, anything else falls back to `'sigma'`). `pages/graph/index.vue` keeps the `/api/graph` overview as the initial load, then expands Topic/Concept clicks in place: 1-hop `/api/graph/neighborhood` fetch merged via pure `mergeGraphNodes`/`mergeGraphEdges` helpers (`app/lib/graph-renderer/merge.ts`); expanded ids tracked in a `ref<Set>`, in-flight fetches guarded by a plain Set; failed fetches show a dismissible `role="alert"` note and are NOT marked expanded (retry on next click). Note clicks still navigate to `/notes<path>`. New specs: `graph-renderer-config.spec.ts` (5), `graph-merge.spec.ts` (6), `graph-page.nuxt.spec.ts` (7, page-level drill-down), `graph-canvas-config.nuxt.spec.ts` (renderer selection). Full nuxt+unit project 483 tests green; graph e2e 19 green; lint clean; typecheck zero errors in touched files (49 pre-existing elsewhere, unchanged).
+
+  **Divergences / decisions:**
+  - **The phase brief's props/events don't match the shipped component.** Brief said `highlightId` prop + `node-click` emit; the actual `graph-canvas.vue` (since Phase 2) uses `selectedNodeId` + `selectNode`. Kept the actual names — event plumbing from Phase 2 untouched.
+  - **`resolveGraphNodeAction` unchanged.** Topic clicks still resolve to `noop` there; drill-down expansion is triggered separately in the page for `Concept`/`Topic` labels, so the existing `graph-node-action` unit specs stay green and Tag behavior (noop) is preserved.
+  - **`mockNuxtImport('useRuntimeConfig', …)` is broken in the Nuxt test env.** The test-utils macro mocks the `#app` module; that breaks test-utils' own `setupNuxt` (`useRouter()` returns undefined → `.afterEach` throws → every test in the file is skipped). Renderer-selection coverage therefore lives in a dedicated `graph-canvas-config.nuxt.spec.ts` that `vi.mock`s the graph-renderer module and lets the real `useRuntimeConfig()` resolve (config key absent in test → `'sigma'` fallback, so the assertion is deterministic either way). Value mapping (`cytoscape`/`sigma`/unknown) is unit-tested in `graph-renderer-config.spec.ts`.
+  - **Merges extracted as pure helpers** rather than inline in the page. Edge dedupe key is the directed `source|target|type|edgeType` tuple (opposite directions are distinct edges, and distinct RELATES_TO relation types between the same pair are distinct) — consistent with cytoscape's `${source}-${target}-${type}` element id.
+  - **Error note is new UI** — the page previously surfaced no load errors. Dismissible note overlaid top-left of the canvas (legend occupies top-right). Unsuccessful expansions stay clickable (retry); successful-but-empty payloads (`{nodes:[],edges:[]}`) mark the node expanded so dead clicks don't refetch.
+  - **Set-backed expanded state uses `ref<Set<string>>` reassigned on expansion** (Vue 3 set reactivity), while the in-flight guard is a plain non-reactive `Set`. `encodeURIComponent` applied to the node id in the query string.

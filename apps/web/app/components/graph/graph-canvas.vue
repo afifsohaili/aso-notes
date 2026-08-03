@@ -2,6 +2,7 @@
 import type { GraphEdge, GraphNode, GraphRenderer } from '~/lib/graph-renderer/types'
 import { useI18n } from 'vue-i18n'
 import { createGraphRenderer } from '~/lib/graph-renderer'
+import { resolveGraphRenderer } from '~/lib/graph-renderer/config'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -18,6 +19,10 @@ const { t } = useI18n()
 const containerRef = ref<HTMLDivElement | null>(null)
 let renderer: GraphRenderer | null = null
 
+// Read once at setup: the renderer is fixed per page load by runtime config
+// (`NUXT_PUBLIC_GRAPH_RENDERER`), defaulting to the sigma (WebGL) renderer.
+const graphRendererImpl = resolveGraphRenderer(useRuntimeConfig().public.graphRenderer)
+
 const legendItems = computed(() => [
   { label: t('graph.legend.topic'), colorClass: 'bg-[#7c3aed]' },
   { label: t('graph.legend.concept'), colorClass: 'bg-[#4f46e5]' },
@@ -29,7 +34,7 @@ onMounted(async () => {
   if (!containerRef.value)
     return
   try {
-    renderer = createGraphRenderer('cytoscape')
+    renderer = createGraphRenderer(graphRendererImpl)
     renderer.onNodeClick(node => emit('selectNode', node))
     await renderer.mount(containerRef.value)
     renderer.setGraph(props.nodes, props.edges)

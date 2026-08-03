@@ -62,6 +62,7 @@
   "graph.legend.tag": "Tag",
   "graph.collapseGroup": "Collapse group",
   "graph.expandGroup": "Expand group",
+  "graph.dismissError": "Dismiss error",
   "chat.title": "Chat",
   "settings.title": "Settings",
   "settings.strategyLabel": "Vocabulary strategy",
