@@ -224,6 +224,26 @@ describe('sigma renderer contract', () => {
     expect(graph.hasNode('x1')).toBe(true)
   })
 
+  it('setGraph seeds numeric x/y on every node before sigma can refresh', async () => {
+    await mountRenderer()
+
+    renderer.setGraph(NODES, EDGES)
+
+    graph.forEachNode((node, attrs) => {
+      expect(typeof attrs.x, `node ${node} x is numeric`).toBe('number')
+      expect(typeof attrs.y, `node ${node} y is numeric`).toBe('number')
+      expect(Number.isFinite(attrs.x)).toBe(true)
+      expect(Number.isFinite(attrs.y)).toBe(true)
+    })
+  })
+
+  it('highlight before setGraph does not crash the renderer', async () => {
+    await mountRenderer()
+
+    expect(() => renderer.highlight('c1')).not.toThrow()
+    expect(() => renderer.highlight(null)).not.toThrow()
+  })
+
   it('highlight dims non-neighbor nodes and non-incident edges to 0.2 alpha', async () => {
     await mountRenderer()
     renderer.setGraph(NODES, EDGES)
