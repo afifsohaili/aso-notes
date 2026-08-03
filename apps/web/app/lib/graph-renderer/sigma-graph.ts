@@ -116,56 +116,22 @@ export function runLayout(graph: Graph): void {
 }
 
 /**
- * Compute a sigma v3 camera state that fits the graph's bounding box into the
- * given container with a padding margin. Sigma's camera semantics:
- *   visible width  = ratio * containerWidth / minSide
- *   visible height = ratio * containerHeight / minSide
- * where minSide = min(containerWidth, containerHeight).
+ * Compute a sigma v3 camera state in NORMALIZED coordinates.
  *
- * Returns null for an empty graph. A zero-size bounding box (single node or all
- * nodes at the same position) returns ratio 1 so the camera still frames the
- * center point.
+ * Sigma v3 internally normalizes all node positions to the unit square:
+ *   x' = 0.5 + (x - bboxCenterX) / max(bboxW, bboxH)
+ * and the camera operates on those normalized coordinates. The default camera
+ * `{x: 0.5, y: 0.5, ratio: 1}` already frames the entire graph. Padding is
+ * achieved by zooming out with ratio > 1.
+ *
+ * Returns `{x: 0.5, y: 0.5, ratio: 1 / (1 - 2 * padding)}`. Padding is clamped
+ * to [0, 0.45] so the ratio stays finite.
+ *
+ * See sigma v3 source: `normalization-*.cjs.dev.js` and `matrixFromCamera`.
  */
-export function computeCameraFit(
-  graph: Graph,
-  containerWidth: number,
-  containerHeight: number,
-  padding = 0.1,
-): { x: number, y: number, ratio: number } | null {
-  if (graph.order === 0)
-    return null
-
-  let minX = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
-
-  graph.forEachNode((_node, attrs) => {
-    minX = Math.min(minX, attrs.x as number)
-    maxX = Math.max(maxX, attrs.x as number)
-    minY = Math.min(minY, attrs.y as number)
-    maxY = Math.max(maxY, attrs.y as number)
-  })
-
-  const centerX = (minX + maxX) / 2
-  const centerY = (minY + maxY) / 2
-  const bboxWidth = maxX - minX
-  const bboxHeight = maxY - minY
-  const minSide = Math.min(containerWidth, containerHeight)
-
-  // Zero-size (or degenerate) bbox: frame the center with a default zoom.
-  if (bboxWidth === 0 || bboxHeight === 0 || minSide <= 0)
-    return { x: centerX, y: centerY, ratio: 1 }
-
-  const paddedWidth = bboxWidth / (1 - 2 * padding)
-  const paddedHeight = bboxHeight / (1 - 2 * padding)
-
-  const ratio = Math.max(
-    (paddedWidth * minSide) / containerWidth,
-    (paddedHeight * minSide) / containerHeight,
-  )
-
-  return { x: centerX, y: centerY, ratio }
+export function computeCameraFit(padding = 0.1): { x: 0.5, y: 0.5, ratio: number } {
+  const safePadding = Math.min(Math.max(padding, 0), 0.45)
+  return { x: 0.5, y: 0.5, ratio: 1 / (1 - 2 * safePadding) }
 }
 
 /**

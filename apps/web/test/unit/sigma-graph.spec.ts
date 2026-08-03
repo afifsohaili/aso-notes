@@ -133,10 +133,9 @@ describe('buildGraphologyGraph', () => {
       settings: forceAtlas2.inferSettings(graph),
     })
     expectNumericPositions(graph)
-    const fit = computeCameraFit(graph, 833, 809)
-    expect(fit).not.toBeNull()
-    expect(Number.isFinite(fit!.ratio)).toBe(true)
-    expect(fit!.ratio).toBeGreaterThan(0)
+    const fit = computeCameraFit()
+    expect(Number.isFinite(fit.ratio)).toBe(true)
+    expect(fit.ratio).toBeGreaterThan(0)
   })
 })
 
@@ -217,81 +216,80 @@ describe('applyHighlightToGraph', () => {
 })
 
 describe('computeCameraFit', () => {
-  it('returns null for an empty graph', () => {
-    const graph = new Graph({ type: 'undirected' })
-    expect(computeCameraFit(graph, 833, 809)).toBeNull()
+  it('returns normalized center and ratio 1.25 for default 10% padding', () => {
+    expect(computeCameraFit()).toEqual({ x: 0.5, y: 0.5, ratio: 1.25 })
   })
 
-  it('centers the camera on the bounding box midpoint', () => {
-    const graph = buildGraphologyGraph([
-      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
-      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
-    ], [])
-    graph.setNodeAttribute('a', 'x', 0)
-    graph.setNodeAttribute('a', 'y', 0)
-    graph.setNodeAttribute('b', 'x', 100)
-    graph.setNodeAttribute('b', 'y', 200)
-
-    const fit = computeCameraFit(graph, 100, 100)
-    expect(fit).toEqual({ x: 50, y: 100, ratio: expect.any(Number) })
+  it('returns ratio 1 for zero padding', () => {
+    expect(computeCameraFit(0)).toEqual({ x: 0.5, y: 0.5, ratio: 1 })
   })
 
-  it('chooses a ratio that fits the wider axis on a non-square container', () => {
-    const graph = buildGraphologyGraph([
-      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
-      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
-    ], [])
-    graph.setNodeAttribute('a', 'x', 0)
-    graph.setNodeAttribute('a', 'y', 0)
-    graph.setNodeAttribute('b', 'x', 100)
-    graph.setNodeAttribute('b', 'y', 50)
-
-    // Container is 200x100, so height is the limiting dimension (minSide=100).
-    // Bbox is 100x50. With 10% padding, padded = 100/0.8=125, 50/0.8=62.5.
-    // ratio = max(125*100/200, 62.5*100/100) = max(62.5, 62.5) = 62.5.
-    const fit = computeCameraFit(graph, 200, 100)
-    expect(fit).toEqual({ x: 50, y: 25, ratio: 62.5 })
+  it('returns ratio 2 for 25% padding', () => {
+    expect(computeCameraFit(0.25)).toEqual({ x: 0.5, y: 0.5, ratio: 2 })
   })
 
-  it('falls back to ratio 1 for a zero-size bounding box', () => {
-    const graph = buildGraphologyGraph([{ id: 'a', label: 'Topic', name: 'A', ref: 'a' }], [])
-    graph.setNodeAttribute('a', 'x', 42)
-    graph.setNodeAttribute('a', 'y', -7)
-
-    const fit = computeCameraFit(graph, 833, 809)
-    expect(fit).toEqual({ x: 42, y: -7, ratio: 1 })
+  it('clamps padding to 0.45 so ratio stays finite', () => {
+    expect(computeCameraFit(0.5).ratio).toBeCloseTo(10)
+    expect(computeCameraFit(1).ratio).toBeCloseTo(10)
+    expect(computeCameraFit(-0.1)).toEqual({ x: 0.5, y: 0.5, ratio: 1 })
   })
 
-  it('zooms in when the graph is smaller than the viewport', () => {
-    const graph = buildGraphologyGraph([
-      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
-      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
-    ], [])
-    graph.setNodeAttribute('a', 'x', 0)
-    graph.setNodeAttribute('a', 'y', 0)
-    graph.setNodeAttribute('b', 'x', 1)
-    graph.setNodeAttribute('b', 'y', 1)
-
-    const fit = computeCameraFit(graph, 100, 100)
-    // Padded 1x1 → 1.25. ratio = 1.25 * 100 / 100 = 1.25.
-    expect(fit!.ratio).toBe(1.25)
-    expect(fit!.x).toBe(0.5)
-    expect(fit!.y).toBe(0.5)
-  })
-
-  it('produces a sane fit after a real circular + ForceAtlas2 layout', () => {
-    const graph = buildGraphologyGraph(NODES, EDGES)
+  it('frames a real laid-out graph within the NDC visible window', () => {
+    const edges: GraphEdge[] = [
+      { source: 't1', target: 'c1', type: 'GROUPED_UNDER' },
+      { source: 'c1', target: 't1', type: 'RELATES_TO' },
+    ]
+    const graph = buildGraphologyGraph(NODES, edges)
     circular.assign(graph, { scale: 1 })
     forceAtlas2.assign(graph, {
       iterations: 20,
       settings: forceAtlas2.inferSettings(graph),
     })
 
-    const fit = computeCameraFit(graph, 833, 809)
-    expect(fit).not.toBeNull()
-    expect(Number.isFinite(fit!.x)).toBe(true)
-    expect(Number.isFinite(fit!.y)).toBe(true)
-    expect(fit!.ratio).toBeGreaterThan(0)
-    expect(Number.isFinite(fit!.ratio)).toBe(true)
+    // Replicate sigma v3's normalization: graph is rescaled to the unit square
+    // centered at (0.5, 0.5), with the longest axis spanning exactly 1.
+    // See sigma source: `normalization-*.cjs.dev.js` / `graphExtent`.
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    graph.forEachNode((_node, attrs) => {
+      minX = Math.min(minX, attrs.x as number)
+      maxX = Math.max(maxX, attrs.x as number)
+      minY = Math.min(minY, attrs.y as number)
+      maxY = Math.max(maxY, attrs.y as number)
+    })
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    const extent = Math.max(maxX - minX, maxY - minY)
+
+    function normalize(node: string): { x: number, y: number } {
+      return {
+        x: 0.5 + ((graph.getNodeAttribute(node, 'x') as number) - centerX) / extent,
+        y: 0.5 + ((graph.getNodeAttribute(node, 'y') as number) - centerY) / extent,
+      }
+    }
+
+    // Sigma v3 camera matrix (without rotation): translate(-cam.x,-cam.y) →
+    // scale(1/ratio) → scale(2*smallestDim/W*correctionRatio, ...). For a
+    // graph normalized to longest axis = 1, correctionRatio = 1 is sufficient.
+    const camera = computeCameraFit()
+    const viewportW = 833
+    const viewportH = 809
+    const smallestDim = Math.min(viewportW, viewportH)
+
+    function toNdc(node: string): { x: number, y: number } {
+      const n = normalize(node)
+      return {
+        x: 2 * (smallestDim / viewportW) * (n.x - camera.x) / camera.ratio,
+        y: 2 * (smallestDim / viewportH) * (n.y - camera.y) / camera.ratio,
+      }
+    }
+
+    graph.forEachNode((node) => {
+      const ndc = toNdc(node)
+      expect(Math.abs(ndc.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(ndc.y)).toBeLessThanOrEqual(1)
+    })
   })
 })

@@ -159,10 +159,7 @@ describe('sigma renderer contract', () => {
   })
 
   async function mountRenderer() {
-    const container = {
-      getBoundingClientRect: () => ({ width: 833, height: 809 }),
-    } as HTMLElement
-    await renderer.mount(container)
+    await renderer.mount({} as HTMLElement)
     sigma = mock.state.lastSigma
     graph = mock.state.lastGraph
     expect(sigma).toBeTruthy()
@@ -261,13 +258,13 @@ describe('sigma renderer contract', () => {
     expect(() => renderer.highlight(null)).not.toThrow()
   })
 
-  it('setGraph fits the camera to the graph bounding box with padding', async () => {
+  it('setGraph fits the camera in normalized coordinates with padding', async () => {
     await mountRenderer()
 
     renderer.setGraph(NODES, EDGES)
 
     expect(sigma.getCamera).toHaveBeenCalled()
-    expect(mock.state.cameraSetState).toHaveBeenCalledWith({ x: 0, y: 0, ratio: 2.5 })
+    expect(mock.state.cameraSetState).toHaveBeenCalledWith({ x: 0.5, y: 0.5, ratio: 1.25 })
   })
 
   it('setGraph called before mount is applied once mount completes', async () => {

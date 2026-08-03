@@ -27,7 +27,6 @@ import {
 export class SigmaRenderer implements GraphRenderer {
   private graph: Graph
   private sigma: any = null
-  private container: HTMLElement | null = null
   private clickHandler: ((node: GraphNode) => void) | null = null
   private highlightedNodeId: string | null = null
   private pendingNodes: GraphNode[] | null = null
@@ -43,7 +42,6 @@ export class SigmaRenderer implements GraphRenderer {
     if (this.sigma)
       return
 
-    this.container = container
     const { default: Sigma } = await import('sigma')
 
     this.sigma = new Sigma(this.graph, container, {
@@ -104,7 +102,6 @@ export class SigmaRenderer implements GraphRenderer {
     this.highlightedNodeId = null
     this.pendingNodes = null
     this.pendingEdges = null
-    this.container = null
     this.graph.clear()
   }
 
@@ -117,14 +114,9 @@ export class SigmaRenderer implements GraphRenderer {
   }
 
   private fitCamera(): void {
-    if (!this.sigma || !this.container)
+    if (!this.sigma)
       return
 
-    const rect = this.container.getBoundingClientRect()
-    const fit = computeCameraFit(this.graph, rect.width, rect.height)
-    if (!fit)
-      return
-
-    this.sigma.getCamera().setState(fit)
+    this.sigma.getCamera().setState(computeCameraFit())
   }
 }
