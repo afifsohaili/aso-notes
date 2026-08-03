@@ -110,7 +110,7 @@ describe('createGraphRenderer', () => {
   })
 
   it('throws for an unknown implementation', () => {
-    expect(() => createGraphRenderer('sigma')).toThrow(/Unknown graph renderer implementation: sigma/)
+    expect(() => createGraphRenderer('paperjs')).toThrow(/Unknown graph renderer implementation: paperjs/)
   })
 })
 

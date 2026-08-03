@@ -34,6 +34,9 @@
     "chokidar": "^5.0.0",
     "cytoscape": "^3.34.0",
     "cytoscape-fcose": "^2.2.0",
+    "graphology": "^0.26.0",
+    "graphology-layout": "^0.6.1",
+    "graphology-layout-forceatlas2": "^0.10.1",
     "h3": "^1.15.5",
     "ioredis": "^5.10.1",
     "kysely": "^0.28.17",
@@ -42,6 +45,7 @@
     "pg": "^8.20.0",
     "posthog-js": "^1.372.8",
     "radix-vue": "^1.9.17",
+    "sigma": "^3.0.3",
     "vue": "^3.5.28"
   },
   "devDependencies": {
