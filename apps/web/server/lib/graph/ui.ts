@@ -51,139 +51,219 @@ export function parseOptionalString(value: unknown): string | undefined {
   return typeof parsed === 'string' ? parsed : undefined
 }
 
-export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ nodes: GraphNode[], edges: GraphEdge[] }> {
-  const conceptRows = await queryCypher<{ id: unknown, name: unknown }>(
-    db,
-    `MATCH (n:Concept) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
-    'id ag_catalog.agtype, name ag_catalog.agtype',
-  )
+const EGO_EDGE_TYPES = ['RELATES_TO', 'MENTIONS', 'TAGGED', 'LINKS', 'GROUPED_UNDER'] as const
+type EgoEdgeType = typeof EGO_EDGE_TYPES[number]
 
-  const noteRows = await queryCypher<{ id: unknown }>(
-    db,
-    `MATCH (n:Note) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id`,
-    'id ag_catalog.agtype',
-  )
-
-  const tagRows = await queryCypher<{ id: unknown, name: unknown }>(
-    db,
-    `MATCH (n:Tag) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
-    'id ag_catalog.agtype, name ag_catalog.agtype',
-  )
+/**
+ * Topic overview for the graph page's default view: every Topic node plus
+ * the top 10 Concepts per Topic by mention count (ties broken by name asc),
+ * and only the edges among the included nodes (GROUPED_UNDER + RELATES_TO).
+ * Topic membership comes from the relational `concept_topics` mirror; node
+ * names come from the AGE vertices.
+ */
+export async function getTopicOverview(
+  db: GraphDb,
+  workspaceId: string,
+): Promise<{ nodes: GraphNode[], edges: GraphEdge[] }> {
+  const ws = agLiteral(workspaceId)
 
   const topicRows = await queryCypher<{ id: unknown, name: unknown }>(
     db,
-    `MATCH (n:Topic) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
+    `MATCH (n:Topic) WHERE n.workspace_id = ${ws} RETURN n.id AS id, n.name AS name`,
     'id ag_catalog.agtype, name ag_catalog.agtype',
+  )
+
+  // Per (concept, topic) mention counts straight from the relational mirror.
+  // COUNT(DISTINCT mentions.id) so the topic fan-out never inflates counts.
+  const membershipRows = await db
+    .selectFrom('concept_topics')
+    .leftJoin('mentions', join => join
+      .onRef('mentions.concept_id', '=', 'concept_topics.concept_id')
+      .onRef('mentions.workspace_id', '=', 'concept_topics.workspace_id'))
+    .select([
+      'concept_topics.concept_id',
+      'concept_topics.topic_id',
+      eb => eb.fn.count('mentions.id').distinct().as('mention_count'),
+    ])
+    .where('concept_topics.workspace_id', '=', workspaceId)
+    .groupBy(['concept_topics.concept_id', 'concept_topics.topic_id'])
+    .execute()
+
+  const perTopic = new Map<string, Array<{ conceptId: string, count: number }>>()
+  const candidateIds = new Set<string>()
+  for (const row of membershipRows) {
+    const conceptId = String(row.concept_id)
+    const topicId = String(row.topic_id)
+    const count = Number(row.mention_count)
+    const list = perTopic.get(topicId) ?? []
+    list.push({ conceptId, count })
+    perTopic.set(topicId, list)
+    candidateIds.add(conceptId)
+  }
+
+  // Concept names come from the AGE vertices (same source getFullGraph used).
+  const conceptNameById = new Map<string, string>()
+  if (candidateIds.size > 0) {
+    const idList = [...candidateIds].map(id => agLiteral(id)).join(', ')
+    const conceptRows = await queryCypher<{ id: unknown, name: unknown }>(
+      db,
+      `MATCH (n:Concept) WHERE n.workspace_id = ${ws} AND n.id IN [${idList}] RETURN n.id AS id, n.name AS name`,
+      'id ag_catalog.agtype, name ag_catalog.agtype',
+    )
+    for (const row of conceptRows)
+      conceptNameById.set(String(parseAgtype(row.id)), parseOptionalString(row.name) ?? String(parseAgtype(row.id)))
+  }
+
+  // Top 10 concepts per topic by mention count, ties broken by name asc.
+  const includedConceptIds = new Set<string>()
+  for (const list of perTopic.values()) {
+    list.sort((a, b) => b.count - a.count
+      || (conceptNameById.get(a.conceptId) ?? a.conceptId).localeCompare(conceptNameById.get(b.conceptId) ?? b.conceptId))
+    for (const { conceptId } of list.slice(0, 10))
+      includedConceptIds.add(conceptId)
+  }
+
+  const topicNodes: GraphNode[] = topicRows.map((row) => {
+    const id = String(parseAgtype(row.id))
+    return { id, label: 'Topic', name: parseOptionalString(row.name) ?? id, ref: id }
+  })
+  const topicIds = new Set(topicNodes.map(n => n.id))
+
+  const conceptNodes: GraphNode[] = [...includedConceptIds]
+    .filter(id => conceptNameById.has(id))
+    .map(id => ({ id, label: 'Concept', name: conceptNameById.get(id)!, ref: id }))
+
+  const groupedUnderRows = await queryCypher<{ source: unknown, target: unknown }>(
+    db,
+    `MATCH (a:Concept)-[r:GROUPED_UNDER]->(b:Topic) WHERE r.workspace_id = ${ws} RETURN a.id AS source, b.id AS target`,
+    'source ag_catalog.agtype, target ag_catalog.agtype',
   )
 
   const relatesToRows = await queryCypher<{ source: unknown, target: unknown, type: unknown }>(
     db,
-    `MATCH (a)-[r:RELATES_TO]->(b) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target, r.type AS type`,
+    `MATCH (a:Concept)-[r:RELATES_TO]->(b:Concept) WHERE r.workspace_id = ${ws} RETURN a.id AS source, b.id AS target, r.type AS type`,
     'source ag_catalog.agtype, target ag_catalog.agtype, type ag_catalog.agtype',
   )
 
-  const mentionsEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
+  const edges: GraphEdge[] = [
+    ...groupedUnderRows
+      .map(row => ({
+        source: String(parseAgtype(row.source)),
+        target: String(parseAgtype(row.target)),
+      }))
+      .filter(e => includedConceptIds.has(e.source) && topicIds.has(e.target))
+      .map(e => ({ ...e, type: 'GROUPED_UNDER' as const })),
+    ...relatesToRows
+      .map(row => ({
+        source: String(parseAgtype(row.source)),
+        target: String(parseAgtype(row.target)),
+        edgeType: parseOptionalString(row.type),
+      }))
+      .filter(e => includedConceptIds.has(e.source) && includedConceptIds.has(e.target))
+      .map(e => ({ ...e, type: 'RELATES_TO' as const })),
+  ]
+
+  return { nodes: [...conceptNodes, ...topicNodes], edges }
+}
+
+/**
+ * Ego graph around `nodeId`: every vertex reachable through any of the five
+ * edge types within `depth` hops (undirected, depth clamped to [1, 2]),
+ * plus the edges on those paths. The center node is always included. An
+ * unknown node (or one outside the workspace) yields an empty payload.
+ * Note nodes resolve name/ref from the `notes` table; Concept/Tag/Topic
+ * names come from the AGE vertex properties.
+ */
+export async function getEgoGraph(
+  db: GraphDb,
+  workspaceId: string,
+  nodeId: string,
+  depth: number,
+): Promise<{ nodes: GraphNode[], edges: GraphEdge[] }> {
+  const clamped = Math.min(2, Math.max(1, Math.floor(depth)))
+  const ws = agLiteral(workspaceId)
+
+  // Single undirected traversal over ALL edge types (mixed-type paths like
+  // Concept -MENTIONS-> Note -TAGGED-> Tag count as one hop); the edge label
+  // comes back via label(rel) since AGE lacks type()/alternation support.
+  const edgeRows = await queryCypher<{ source: unknown, target: unknown, edge_type: unknown, relation_type: unknown, workspace_id: unknown }>(
     db,
-    `MATCH (a:Note)-[r:MENTIONS]->(b:Concept) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
-    'source ag_catalog.agtype, target ag_catalog.agtype',
+    [
+      `MATCH p = (start {id: ${agLiteral(nodeId)}})-[*1..${clamped}]-(n)`,
+      `WHERE start.workspace_id = ${ws} AND n.workspace_id = ${ws}`,
+      'UNWIND relationships(p) AS rel',
+      'RETURN DISTINCT startNode(rel).id AS source, endNode(rel).id AS target, label(rel) AS edge_type, rel.type AS relation_type, rel.workspace_id AS workspace_id',
+    ].join(' '),
+    'source ag_catalog.agtype, target ag_catalog.agtype, edge_type ag_catalog.agtype, relation_type ag_catalog.agtype, workspace_id ag_catalog.agtype',
   )
 
-  const taggedEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
-    db,
-    `MATCH (a:Note)-[r:TAGGED]->(b:Tag) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
-    'source ag_catalog.agtype, target ag_catalog.agtype',
-  )
+  const edges: GraphEdge[] = []
+  const endpointIds = new Set<string>()
+  for (const row of edgeRows) {
+    if (String(parseAgtype(row.workspace_id)) !== workspaceId)
+      continue
+    const edgeType = parseOptionalString(row.edge_type)
+    if (!edgeType || !(EGO_EDGE_TYPES as readonly string[]).includes(edgeType))
+      continue
+    const source = String(parseAgtype(row.source))
+    const target = String(parseAgtype(row.target))
+    const relationType = parseOptionalString(row.relation_type)
+    const edge: GraphEdge = { source, target, type: edgeType as EgoEdgeType }
+    if (edgeType === 'RELATES_TO' && relationType)
+      edge.edgeType = relationType
+    edges.push(edge)
+    endpointIds.add(source)
+    endpointIds.add(target)
+  }
 
-  const linksEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
-    db,
-    `MATCH (a:Note)-[r:LINKS]->(b:Note) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
-    'source ag_catalog.agtype, target ag_catalog.agtype',
-  )
+  const allIds = [...endpointIds]
+  allIds.push(nodeId)
 
-  const groupedUnderEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
-    db,
-    `MATCH (a:Concept)-[r:GROUPED_UNDER]->(b:Topic) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
-    'source ag_catalog.agtype, target ag_catalog.agtype',
-  )
-
-  const noteIds = noteRows.map(row => String(parseAgtype(row.id)))
-  const notePaths = new Map<string, { title: string, path: string }>()
-  if (noteIds.length > 0) {
+  // Note nodes resolve from the relational table (title/path), like getFullGraph did.
+  const noteInfo = new Map<string, { title: string, path: string }>()
+  if (allIds.length > 0) {
     const notes = await db
       .selectFrom('notes')
       .select(['id', 'title', 'path'])
-      .where('id', 'in', noteIds)
+      .where('workspace_id', '=', workspaceId)
+      .where('id', 'in', allIds)
       .execute()
-    for (const note of notes) {
-      notePaths.set(note.id, { title: note.title, path: note.path })
+    for (const note of notes)
+      noteInfo.set(note.id, { title: note.title, path: note.path })
+  }
+
+  const nonNoteIds = allIds.filter(id => !noteInfo.has(id))
+  const vertexById = new Map<string, { label: 'Concept' | 'Tag' | 'Topic', name: string }>()
+  if (nonNoteIds.length > 0) {
+    const idList = nonNoteIds.map(id => agLiteral(id)).join(', ')
+    for (const label of ['Concept', 'Tag', 'Topic'] as const) {
+      const rows = await queryCypher<{ id: unknown, name: unknown }>(
+        db,
+        `MATCH (n:${label}) WHERE n.workspace_id = ${ws} AND n.id IN [${idList}] RETURN n.id AS id, n.name AS name`,
+        'id ag_catalog.agtype, name ag_catalog.agtype',
+      )
+      for (const row of rows)
+        vertexById.set(String(parseAgtype(row.id)), { label, name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)) })
     }
   }
 
-  const conceptNodes: GraphNode[] = conceptRows.map(row => ({
-    id: String(parseAgtype(row.id)),
-    label: 'Concept',
-    name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)),
-    ref: String(parseAgtype(row.id)),
-  }))
+  const foundIds = new Set([...noteInfo.keys(), ...vertexById.keys()])
+  if (!foundIds.has(nodeId))
+    return { nodes: [], edges: [] }
 
-  const noteNodes: GraphNode[] = noteRows.map((row) => {
-    const id = String(parseAgtype(row.id))
-    const info = notePaths.get(id)
-    return {
-      id,
-      label: 'Note',
-      name: info?.title ?? id,
-      ref: info?.path ?? id,
-    }
+  const nodes: GraphNode[] = [...foundIds].map((id): GraphNode => {
+    const note = noteInfo.get(id)
+    if (note)
+      return { id, label: 'Note', name: note.title, ref: note.path }
+    const vertex = vertexById.get(id)
+    if (vertex)
+      return { id, label: vertex.label, name: vertex.name, ref: id }
+    // unreachable: foundIds is built from these two maps
+    return { id, label: 'Concept', name: id, ref: id }
   })
 
-  const tagNodes: GraphNode[] = tagRows.map(row => ({
-    id: String(parseAgtype(row.id)),
-    label: 'Tag',
-    name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)),
-    ref: String(parseAgtype(row.id)),
-  }))
-
-  const topicNodes: GraphNode[] = topicRows.map(row => ({
-    id: String(parseAgtype(row.id)),
-    label: 'Topic',
-    name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)),
-    ref: String(parseAgtype(row.id)),
-  }))
-
-  const edges: GraphEdge[] = [
-    ...relatesToRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'RELATES_TO' as const,
-      edgeType: parseOptionalString(row.type),
-    })),
-    ...mentionsEdgeRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'MENTIONS' as const,
-    })),
-    ...taggedEdgeRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'TAGGED' as const,
-    })),
-    ...linksEdgeRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'LINKS' as const,
-    })),
-    ...groupedUnderEdgeRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'GROUPED_UNDER' as const,
-    })),
-  ]
-
-  return {
-    nodes: [...conceptNodes, ...noteNodes, ...tagNodes, ...topicNodes],
-    edges,
-  }
+  const includedEdges = edges.filter(e => foundIds.has(e.source) && foundIds.has(e.target))
+  return { nodes, edges: includedEdges }
 }
 
 export function toConceptSummaries(

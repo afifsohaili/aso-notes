@@ -1,5 +1,5 @@
 import { useDatabase } from '~~/utils/db'
-import { getTopicOverview } from '../../lib/graph/ui'
+import { getEgoGraph } from '../../lib/graph/ui'
 import { resolveWorkspaceId } from '../../utils/workspace'
 
 export default defineEventHandler(async (event) => {
@@ -15,5 +15,14 @@ export default defineEventHandler(async (event) => {
     return { nodes: [], edges: [] }
   }
 
-  return getTopicOverview(db, workspaceId)
+  const query = getQuery(event)
+  const nodeId = typeof query.node === 'string' ? query.node : undefined
+  if (!nodeId) {
+    throw createError({ statusCode: 400, statusMessage: 'node is required' })
+  }
+
+  const parsedDepth = Number.parseInt(String(query.depth ?? ''), 10)
+  const depth = Number.isNaN(parsedDepth) ? 1 : Math.min(2, Math.max(1, parsedDepth))
+
+  return getEgoGraph(db, workspaceId, nodeId, depth)
 })
