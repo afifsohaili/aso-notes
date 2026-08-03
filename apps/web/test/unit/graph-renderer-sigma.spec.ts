@@ -22,6 +22,7 @@ const mock = vi.hoisted(() => {
     circularAssign: any
     fa2Assign: any
     fa2InferSettings: any
+    cameraSetState: any
   } = {
     lastSigma: null,
     lastGraph: null,
@@ -31,26 +32,37 @@ const mock = vi.hoisted(() => {
     circularAssign: null,
     fa2Assign: null,
     fa2InferSettings: null,
+    cameraSetState: null,
   }
 
   state.circularAssign = vi.fn()
   state.fa2Assign = vi.fn()
   state.fa2InferSettings = vi.fn(() => ({ gravity: 1 }))
+  state.cameraSetState = vi.fn()
 
   return { state }
 })
 
 vi.mock('sigma', () => ({
   default: class MockSigma {
+    camera: any
+
     constructor(graph: any, container: any, settings: any) {
       mock.state.lastSigma = this
       mock.state.lastGraph = graph
       mock.state.sigmaSettings = settings
       mock.state.sigmaCtorCalls += 1
+      this.camera = {
+        setState: mock.state.cameraSetState,
+      }
     }
 
     on = vi.fn((event: string, handler: (payload: any) => void) => {
       mock.state.handlers[event] = handler
+    })
+
+    getCamera = vi.fn(function (this: any) {
+      return this.camera
     })
 
     refresh = vi.fn()
@@ -104,6 +116,7 @@ describe('createGraphRenderer — sigma impl', () => {
     mock.state.circularAssign.mockClear()
     mock.state.fa2Assign.mockClear()
     mock.state.fa2InferSettings.mockClear()
+    mock.state.cameraSetState.mockClear()
   })
 
   it('registers sigma in the impl registry', () => {
@@ -141,11 +154,15 @@ describe('sigma renderer contract', () => {
     mock.state.circularAssign.mockClear()
     mock.state.fa2Assign.mockClear()
     mock.state.fa2InferSettings.mockClear()
+    mock.state.cameraSetState.mockClear()
     renderer = createGraphRenderer('sigma')
   })
 
   async function mountRenderer() {
-    await renderer.mount({} as HTMLElement)
+    const container = {
+      getBoundingClientRect: () => ({ width: 833, height: 809 }),
+    } as HTMLElement
+    await renderer.mount(container)
     sigma = mock.state.lastSigma
     graph = mock.state.lastGraph
     expect(sigma).toBeTruthy()
@@ -242,6 +259,47 @@ describe('sigma renderer contract', () => {
 
     expect(() => renderer.highlight('c1')).not.toThrow()
     expect(() => renderer.highlight(null)).not.toThrow()
+  })
+
+  it('setGraph fits the camera to the graph bounding box with padding', async () => {
+    await mountRenderer()
+
+    renderer.setGraph(NODES, EDGES)
+
+    expect(sigma.getCamera).toHaveBeenCalled()
+    expect(mock.state.cameraSetState).toHaveBeenCalledWith({ x: 0, y: 0, ratio: 2.5 })
+  })
+
+  it('setGraph called before mount is applied once mount completes', async () => {
+    renderer.setGraph(NODES, EDGES)
+
+    await mountRenderer()
+
+    expect(graph.order).toBe(4)
+    expect(graph.size).toBe(3)
+    expect(sigma.getCamera).toHaveBeenCalled()
+    expect(mock.state.cameraSetState).toHaveBeenCalled()
+    expect(sigma.refresh).toHaveBeenCalled()
+  })
+
+  it('setGraph before mount keeps the latest data', async () => {
+    renderer.setGraph([{ id: 'old', label: 'Topic', name: 'Old', ref: 'old' }], [])
+    renderer.setGraph(NODES, EDGES)
+
+    await mountRenderer()
+
+    expect(graph.hasNode('old')).toBe(false)
+    expect(graph.hasNode('t1')).toBe(true)
+  })
+
+  it('highlight before mount is applied after setGraph resolves', async () => {
+    renderer.setGraph(NODES, EDGES)
+    renderer.highlight('c1')
+
+    await mountRenderer()
+
+    // Active highlight should have been re-applied after the delayed setGraph.
+    expect(graph.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
   })
 
   it('highlight dims non-neighbor nodes and non-incident edges to 0.2 alpha', async () => {

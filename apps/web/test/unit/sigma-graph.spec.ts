@@ -3,7 +3,7 @@ import Graph from 'graphology'
 import { circular } from 'graphology-layout'
 import forceAtlas2 from 'graphology-layout-forceatlas2'
 import { describe, expect, it } from 'vitest'
-import { applyHighlightToGraph, buildGraphologyGraph } from '../../app/lib/graph-renderer/sigma-graph'
+import { applyHighlightToGraph, buildGraphologyGraph, computeCameraFit } from '../../app/lib/graph-renderer/sigma-graph'
 
 // Regression tests against the REAL graphology + layout libraries.
 // The existing sigma renderer spec mocks sigma and the layout libs; these
@@ -175,5 +175,85 @@ describe('applyHighlightToGraph', () => {
     applyHighlightToGraph(c, 'c1')
     expectNumericPositions(c)
     expect(c.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
+  })
+})
+
+describe('computeCameraFit', () => {
+  it('returns null for an empty graph', () => {
+    const graph = new Graph({ type: 'undirected' })
+    expect(computeCameraFit(graph, 833, 809)).toBeNull()
+  })
+
+  it('centers the camera on the bounding box midpoint', () => {
+    const graph = buildGraphologyGraph([
+      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
+      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
+    ], [])
+    graph.setNodeAttribute('a', 'x', 0)
+    graph.setNodeAttribute('a', 'y', 0)
+    graph.setNodeAttribute('b', 'x', 100)
+    graph.setNodeAttribute('b', 'y', 200)
+
+    const fit = computeCameraFit(graph, 100, 100)
+    expect(fit).toEqual({ x: 50, y: 100, ratio: expect.any(Number) })
+  })
+
+  it('chooses a ratio that fits the wider axis on a non-square container', () => {
+    const graph = buildGraphologyGraph([
+      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
+      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
+    ], [])
+    graph.setNodeAttribute('a', 'x', 0)
+    graph.setNodeAttribute('a', 'y', 0)
+    graph.setNodeAttribute('b', 'x', 100)
+    graph.setNodeAttribute('b', 'y', 50)
+
+    // Container is 200x100, so height is the limiting dimension (minSide=100).
+    // Bbox is 100x50. With 10% padding, padded = 100/0.8=125, 50/0.8=62.5.
+    // ratio = max(125*100/200, 62.5*100/100) = max(62.5, 62.5) = 62.5.
+    const fit = computeCameraFit(graph, 200, 100)
+    expect(fit).toEqual({ x: 50, y: 25, ratio: 62.5 })
+  })
+
+  it('falls back to ratio 1 for a zero-size bounding box', () => {
+    const graph = buildGraphologyGraph([{ id: 'a', label: 'Topic', name: 'A', ref: 'a' }], [])
+    graph.setNodeAttribute('a', 'x', 42)
+    graph.setNodeAttribute('a', 'y', -7)
+
+    const fit = computeCameraFit(graph, 833, 809)
+    expect(fit).toEqual({ x: 42, y: -7, ratio: 1 })
+  })
+
+  it('zooms in when the graph is smaller than the viewport', () => {
+    const graph = buildGraphologyGraph([
+      { id: 'a', label: 'Topic', name: 'A', ref: 'a' },
+      { id: 'b', label: 'Topic', name: 'B', ref: 'b' },
+    ], [])
+    graph.setNodeAttribute('a', 'x', 0)
+    graph.setNodeAttribute('a', 'y', 0)
+    graph.setNodeAttribute('b', 'x', 1)
+    graph.setNodeAttribute('b', 'y', 1)
+
+    const fit = computeCameraFit(graph, 100, 100)
+    // Padded 1x1 → 1.25. ratio = 1.25 * 100 / 100 = 1.25.
+    expect(fit!.ratio).toBe(1.25)
+    expect(fit!.x).toBe(0.5)
+    expect(fit!.y).toBe(0.5)
+  })
+
+  it('produces a sane fit after a real circular + ForceAtlas2 layout', () => {
+    const graph = buildGraphologyGraph(NODES, EDGES)
+    circular.assign(graph, { scale: 1 })
+    forceAtlas2.assign(graph, {
+      iterations: 20,
+      settings: forceAtlas2.inferSettings(graph),
+    })
+
+    const fit = computeCameraFit(graph, 833, 809)
+    expect(fit).not.toBeNull()
+    expect(Number.isFinite(fit!.x)).toBe(true)
+    expect(Number.isFinite(fit!.y)).toBe(true)
+    expect(fit!.ratio).toBeGreaterThan(0)
+    expect(Number.isFinite(fit!.ratio)).toBe(true)
   })
 })
