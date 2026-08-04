@@ -1,12 +1,7 @@
 import type { SigmaSurface, SigmaSurfaceFactory } from './sigma-surface'
 import type { GraphEdge, GraphNode, GraphRenderer } from './types'
-import Graph from 'graphology'
-import {
-  applyHighlightToGraph,
-  computeCameraFit,
-  populateGraphologyGraph,
-  runLayout,
-} from './sigma-graph'
+import { computeCameraFit } from './sigma-graph'
+import { SigmaGraphStore } from './sigma-graph-store'
 import { createSigmaSurface } from './sigma-surface'
 
 /**
@@ -15,45 +10,39 @@ import { createSigmaSurface } from './sigma-surface'
  * sigma is intentionally NOT statically imported: its module-level code
  * touches `WebGL2RenderingContext`, which throws in a Node/SSR context, so
  * the surface instance is created client-side inside `mount()` only. The
- * graphology and layout code is pure JS and safe to import anywhere.
+ * graphology and layout code is owned by `SigmaGraphStore` and is pure JS,
+ * safe to import anywhere.
  *
  * sigma v3 removed the v2 node/edge reducer API; highlight is implemented by
  * mutating node/edge `color` attributes on the graphology graph and calling
  * `refresh()`, which is sigma v3's supported dynamic-styling path.
- *
- * Graph construction, layout, camera framing and highlight logic are factored
- * into `sigma-graph.ts` so they can be tested against the real graphology +
- * layout libraries without mocking the WebGL surface.
  */
 export class SigmaRenderer implements GraphRenderer {
-  private graph: Graph
   private surface: SigmaSurface | null = null
   private surfaceFactory: SigmaSurfaceFactory
+  private graphStore: SigmaGraphStore
   private clickHandler: ((node: GraphNode) => void) | null = null
-  private highlightedNodeId: string | null = null
   private pendingNodes: GraphNode[] | null = null
   private pendingEdges: GraphEdge[] | null = null
 
   constructor(surfaceFactory: SigmaSurfaceFactory = createSigmaSurface) {
-    // Undirected is fine: graph edges are bidirectional for layout purposes.
-    // The edge `type` is kept in the attributes.
-    this.graph = new Graph({ type: 'undirected' })
     this.surfaceFactory = surfaceFactory
+    this.graphStore = new SigmaGraphStore()
   }
 
   async mount(container: HTMLElement): Promise<void> {
     if (this.surface)
       return
 
-    const surface = await this.surfaceFactory(this.graph, container)
+    const surface = await this.surfaceFactory(this.graphStore.graph, container)
     this.surface = surface
 
     surface.onClickNode((node) => {
       if (!this.clickHandler)
         return
-      const nodeData = this.graph.getNodeAttribute(node, 'nodeData')
+      const nodeData = this.graphStore.getNodeData(node)
       if (nodeData)
-        this.clickHandler(nodeData as GraphNode)
+        this.clickHandler(nodeData)
     })
 
     // Apply any data that arrived while sigma was still being imported.
@@ -66,9 +55,6 @@ export class SigmaRenderer implements GraphRenderer {
 
     this.pendingNodes = null
     this.pendingEdges = null
-
-    // Initial render of the (now possibly populated) graph.
-    surface.refresh()
   }
 
   setGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
@@ -78,15 +64,15 @@ export class SigmaRenderer implements GraphRenderer {
       return
     }
 
-    populateGraphologyGraph(this.graph, nodes, edges)
-    runLayout(this.graph)
+    const graph = this.graphStore.replace(nodes, edges)
+    this.surface.setGraph(graph)
     this.fitCamera()
-    this.applyHighlight()
+    this.surface.refresh()
   }
 
   highlight(nodeId: string | null): void {
-    this.highlightedNodeId = nodeId
-    this.applyHighlight()
+    this.graphStore.applyHighlight(nodeId)
+    this.surface?.refresh()
   }
 
   onNodeClick(cb: (node: GraphNode) => void): void {
@@ -99,18 +85,13 @@ export class SigmaRenderer implements GraphRenderer {
       this.surface = null
     }
     this.clickHandler = null
-    this.highlightedNodeId = null
     this.pendingNodes = null
     this.pendingEdges = null
-    this.graph.clear()
   }
 
   private applyHighlight(): void {
-    if (!this.surface)
-      return
-
-    applyHighlightToGraph(this.graph, this.highlightedNodeId)
-    this.surface.refresh()
+    this.graphStore.applyHighlight()
+    this.surface?.refresh()
   }
 
   private fitCamera(): void {

@@ -39,16 +39,20 @@ vi.mock('graphology-layout-forceatlas2', () => {
 // Fake surface factory used in renderer-level tests. We inject this instead of
 // mocking the sigma module, because the renderer only talks through the
 // SigmaSurface interface.
-function createFakeSurfaceFactory(): { surface: SigmaSurface, factory: SigmaSurfaceFactory } {
+function createFakeSurfaceFactory(): { surface: SigmaSurface & { latestGraph: Graph | null }, factory: SigmaSurfaceFactory } {
   const camera = { setState: vi.fn() }
-  const surface: SigmaSurface = {
-    setGraph: vi.fn(),
+  const surface: SigmaSurface & { latestGraph: Graph | null } = {
+    latestGraph: null,
+    setGraph: vi.fn((graph: Graph) => { surface.latestGraph = graph }),
     refresh: vi.fn(),
     kill: vi.fn(),
     getCamera: vi.fn(() => camera),
     onClickNode: vi.fn(),
   }
-  const factory: SigmaSurfaceFactory = vi.fn((_graph, _container) => surface)
+  const factory: SigmaSurfaceFactory = vi.fn((graph: Graph, _container) => {
+    surface.latestGraph = graph
+    return surface
+  })
   return { surface, factory }
 }
 
@@ -101,9 +105,8 @@ describe('createGraphRenderer — sigma impl', () => {
 
 describe('sigma renderer contract', () => {
   let renderer: GraphRenderer
-  let surface: SigmaSurface
+  let surface: SigmaSurface & { latestGraph: Graph | null }
   let factory: SigmaSurfaceFactory
-  let graph: Graph
 
   beforeEach(() => {
     mock.state.circularAssign.mockClear()
@@ -116,16 +119,21 @@ describe('sigma renderer contract', () => {
     ;(renderer as any).surfaceFactory = factory
   })
 
+  function graph(): Graph {
+    if (!surface.latestGraph)
+      throw new Error('No graph has been bound to the surface yet')
+    return surface.latestGraph
+  }
+
   async function mountRenderer() {
     await renderer.mount({} as HTMLElement)
-    graph = (factory as any).mock.calls[0][0]
-    expect(graph).toBeInstanceOf(Graph)
+    expect(graph()).toBeInstanceOf(Graph)
   }
 
   it('mount creates the surface with the graph and container, then refreshes', async () => {
     await mountRenderer()
 
-    expect(factory).toHaveBeenCalledWith(graph, {})
+    expect(factory).toHaveBeenCalledWith(graph(), {})
     expect(surface.onClickNode).toHaveBeenCalledWith(expect.any(Function))
     expect(surface.refresh).toHaveBeenCalled()
   })
@@ -135,25 +143,25 @@ describe('sigma renderer contract', () => {
 
     renderer.setGraph(NODES, EDGES)
 
-    expect(graph.order).toBe(4)
-    expect(graph.size).toBe(3)
+    expect(graph().order).toBe(4)
+    expect(graph().size).toBe(3)
 
-    expect(graph.getNodeAttributes('t1')).toMatchObject({
+    expect(graph().getNodeAttributes('t1')).toMatchObject({
       label: 'Topic A',
       color: '#7c3aed',
       size: 12,
       nodeData: { id: 't1', label: 'Topic', name: 'Topic A', ref: 't1' },
     })
-    expect(graph.getNodeAttributes('c1')).toMatchObject({
+    expect(graph().getNodeAttributes('c1')).toMatchObject({
       label: 'Concept A',
       color: '#4f46e5',
       size: 8,
       nodeData: { id: 'c1', label: 'Concept', name: 'Concept A', ref: 'c1' },
     })
-    expect(graph.getNodeAttributes('n1')).toMatchObject({ color: '#059669', size: 6 })
-    expect(graph.getNodeAttributes('g1')).toMatchObject({ color: '#d97706', size: 5 })
+    expect(graph().getNodeAttributes('n1')).toMatchObject({ color: '#059669', size: 6 })
+    expect(graph().getNodeAttributes('g1')).toMatchObject({ color: '#d97706', size: 5 })
 
-    const edge = graph.getEdgeAttributes(graph.edges()[0])
+    const edge = graph().getEdgeAttributes(graph().edges()[0])
     expect(edge).toMatchObject({ color: '#94a3b8', size: 1.5, edgeType: 'GROUPED_UNDER' })
   })
 
@@ -162,9 +170,9 @@ describe('sigma renderer contract', () => {
 
     renderer.setGraph(NODES, EDGES)
 
-    expect(mock.state.circularAssign).toHaveBeenCalledWith(graph, expect.anything())
-    expect(mock.state.fa2InferSettings).toHaveBeenCalledWith(graph)
-    expect(mock.state.fa2Assign).toHaveBeenCalledWith(graph, expect.anything())
+    expect(mock.state.circularAssign).toHaveBeenCalledWith(graph(), expect.anything())
+    expect(mock.state.fa2InferSettings).toHaveBeenCalledWith(graph())
+    expect(mock.state.fa2Assign).toHaveBeenCalledWith(graph(), expect.anything())
     const fa2Params = mock.state.fa2Assign.mock.calls[0][1]
     expect(fa2Params.iterations).toBeGreaterThanOrEqual(100)
     expect(fa2Params.iterations).toBeLessThanOrEqual(200)
@@ -183,10 +191,10 @@ describe('sigma renderer contract', () => {
     renderer.setGraph(NODES, EDGES)
     renderer.setGraph([{ id: 'x1', label: 'Concept', name: 'X', ref: 'x1' }], [])
 
-    expect(graph.order).toBe(1)
-    expect(graph.size).toBe(0)
-    expect(graph.hasNode('t1')).toBe(false)
-    expect(graph.hasNode('x1')).toBe(true)
+    expect(graph().order).toBe(1)
+    expect(graph().size).toBe(0)
+    expect(graph().hasNode('t1')).toBe(false)
+    expect(graph().hasNode('x1')).toBe(true)
   })
 
   it('setGraph seeds numeric x/y on every node before sigma can refresh', async () => {
@@ -194,7 +202,7 @@ describe('sigma renderer contract', () => {
 
     renderer.setGraph(NODES, EDGES)
 
-    graph.forEachNode((node, attrs) => {
+    graph().forEachNode((node, attrs) => {
       expect(typeof attrs.x, `node ${node} x is numeric`).toBe('number')
       expect(typeof attrs.y, `node ${node} y is numeric`).toBe('number')
       expect(Number.isFinite(attrs.x)).toBe(true)
@@ -224,8 +232,8 @@ describe('sigma renderer contract', () => {
 
     await mountRenderer()
 
-    expect(graph.order).toBe(4)
-    expect(graph.size).toBe(3)
+    expect(graph().order).toBe(4)
+    expect(graph().size).toBe(3)
     expect(surface.getCamera).toHaveBeenCalled()
     expect(surface.refresh).toHaveBeenCalled()
   })
@@ -236,8 +244,8 @@ describe('sigma renderer contract', () => {
 
     await mountRenderer()
 
-    expect(graph.hasNode('old')).toBe(false)
-    expect(graph.hasNode('t1')).toBe(true)
+    expect(graph().hasNode('old')).toBe(false)
+    expect(graph().hasNode('t1')).toBe(true)
   })
 
   it('highlight before mount is applied after setGraph resolves', async () => {
@@ -247,7 +255,7 @@ describe('sigma renderer contract', () => {
     await mountRenderer()
 
     // Active highlight should have been re-applied after the delayed setGraph.
-    expect(graph.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
+    expect(graph().getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
   })
 
   it('highlight dims non-neighbor nodes and non-incident edges to 0.2 alpha', async () => {
@@ -257,16 +265,16 @@ describe('sigma renderer contract', () => {
     renderer.highlight('c1')
 
     // c1 and its 1-hop neighbors (t1, n1) keep full color
-    expect(graph.getNodeAttribute('c1', 'color')).toBe('#4f46e5')
-    expect(graph.getNodeAttribute('t1', 'color')).toBe('#7c3aed')
-    expect(graph.getNodeAttribute('n1', 'color')).toBe('#059669')
+    expect(graph().getNodeAttribute('c1', 'color')).toBe('#4f46e5')
+    expect(graph().getNodeAttribute('t1', 'color')).toBe('#7c3aed')
+    expect(graph().getNodeAttribute('n1', 'color')).toBe('#059669')
     // g1 is not a neighbor → dimmed
-    expect(graph.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
+    expect(graph().getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
 
     // edges incident to c1 keep color; n1-g1 dimmed
     let incident = 0
     let nonIncident = 0
-    graph.forEachEdge((edge, attrs, source, target) => {
+    graph().forEachEdge((edge, attrs, source, target) => {
       if (source === 'c1' || target === 'c1') {
         incident += 1
         expect(attrs.color).toBe('#94a3b8')
@@ -289,8 +297,8 @@ describe('sigma renderer contract', () => {
     renderer.highlight('c1')
     renderer.highlight(null)
 
-    expect(graph.getNodeAttribute('g1', 'color')).toBe('#d97706')
-    graph.forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
+    expect(graph().getNodeAttribute('g1', 'color')).toBe('#d97706')
+    graph().forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
   })
 
   it('highlight on an unknown node id is a no-op', async () => {
@@ -299,8 +307,8 @@ describe('sigma renderer contract', () => {
 
     renderer.highlight('missing')
 
-    expect(graph.getNodeAttribute('g1', 'color')).toBe('#d97706')
-    graph.forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
+    expect(graph().getNodeAttribute('g1', 'color')).toBe('#d97706')
+    graph().forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
   })
 
   it('setGraph re-applies the active highlight', async () => {
@@ -311,7 +319,7 @@ describe('sigma renderer contract', () => {
     renderer.setGraph(NODES, EDGES)
 
     // fresh nodes get full colors, then the active highlight dims g1 again
-    expect(graph.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
+    expect(graph().getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
   })
 
   it('onNodeClick notifies the registered callback with the stored GraphNode', async () => {

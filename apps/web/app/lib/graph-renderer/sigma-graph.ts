@@ -26,16 +26,6 @@ function circularSeed(index: number, count: number): { x: number, y: number } {
  */
 export function buildGraphologyGraph(nodes: GraphNode[], edges: GraphEdge[]): Graph {
   const graph = new Graph({ type: 'undirected' })
-  populateGraphologyGraph(graph, nodes, edges)
-  return graph
-}
-
-/**
- * Populate an existing graphology graph. Used by the sigma renderer so the
- * graph instance bound to sigma can be reused across `setGraph()` calls.
- */
-export function populateGraphologyGraph(graph: Graph, nodes: GraphNode[], edges: GraphEdge[]): void {
-  graph.clear()
 
   const count = nodes.length
   nodes.forEach((node, index) => {
@@ -68,6 +58,8 @@ export function populateGraphologyGraph(graph: Graph, nodes: GraphNode[], edges:
       size: EDGE_SIZE,
     })
   }
+
+  return graph
 }
 
 /** Seed positions on a circle, then settle them with a bounded FA2 run. */
