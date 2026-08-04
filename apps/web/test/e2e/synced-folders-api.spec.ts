@@ -443,4 +443,85 @@ describe('synced-folders API', () => {
       expect(res.status).toBe(404)
     })
   })
+
+  describe('pATCH /api/synced-folders/:id', () => {
+    async function patchAlias(server: any, cookies: string, id: string, alias: string | null) {
+      return server(`/api/synced-folders/${id}`, {
+        method: 'PATCH',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ alias }),
+      })
+    }
+
+    test('returns 401 when unauthenticated', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, cookies, dir)
+
+      const res = await patchAlias(server, '', body.id, 'Work')
+      expect(res.status).toBe(401)
+    })
+
+    test('updates the alias in the response and the database, trimmed', async ({ server, trx }) => {
+      const { cookies } = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, cookies, dir)
+
+      const res = await patchAlias(server, cookies, body.id, '  Work Plans  ')
+      expect(res.status).toBe(200)
+      const updated = await res.json()
+      expect(updated).toMatchObject({ id: body.id, path: body.path, alias: 'Work Plans' })
+
+      const row = await trx
+        .selectFrom('synced_folders')
+        .select('alias')
+        .where('id', '=', body.id)
+        .executeTakeFirstOrThrow()
+      expect(row.alias).toBe('Work Plans')
+    })
+
+    test('clears the alias to null when patched with an empty string', async ({ server, trx }) => {
+      const { cookies } = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, cookies, dir)
+      await patchAlias(server, cookies, body.id, 'Work')
+
+      const res = await patchAlias(server, cookies, body.id, '   ')
+      expect(res.status).toBe(200)
+      const updated = await res.json()
+      expect(updated.alias).toBeNull()
+
+      const row = await trx
+        .selectFrom('synced_folders')
+        .select('alias')
+        .where('id', '=', body.id)
+        .executeTakeFirstOrThrow()
+      expect(row.alias).toBeNull()
+    })
+
+    test('rejects an alias longer than 80 characters', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, cookies, dir)
+
+      const res = await patchAlias(server, cookies, body.id, 'x'.repeat(81))
+      expect(res.status).toBe(400)
+    })
+
+    test('returns 404 for a synced folder of another workspace', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+      const other = await givenVerifiedUser()
+      const dir = givenTempDir()
+      const body = await addFolder(server, other.cookies, dir)
+
+      const res = await patchAlias(server, cookies, body.id, 'Work')
+      expect(res.status).toBe(404)
+    })
+
+    test('returns 404 for an unknown synced folder id', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+      const res = await patchAlias(server, cookies, crypto.randomUUID(), 'Work')
+      expect(res.status).toBe(404)
+    })
+  })
 })

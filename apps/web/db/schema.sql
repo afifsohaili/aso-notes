@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict UzZ0N1JjWN1VoYqEkMl6YVdBjGi7aLWFTmlh1YkZSv9YmH3D6EGn9ZujONDDkEQ
+\restrict mN29ck2OrbCqc0gnW98UeS6fwTs9sbbufDTrQWMzPxfE28KzFGbMOrL7Z4AtGmn
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -543,7 +543,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-07-31 11:02:38.268485'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-04 06:41:46.795434'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -576,7 +576,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-07-31 11:02:38.268485'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-04 06:41:46.795434'::timestamp without time zone NOT NULL
 );
 
 
@@ -658,7 +658,8 @@ CREATE TABLE public.synced_folders (
     workspace_id uuid NOT NULL,
     path text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    alias text
 );
 
 
@@ -1622,5 +1623,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict UzZ0N1JjWN1VoYqEkMl6YVdBjGi7aLWFTmlh1YkZSv9YmH3D6EGn9ZujONDDkEQ
+\unrestrict mN29ck2OrbCqc0gnW98UeS6fwTs9sbbufDTrQWMzPxfE28KzFGbMOrL7Z4AtGmn
 

@@ -238,6 +238,7 @@ export interface Sources {
 }
 
 export interface SyncedFolders {
+  alias: string | null;
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   path: string;

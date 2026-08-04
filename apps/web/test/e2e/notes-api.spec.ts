@@ -184,6 +184,7 @@ describe.sequential('notes API', () => {
         {
           syncedFolderId,
           name: '__default_synced_folder__',
+          pathPrefix: null,
           absolutePath: '/__default_synced_folder__',
           hasCover: false,
           noteCount: 0,
@@ -321,6 +322,71 @@ describe.sequential('notes API', () => {
       // No empty-name node appears anywhere in the response.
       const hasEmptyName = JSON.stringify(body).includes('"name":""')
       expect(hasEmptyName).toBe(false)
+    })
+
+    test('returns pathPrefix for collided roots and basename as name', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const rootA = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/justjom/plans' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const rootB = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/cntctus/plans' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      const res = await server('/api/folders', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toHaveLength(2)
+
+      const byId = new Map(body.map((g: any) => [g.syncedFolderId, g]))
+      expect(byId.get(rootA.id)).toMatchObject({ name: 'plans', pathPrefix: 'justjom/' })
+      expect(byId.get(rootB.id)).toMatchObject({ name: 'plans', pathPrefix: 'cntctus/' })
+    })
+
+    test('returns null pathPrefix when no basenames collide', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/justjom/plans' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/cntctus/ideas' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      const res = await server('/api/folders', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toHaveLength(2)
+      expect(body.every((g: any) => g.pathPrefix === null)).toBe(true)
+    })
+
+    test('uses alias as name and nulls pathPrefix when a collided root has an alias', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const rootA = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/justjom/plans', alias: 'Work Plans' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      const rootB = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/tmp/cntctus/plans' })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+
+      const res = await server('/api/folders', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      const byId = new Map(body.map((g: any) => [g.syncedFolderId, g]))
+      expect(byId.get(rootA.id)).toMatchObject({ name: 'Work Plans', pathPrefix: null })
+      // the remaining unaliased root has no collision partner anymore
+      expect(byId.get(rootB.id)).toMatchObject({ name: 'plans', pathPrefix: null })
     })
   })
 

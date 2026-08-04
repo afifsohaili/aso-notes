@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { useDatabase } from '~~/utils/db'
+import { computePathPrefixes } from '../../lib/notes/disambiguation'
 import { buildFolderTree } from '../../lib/notes/tree'
 
 export default defineEventHandler(async (event) => {
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   const syncedFolders = await db
     .selectFrom('synced_folders')
-    .select(['id', 'path', 'created_at'])
+    .select(['id', 'path', 'alias', 'created_at'])
     .where('workspace_id', '=', workspaceId)
     .orderBy('created_at', 'asc')
     .execute()
@@ -33,6 +34,10 @@ export default defineEventHandler(async (event) => {
   if (syncedFolders.length === 0) {
     return []
   }
+
+  const pathPrefixById = computePathPrefixes(
+    syncedFolders.map(sf => ({ id: sf.id, path: sf.path, alias: sf.alias })),
+  )
 
   const syncedFolderIds = syncedFolders.map(sf => sf.id)
 
@@ -93,7 +98,8 @@ export default defineEventHandler(async (event) => {
 
     return {
       syncedFolderId: sf.id,
-      name: path.basename(sf.path),
+      name: sf.alias ?? path.basename(sf.path),
+      pathPrefix: pathPrefixById.get(sf.id) ?? null,
       absolutePath: sf.path,
       hasCover: rootCoverByFolder.get(sf.id) ?? false,
       noteCount: rootCountByFolder.get(sf.id) ?? 0,
