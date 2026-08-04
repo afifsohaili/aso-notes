@@ -37,11 +37,15 @@ function nodeColor(label: GraphNode['label']): string {
 function buildElements() {
   const elements: any[] = []
   for (const node of props.nodes) {
+    const displayName = node.label === 'Note' && node.rootName
+      ? `${node.name} <${node.rootName}>`
+      : node.name
     elements.push({
       data: {
         id: node.id,
         label: node.label,
         name: node.name,
+        displayName,
         ref: node.ref,
         rootName: node.rootName,
         syncedFolderId: node.syncedFolderId,
@@ -93,7 +97,7 @@ async function initCytoscape() {
           selector: 'node',
           style: {
             'background-color': 'data(color)',
-            'label': 'data(name)',
+            'label': 'data(displayName)',
             'width': 32,
             'height': 32,
             'font-size': '10px',

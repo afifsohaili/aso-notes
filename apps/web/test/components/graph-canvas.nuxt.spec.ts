@@ -80,6 +80,34 @@ describe('graph-canvas', () => {
     })
   })
 
+  it('labels Note nodes `name <rootName>` and keeps other node labels plain', async () => {
+    await mountSuspended(GraphCanvas, {
+      props: {
+        nodes: [
+          { id: 'n1', label: 'Note', name: 'Note A', ref: '/vault/a.md', rootName: 'justjom' },
+          { id: 'n2', label: 'Note', name: 'Plain', ref: '/notes/plain.md' },
+          { id: 'c1', label: 'Concept', name: 'Graph RAG', ref: 'c1' },
+        ],
+        edges: [],
+        selectedNodeId: null,
+      },
+    })
+    await flushPromises()
+
+    const config = cytoscapeFactory.mock.calls.at(-1)![0] as {
+      elements: Array<{ data: Record<string, unknown> }>
+      style: Array<{ selector: string, style: Record<string, string> }>
+    }
+
+    const nodeStyle = config.style.find(entry => entry.selector === 'node')
+    expect(nodeStyle?.style.label).toBe('data(displayName)')
+
+    const elementById = Object.fromEntries(config.elements.map(e => [e.data.id, e.data]))
+    expect(elementById.n1).toMatchObject({ displayName: 'Note A <justjom>' })
+    expect(elementById.n2).toMatchObject({ displayName: 'Plain' })
+    expect(elementById.c1).toMatchObject({ displayName: 'Graph RAG' })
+  })
+
   it('emits selectNode without syncedFolderId for notes lacking one', async () => {
     const component = await mountSuspended(GraphCanvas, {
       props: {

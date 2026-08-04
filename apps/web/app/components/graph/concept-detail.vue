@@ -82,6 +82,7 @@ const topics = computed(() => props.detail?.concept.topics ?? [])
             >
               <DocumentIcon class="h-4 w-4" />
               <span>{{ note.title || note.path }}</span>
+              <span v-if="note.rootName" class="text-gray-400"> &lt;{{ note.rootName }}&gt;</span>
             </button>
           </li>
         </ul>

@@ -91,11 +91,22 @@ graph→note navigation is ambiguous for collided relative paths.
     by this phase. Coverage relied on ESLint + unit + e2e + component suites.
 
 ### Phase 4 — Graph UI
-- [ ] `graph-canvas.vue`: Note node labels render `name <rootName>`
-- [ ] `concept-detail.vue`: gray `<rootName>` suffix in Mentioned in notes
-- [ ] Component tests
-- Status: pending
-- Divergences: none yet
+- [x] `graph-canvas.vue`: Note node labels render `name <rootName>`
+- [x] `concept-detail.vue`: gray `<rootName>` suffix in Mentioned in notes
+- [x] Component tests
+- Status: done
+- Divergences:
+  - `MentionedNote` already carried `rootName?: string` from Phase 3, so no
+    prop/type change was needed in `concept-detail.vue` (the anticipated
+    `rootName?: string | null` addition was unnecessary).
+  - Canvas labels are asserted through the mocked cytoscape config (node style
+    selector + `elements[].data.displayName`) rather than DOM, since cytoscape
+    renders off-DOM. The node style label now points at `data(displayName)`;
+    Concept/Topic/Tag and rootName-less notes fall back to plain `name`.
+  - The new `graph-concept-detail.nuxt.spec.ts` additionally asserts the
+    `openNote` emit (existing pattern in `graph-concept-list.nuxt.spec.ts`).
+  - The `<rootName>` suffix uses `&lt;`/`&gt;` HTML entities in the template per
+    plan decision 7, rendered as literal text content via Vue's entity decoding.
 
 ## Key files
 
