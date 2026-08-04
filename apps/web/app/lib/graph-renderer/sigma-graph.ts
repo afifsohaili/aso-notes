@@ -4,13 +4,6 @@ import { circular } from 'graphology-layout'
 import forceAtlas2 from 'graphology-layout-forceatlas2'
 import { EDGE_COLOR, EDGE_SIZE, FA2_ITERATIONS, NODE_COLORS, NODE_SIZES } from './constants'
 
-function withAlpha(hex: string, alpha: number): string {
-  const r = Number.parseInt(hex.slice(1, 3), 16)
-  const g = Number.parseInt(hex.slice(3, 5), 16)
-  const b = Number.parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
 /** Circular seed coordinates so every node has numeric x/y at add time. */
 function circularSeed(index: number, count: number): { x: number, y: number } {
   const safeCount = Math.max(count, 1)
@@ -88,44 +81,4 @@ export function runLayout(graph: Graph): void {
 export function computeCameraFit(padding = 0.1): { x: 0.5, y: 0.5, ratio: number } {
   const safePadding = Math.min(Math.max(padding, 0), 0.45)
   return { x: 0.5, y: 0.5, ratio: 1 / (1 - 2 * safePadding) }
-}
-
-/**
- * Dim everything except the highlighted node and its 1-hop neighborhood
- * (mirrors the cytoscape renderer, which keeps `selected + neighborhood()`
- * at full opacity). Edges keep full opacity only when incident to the
- * highlighted node — matching cytoscape, where `neighborhood()` on a node
- * covers its incident edges.
- *
- * This is a pure graphology operation; callers (e.g. the sigma renderer) must
- * refresh their own rendering surface afterwards.
- */
-export function applyHighlightToGraph(graph: Graph, highlightedNodeId: string | null): void {
-  if (!highlightedNodeId || !graph.hasNode(highlightedNodeId)) {
-    graph.forEachNode((node) => {
-      graph.setNodeAttribute(node, 'color', graph.getNodeAttribute(node, 'baseColor'))
-    })
-    graph.forEachEdge((edge) => {
-      graph.setEdgeAttribute(edge, 'color', graph.getEdgeAttribute(edge, 'baseColor'))
-    })
-    return
-  }
-
-  const full = new Set<string>([highlightedNodeId, ...graph.neighbors(highlightedNodeId)])
-  graph.forEachNode((node, attrs) => {
-    const baseColor = attrs.baseColor ?? attrs.color
-    graph.setNodeAttribute(
-      node,
-      'color',
-      full.has(node) ? baseColor : withAlpha(baseColor, 0.2),
-    )
-  })
-  graph.forEachEdge((edge, attrs, source, target) => {
-    const baseColor = attrs.baseColor ?? attrs.color
-    graph.setEdgeAttribute(
-      edge,
-      'color',
-      source === highlightedNodeId || target === highlightedNodeId ? baseColor : withAlpha(baseColor, 0.2),
-    )
-  })
 }

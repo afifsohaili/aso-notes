@@ -1,9 +1,9 @@
+import type Graph from 'graphology'
 import type { GraphEdge, GraphNode } from '../../app/lib/graph-renderer/types'
-import Graph from 'graphology'
 import { circular } from 'graphology-layout'
 import forceAtlas2 from 'graphology-layout-forceatlas2'
 import { describe, expect, it } from 'vitest'
-import { applyHighlightToGraph, buildGraphologyGraph, computeCameraFit } from '../../app/lib/graph-renderer/sigma-graph'
+import { buildGraphologyGraph, computeCameraFit } from '../../app/lib/graph-renderer/sigma-graph'
 
 // Regression tests against the REAL graphology + layout libraries.
 // The existing sigma renderer spec mocks sigma and the layout libs; these
@@ -23,13 +23,6 @@ const EDGES: GraphEdge[] = [
   { source: 'c1', target: 'n1', type: 'MENTIONS' },
   { source: 'n1', target: 'g1', type: 'TAGGED' },
 ]
-
-function rgba(hex: string, alpha: number): string {
-  const r = Number.parseInt(hex.slice(1, 3), 16)
-  const g = Number.parseInt(hex.slice(3, 5), 16)
-  const b = Number.parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
 
 function expectNumericPositions(graph: Graph): void {
   graph.forEachNode((node, attrs) => {
@@ -136,82 +129,6 @@ describe('buildGraphologyGraph', () => {
     const fit = computeCameraFit()
     expect(Number.isFinite(fit.ratio)).toBe(true)
     expect(fit.ratio).toBeGreaterThan(0)
-  })
-})
-
-describe('applyHighlightToGraph', () => {
-  it('does not throw on an empty graph', () => {
-    const graph = new Graph({ type: 'undirected' })
-    expect(() => applyHighlightToGraph(graph, 'nope')).not.toThrow()
-    expect(() => applyHighlightToGraph(graph, null)).not.toThrow()
-  })
-
-  it('restores full colors when highlight is cleared', () => {
-    const graph = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(graph, 'c1')
-    applyHighlightToGraph(graph, null)
-    expect(graph.getNodeAttribute('g1', 'color')).toBe('#d97706')
-    graph.forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
-  })
-
-  it('highlights the selected node and its 1-hop neighbors, dimming others', () => {
-    const graph = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(graph, 'c1')
-
-    expect(graph.getNodeAttribute('c1', 'color')).toBe('#4f46e5')
-    expect(graph.getNodeAttribute('t1', 'color')).toBe('#7c3aed')
-    expect(graph.getNodeAttribute('n1', 'color')).toBe('#059669')
-    expect(graph.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
-
-    let incident = 0
-    let nonIncident = 0
-    graph.forEachEdge((edge, attrs, source, target) => {
-      if (source === 'c1' || target === 'c1') {
-        incident += 1
-        expect(attrs.color).toBe('#94a3b8')
-      }
-      else {
-        nonIncident += 1
-        expect(attrs.color).toBe(rgba('#94a3b8', 0.2))
-      }
-    })
-    expect(incident).toBe(2)
-    expect(nonIncident).toBe(1)
-  })
-
-  it('is a no-op for an unknown node id', () => {
-    const graph = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(graph, 'missing')
-    expect(graph.getNodeAttribute('g1', 'color')).toBe('#d97706')
-    graph.forEachEdge((edge, attrs) => expect(attrs.color).toBe('#94a3b8'))
-  })
-
-  it('does not remove numeric positions when mutating colors', () => {
-    const graph = buildGraphologyGraph(NODES, EDGES)
-    circular.assign(graph, { scale: 1 })
-    forceAtlas2.assign(graph, {
-      iterations: 20,
-      settings: forceAtlas2.inferSettings(graph),
-    })
-    applyHighlightToGraph(graph, 'c1')
-    expectNumericPositions(graph)
-  })
-
-  it('keeps numeric positions through interleaved rebuild + highlight', () => {
-    const a = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(a, 'c1')
-    expectNumericPositions(a)
-
-    const b = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(b, 't1')
-    expectNumericPositions(b)
-
-    // Simulate a second setGraph while a highlight is still active: rebuild
-    // from scratch and re-apply the same highlight.
-    const c = buildGraphologyGraph(NODES, EDGES)
-    applyHighlightToGraph(c, 'c1')
-    expectNumericPositions(c)
-    expect(c.getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
   })
 })
 
