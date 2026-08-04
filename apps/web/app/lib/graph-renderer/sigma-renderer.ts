@@ -4,6 +4,10 @@ import { computeCameraFit } from './sigma-graph'
 import { SigmaGraphStore } from './sigma-graph-store'
 import { createSigmaSurface } from './sigma-surface'
 
+type SigmaOp
+  = | { type: 'setGraph', nodes: GraphNode[], edges: GraphEdge[] }
+    | { type: 'highlight', id: string | null }
+
 /**
  * sigma.js (WebGL) implementation of `GraphRenderer`.
  *
@@ -16,14 +20,17 @@ import { createSigmaSurface } from './sigma-surface'
  * sigma v3 removed the v2 node/edge reducer API; highlight is implemented by
  * mutating node/edge `color` attributes on the graphology graph and calling
  * `refresh()`, which is sigma v3's supported dynamic-styling path.
+ *
+ * All renderer mutations are serialized through a single in-memory op queue.
+ * Operations enqueued before mount drain once the surface is ready, preserving
+ * the order requested by the page.
  */
 export class SigmaRenderer implements GraphRenderer {
   private surface: SigmaSurface | null = null
   private surfaceFactory: SigmaSurfaceFactory
   private graphStore: SigmaGraphStore
   private clickHandler: ((node: GraphNode) => void) | null = null
-  private pendingNodes: GraphNode[] | null = null
-  private pendingEdges: GraphEdge[] | null = null
+  private queue: SigmaOp[] = []
 
   constructor(surfaceFactory: SigmaSurfaceFactory = createSigmaSurface) {
     this.surfaceFactory = surfaceFactory
@@ -45,34 +52,20 @@ export class SigmaRenderer implements GraphRenderer {
         this.clickHandler(nodeData)
     })
 
-    // Apply any data that arrived while sigma was still being imported.
-    if (this.pendingNodes !== null && this.pendingEdges !== null) {
-      this.setGraph(this.pendingNodes, this.pendingEdges)
-    }
-    else {
-      this.applyHighlight()
-    }
-
-    this.pendingNodes = null
-    this.pendingEdges = null
+    const queueWasEmpty = this.queue.length === 0
+    this.drain()
+    if (queueWasEmpty)
+      surface.refresh()
   }
 
   setGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
-    if (!this.surface) {
-      this.pendingNodes = nodes
-      this.pendingEdges = edges
-      return
-    }
-
-    const graph = this.graphStore.replace(nodes, edges)
-    this.surface.setGraph(graph)
-    this.fitCamera()
-    this.surface.refresh()
+    this.queue.push({ type: 'setGraph', nodes, edges })
+    this.drain()
   }
 
   highlight(nodeId: string | null): void {
-    this.graphStore.applyHighlight(nodeId)
-    this.surface?.refresh()
+    this.queue.push({ type: 'highlight', id: nodeId })
+    this.drain()
   }
 
   onNodeClick(cb: (node: GraphNode) => void): void {
@@ -85,19 +78,32 @@ export class SigmaRenderer implements GraphRenderer {
       this.surface = null
     }
     this.clickHandler = null
-    this.pendingNodes = null
-    this.pendingEdges = null
+    this.queue = []
   }
 
-  private applyHighlight(): void {
-    this.graphStore.applyHighlight()
-    this.surface?.refresh()
+  private drain(): void {
+    while (this.surface && this.queue.length > 0) {
+      const op = this.queue.shift()!
+      if (op.type === 'setGraph')
+        this.executeSetGraph(op.nodes, op.edges)
+      else
+        this.executeHighlight(op.id)
+    }
   }
 
-  private fitCamera(): void {
+  private executeSetGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
     if (!this.surface)
       return
-
+    const graph = this.graphStore.replace(nodes, edges)
+    this.surface.setGraph(graph)
     this.surface.getCamera().setState(computeCameraFit())
+    this.surface.refresh()
+  }
+
+  private executeHighlight(nodeId: string | null): void {
+    if (!this.surface)
+      return
+    this.graphStore.applyHighlight(nodeId)
+    this.surface.refresh()
   }
 }

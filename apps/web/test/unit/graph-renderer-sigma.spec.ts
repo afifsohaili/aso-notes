@@ -258,6 +258,50 @@ describe('sigma renderer contract', () => {
     expect(graph().getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
   })
 
+  it('drains setGraph and highlight queued before mount in order', async () => {
+    renderer.setGraph(NODES, EDGES)
+    renderer.highlight('c1')
+
+    await mountRenderer()
+
+    // setGraph runs (with refresh), then highlight runs (with refresh).
+    expect(surface.setGraph).toHaveBeenCalledTimes(1)
+    expect(surface.refresh).toHaveBeenCalledTimes(2)
+    expect(graph().getNodeAttribute('g1', 'color')).toBe(rgba('#d97706', 0.2))
+  })
+
+  it('replays setGraph A → highlight X → setGraph B strictly in order', async () => {
+    const nodesA = [{ id: 'a', label: 'Topic', name: 'A', ref: 'a' }]
+    const nodesB = [{ id: 'b', label: 'Topic', name: 'B', ref: 'b' }]
+
+    renderer.setGraph(nodesA, [])
+    renderer.highlight('a')
+    renderer.setGraph(nodesB, [])
+
+    await mountRenderer()
+
+    // First setGraph(A) with highlight(a) applied, then setGraph(B) replaces it.
+    expect(surface.setGraph).toHaveBeenCalledTimes(2)
+    expect(graph().hasNode('a')).toBe(false)
+    expect(graph().hasNode('b')).toBe(true)
+  })
+
+  it('destroy mid-queue drains safely without throwing', async () => {
+    const selfDestructingSurface = {
+      ...surface,
+      refresh: vi.fn(() => {
+        renderer.destroy()
+      }),
+    }
+    ;(factory as any).mockImplementation(() => selfDestructingSurface)
+
+    renderer.setGraph(NODES, EDGES)
+    renderer.highlight('c1')
+    renderer.setGraph(NODES, EDGES)
+
+    await expect(mountRenderer()).resolves.not.toThrow()
+  })
+
   it('highlight dims non-neighbor nodes and non-incident edges to 0.2 alpha', async () => {
     await mountRenderer()
     renderer.setGraph(NODES, EDGES)
