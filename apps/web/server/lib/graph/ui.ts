@@ -64,12 +64,6 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
     'id ag_catalog.agtype',
   )
 
-  const tagRows = await queryCypher<{ id: unknown, name: unknown }>(
-    db,
-    `MATCH (n:Tag) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
-    'id ag_catalog.agtype, name ag_catalog.agtype',
-  )
-
   const topicRows = await queryCypher<{ id: unknown, name: unknown }>(
     db,
     `MATCH (n:Topic) WHERE n.workspace_id = ${agLiteral(workspaceId)} RETURN n.id AS id, n.name AS name`,
@@ -85,12 +79,6 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
   const mentionsEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
     db,
     `MATCH (a:Note)-[r:MENTIONS]->(b:Concept) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
-    'source ag_catalog.agtype, target ag_catalog.agtype',
-  )
-
-  const taggedEdgeRows = await queryCypher<{ source: unknown, target: unknown }>(
-    db,
-    `MATCH (a:Note)-[r:TAGGED]->(b:Tag) WHERE r.workspace_id = ${agLiteral(workspaceId)} RETURN a.id AS source, b.id AS target`,
     'source ag_catalog.agtype, target ag_catalog.agtype',
   )
 
@@ -137,13 +125,6 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
     }
   })
 
-  const tagNodes: GraphNode[] = tagRows.map(row => ({
-    id: String(parseAgtype(row.id)),
-    label: 'Tag',
-    name: parseOptionalString(row.name) ?? String(parseAgtype(row.id)),
-    ref: String(parseAgtype(row.id)),
-  }))
-
   const topicNodes: GraphNode[] = topicRows.map(row => ({
     id: String(parseAgtype(row.id)),
     label: 'Topic',
@@ -163,11 +144,6 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
       target: String(parseAgtype(row.target)),
       type: 'MENTIONS' as const,
     })),
-    ...taggedEdgeRows.map(row => ({
-      source: String(parseAgtype(row.source)),
-      target: String(parseAgtype(row.target)),
-      type: 'TAGGED' as const,
-    })),
     ...linksEdgeRows.map(row => ({
       source: String(parseAgtype(row.source)),
       target: String(parseAgtype(row.target)),
@@ -181,7 +157,7 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
   ]
 
   return {
-    nodes: [...conceptNodes, ...noteNodes, ...tagNodes, ...topicNodes],
+    nodes: [...conceptNodes, ...noteNodes, ...topicNodes],
     edges,
   }
 }

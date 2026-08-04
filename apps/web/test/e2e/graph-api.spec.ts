@@ -190,15 +190,16 @@ describe('graph API', () => {
       expect(nodeIds.has(seeded.conceptB.id)).toBe(true)
       expect(nodeIds.has(seeded.conceptC.id)).toBe(true)
       expect(nodeIds.has(seeded.note.id)).toBe(true)
-      expect(nodeIds.has(seeded.tag.id)).toBe(true)
+      // Tags are deliberately excluded from the graph payload even when present.
+      expect(nodeIds.has(seeded.tag.id)).toBe(false)
       expect(nodeIds.has(seeded.topicAi.id)).toBe(true)
       expect(nodeIds.has(seeded.topicDb.id)).toBe(true)
 
-      expect(body.nodes).toHaveLength(7)
+      expect(body.nodes).toHaveLength(6)
       for (const node of body.nodes) {
         expect(node).toHaveProperty('id')
         expect(node).toHaveProperty('label')
-        expect(['Concept', 'Note', 'Tag', 'Topic']).toContain(node.label)
+        expect(['Concept', 'Note', 'Topic']).toContain(node.label)
         expect(node).toHaveProperty('name')
         expect(node).toHaveProperty('ref')
       }
@@ -210,7 +211,7 @@ describe('graph API', () => {
       expect(noteNode).toMatchObject({ label: 'Note', name: 'Main Note', ref: seeded.note.path })
 
       const tagNode = body.nodes.find((n: any) => n.id === seeded.tag.id)
-      expect(tagNode).toMatchObject({ label: 'Tag', name: 'AI', ref: seeded.tag.id })
+      expect(tagNode).toBeUndefined()
 
       const topicNodeAi = body.nodes.find((n: any) => n.id === seeded.topicAi.id)
       expect(topicNodeAi).toMatchObject({ label: 'Topic', name: 'AI Engineering', ref: seeded.topicAi.id })
@@ -218,7 +219,7 @@ describe('graph API', () => {
       const topicNodeDb = body.nodes.find((n: any) => n.id === seeded.topicDb.id)
       expect(topicNodeDb).toMatchObject({ label: 'Topic', name: 'Databases', ref: seeded.topicDb.id })
 
-      expect(body.edges.length).toBeGreaterThanOrEqual(9)
+      expect(body.edges).toHaveLength(8)
       const relatesEdge = body.edges.find(
         (e: any) => e.source === seeded.conceptA.id && e.target === seeded.conceptB.id && e.type === 'RELATES_TO',
       )
@@ -233,7 +234,7 @@ describe('graph API', () => {
       const taggedEdge = body.edges.find(
         (e: any) => e.source === seeded.note.id && e.target === seeded.tag.id && e.type === 'TAGGED',
       )
-      expect(taggedEdge).toBeTruthy()
+      expect(taggedEdge).toBeUndefined()
 
       const groupedUnderEdge = body.edges.find(
         (e: any) => e.source === seeded.conceptA.id && e.target === seeded.topicAi.id && e.type === 'GROUPED_UNDER',

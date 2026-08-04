@@ -10,7 +10,6 @@ describe('graph-canvas', () => {
           { id: 't1', label: 'Topic', name: 'Topic A', ref: 't1' },
           { id: 'c1', label: 'Concept', name: 'Concept A', ref: 'c1' },
           { id: 'n1', label: 'Note', name: 'Note A', ref: '/notes/a.md' },
-          { id: 'g1', label: 'Tag', name: 'Tag A', ref: 'g1' },
         ],
         edges: [],
         selectedNodeId: null,
@@ -19,11 +18,11 @@ describe('graph-canvas', () => {
 
     const legend = component.find('[data-testid="graph-legend"]')
     expect(legend.exists()).toBe(true)
+    expect(legend.findAll('li')).toHaveLength(3)
 
     const html = component.html()
     expect(html).toContain('Topic')
     expect(html).toContain('Concept')
     expect(html).toContain('Note')
-    expect(html).toContain('Tag')
   })
 })

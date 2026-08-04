@@ -19,16 +19,15 @@ let cy: any = null
 
 const nodeColorMap = {
   Concept: '#4f46e5',
-  Topic: '#7c3aed',
+  Topic: '#e11d48',
   Note: '#059669',
   Tag: '#d97706',
 } as const
 
 const legendItems = computed(() => [
-  { label: t('graph.legend.topic'), colorClass: 'bg-[#7c3aed]' },
+  { label: t('graph.legend.topic'), colorClass: 'bg-[#e11d48]' },
   { label: t('graph.legend.concept'), colorClass: 'bg-[#4f46e5]' },
   { label: t('graph.legend.note'), colorClass: 'bg-[#059669]' },
-  { label: t('graph.legend.tag'), colorClass: 'bg-[#d97706]' },
 ])
 
 function nodeColor(label: GraphNode['label']): string {
