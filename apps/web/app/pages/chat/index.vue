@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { ChatConversationSummary } from '~/components/chat/chat-sidebar.vue'
 import type { ChatMessage } from '~/composables/use-chat'
+import { useEventListener } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import Bars3Icon from '~icons/heroicons/bars-3'
 import ChatBubbleLeftRightIcon from '~icons/heroicons/chat-bubble-left-right'
 import DocumentTextIcon from '~icons/heroicons/document-text'
 import LightBulbIcon from '~icons/heroicons/light-bulb'
@@ -116,6 +118,12 @@ watch(
 const queryText = ref('')
 const queryInput = ref<HTMLTextAreaElement | null>(null)
 const editingMessage = ref<ChatMessage | null>(null)
+const sidebarOpen = ref(false)
+
+useEventListener('keydown', (event: KeyboardEvent) => {
+  if (event.key === 'Escape')
+    sidebarOpen.value = false
+})
 
 async function handleSubmit() {
   const text = queryText.value.trim()
@@ -176,12 +184,14 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 function selectConversation(id: string) {
+  sidebarOpen.value = false
   reset()
   cancelEdit()
   conversationId.value = id
 }
 
 function startNewConversation() {
+  sidebarOpen.value = false
   reset()
   cancelEdit()
   conversationId.value = null
@@ -204,7 +214,12 @@ async function setArchived(id: string, archived: boolean) {
 <template>
   <div class="h-[calc(100dvh-3.5rem)] flex flex-col">
     <div class="flex-1 flex overflow-hidden">
-      <aside class="w-72 border-r border-gray-200 flex flex-col">
+      <aside
+        class="w-72 border-r border-gray-200 flex-col bg-white"
+        :class="sidebarOpen
+          ? 'flex fixed inset-y-0 left-0 z-50 md:static md:z-auto'
+          : 'hidden md:flex'"
+      >
         <chat-sidebar
           :conversations="sidebarConversations"
           :archived-conversations="sidebarArchived"
@@ -216,7 +231,20 @@ async function setArchived(id: string, archived: boolean) {
         />
       </aside>
 
+      <div v-if="sidebarOpen" class="fixed inset-0 z-40 bg-black/40 md:hidden" @click="sidebarOpen = false" />
+
       <main class="flex-1 flex flex-col bg-white overflow-hidden">
+        <div class="shrink-0 flex items-center border-b border-gray-200 px-3 py-2 md:hidden">
+          <button
+            type="button"
+            aria-label="Open chat sidebar"
+            class="inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            @click="sidebarOpen = true"
+          >
+            <Bars3Icon class="h-5 w-5" />
+          </button>
+        </div>
+
         <chat-thread v-if="messages.length > 0" :messages="messages" @edit="startEdit" />
         <div v-else class="flex-1 flex flex-col items-center justify-center overflow-y-auto p-6 text-center">
           <div class="max-w-md">

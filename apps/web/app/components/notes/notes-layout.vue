@@ -3,6 +3,8 @@ import type { FolderNode } from '~/components/notes/folder-tree.vue'
 import type { NoteDetailNote } from '~/components/notes/note-detail.vue'
 import type { NoteListItem } from '~/components/notes/note-list.vue'
 import { useI18n } from 'vue-i18n'
+import ArrowLeftIcon from '~icons/heroicons/arrow-left'
+import Bars3Icon from '~icons/heroicons/bars-3'
 import BoltIcon from '~icons/heroicons/bolt'
 import ChevronDownIcon from '~icons/heroicons/chevron-down'
 import ChevronRightIcon from '~icons/heroicons/chevron-right'
@@ -43,6 +45,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const folderDrawerOpen = ref(false)
 
 const pendingCount = computed(() => (props.notes ?? []).filter(n => n.status === 'pending').length)
 
@@ -113,6 +117,7 @@ function isGroupSelected(group: SyncedFolderGroup): boolean {
 }
 
 function selectFolder(group: SyncedFolderGroup, folderPath: string) {
+  folderDrawerOpen.value = false
   emit('selectFolder', group.syncedFolderId, folderPath)
 }
 </script>
@@ -120,8 +125,21 @@ function selectFolder(group: SyncedFolderGroup, folderPath: string) {
 <template>
   <div class="h-[calc(100dvh-3.5rem)] flex flex-col">
     <div class="flex-1 flex overflow-hidden">
+      <!-- Mobile drawer backdrop -->
+      <div
+        v-if="folderDrawerOpen"
+        class="fixed inset-0 z-40 bg-black/40 md:hidden"
+        data-testid="folder-drawer-backdrop"
+        @click="folderDrawerOpen = false"
+      />
+
       <!-- Folder tree -->
-      <aside class="w-64 border-r border-gray-200 bg-white overflow-y-auto flex flex-col">
+      <aside
+        class="w-64 border-r border-gray-200 bg-white overflow-y-auto flex-col"
+        :class="folderDrawerOpen
+          ? 'fixed inset-y-0 left-0 z-50 flex'
+          : 'hidden md:flex'"
+      >
         <h2 class="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
           {{ t('notes.folders') }}
         </h2>
@@ -165,12 +183,21 @@ function selectFolder(group: SyncedFolderGroup, folderPath: string) {
       </aside>
 
       <!-- Note list -->
-      <aside class="w-80 border-r border-gray-200 bg-white flex flex-col">
-        <div class="flex items-center justify-between px-4 py-2">
-          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+      <aside class="w-full md:w-80 border-r border-gray-200 bg-white flex flex-col">
+        <div class="flex items-center gap-2 px-4 py-2">
+          <button
+            type="button"
+            class="md:hidden inline-flex items-center justify-center p-1 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 shrink-0"
+            aria-label="Open folder tree"
+            data-testid="folder-drawer-toggle"
+            @click="folderDrawerOpen = !folderDrawerOpen"
+          >
+            <Bars3Icon class="h-5 w-5" />
+          </button>
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">
             {{ t('notes.notes') }}
           </h2>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 ml-auto shrink-0">
             <button
               type="button"
               class="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
@@ -218,17 +245,36 @@ function selectFolder(group: SyncedFolderGroup, folderPath: string) {
       </aside>
 
       <!-- Note detail -->
-      <main class="flex-1 bg-white overflow-hidden">
-        <note-detail
-          v-if="selectedNotePath && note"
-          :note="note"
-          :start-editing="startEditing"
-          @save="emit('saveNote', $event)"
-          @add-tag="emit('addTag', $event)"
-          @remove-tag="emit('removeTag', $event)"
-          @editing-started="emit('editingStarted')"
-          @retry="emit('retry', selectedNotePath!)"
-        />
+      <main
+        class="bg-white overflow-hidden"
+        :class="selectedNotePath && note
+          ? 'fixed inset-0 z-40 md:static md:flex-1'
+          : 'hidden md:block md:flex-1'"
+      >
+        <div v-if="selectedNotePath && note" class="flex h-full flex-col">
+          <div class="flex items-center px-2 py-1.5 border-b border-gray-200 md:hidden shrink-0">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 p-1.5 rounded-md text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              aria-label="Back to note list"
+              data-testid="note-back-button"
+              @click="emit('selectNote', '')"
+            >
+              <ArrowLeftIcon class="h-5 w-5" />
+            </button>
+          </div>
+          <div class="flex-1 min-h-0">
+            <note-detail
+              :note="note"
+              :start-editing="startEditing"
+              @save="emit('saveNote', $event)"
+              @add-tag="emit('addTag', $event)"
+              @remove-tag="emit('removeTag', $event)"
+              @editing-started="emit('editingStarted')"
+              @retry="emit('retry', selectedNotePath!)"
+            />
+          </div>
+        </div>
         <div v-else class="h-full flex items-center justify-center text-gray-500">
           {{ t('notes.selectNote') }}
         </div>
