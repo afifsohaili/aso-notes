@@ -12,6 +12,23 @@ describe('resolveGraphNodeAction', () => {
     expect(action).toEqual({ type: 'navigate-note', path: '/project-a/plan.md' })
   })
 
+  it('carries syncedFolderId through for note navigation', () => {
+    const action = resolveGraphNodeAction({
+      id: 'n1',
+      label: 'Note',
+      name: 'Plan',
+      ref: '/project-a/plan.md',
+      syncedFolderId: 'sf-1',
+    })
+    expect(action).toEqual({ type: 'navigate-note', path: '/project-a/plan.md', syncedFolderId: 'sf-1' })
+  })
+
+  it('omits syncedFolderId when the note node has none', () => {
+    const action = resolveGraphNodeAction({ id: 'n1', label: 'Note', name: 'Plan', ref: '/project-a/plan.md' })
+    expect(action.type).toBe('navigate-note')
+    expect(action).not.toHaveProperty('syncedFolderId')
+  })
+
   it('roots note paths that lack a leading slash', () => {
     const action = resolveGraphNodeAction({ id: 'n1', label: 'Note', name: 'Plan', ref: 'project-a/plan.md' })
     expect(action).toEqual({ type: 'navigate-note', path: '/project-a/plan.md' })

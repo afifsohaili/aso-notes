@@ -64,13 +64,31 @@ graph→note navigation is ambiguous for collided relative paths.
     400/404 errors surface as inline text under the row.
 
 ### Phase 3 — Graph server + navigation fix
-- [ ] `server/lib/graph/ui.ts` `getFullGraph`: join `synced_folders`; note nodes gain
+- [x] `server/lib/graph/ui.ts` `getFullGraph`: join `synced_folders`; note nodes gain
       `rootName` (alias ?? basename) + `syncedFolderId`
-- [ ] `getConceptDetail`: mentioned notes gain `rootName` + `syncedFolderId`
-- [ ] `app/utils/graph.ts`: navigate with `?syncedFolder=`; wire through `notes/[...path].vue`
-- [ ] Feature specs: `GET /api/graph` note nodes include rootName/syncedFolderId
-- Status: pending
-- Divergences: none yet
+- [x] `getConceptDetail`: mentioned notes gain `rootName` + `syncedFolderId`
+- [x] `app/utils/graph.ts`: navigate with `?syncedFolder=`; wire through `notes/[...path].vue`
+- [x] Feature specs: `GET /api/graph` note nodes include rootName/syncedFolderId
+- Status: done
+- Divergences:
+  - `rootName` derivation lives in a shared helper `rootNameFor(path, alias)` exported
+    from `server/lib/graph/ui.ts` (alias wins, blank alias → basename fallback) so the
+    graph payload and the unit tests share one seam; `getFullGraph` guards notes whose
+    `synced_folder_id` is NULL (rootName/syncedFolderId left undefined, so the JSON omits
+    them) — the `trg_notes_default_synced_folder` trigger backfills it on insert, but
+    legacy rows could still be null.
+  - Navigation: `resolveGraphNodeAction` now takes a `GraphNodeInput` (adds optional
+    `syncedFolderId`) and returns it on the `navigate-note` action only when present;
+    `pages/graph/index.vue` appends `?syncedFolder=` (URL-encoded) and omits the query
+    when absent. `graph-canvas.vue` threads `syncedFolderId` through the `selectNode`
+    emit (also into the cytoscape data for Phase 4).
+  - New `test/components/graph-page.nuxt.spec.ts` mounts `pages/graph/index.vue` with
+    mocked `useFetch`/`navigateTo` and a stubbed `ClientOnly`/canvas to assert the full
+    click → `navigateTo('/notes/...?...syncedFolder=...')` chain.
+  - `nuxi typecheck` cannot run in this environment: npm (spawned by nuxi) fails with
+    `EOVERRIDE Override for vue@^3.5.28 conflicts with direct dependency`, on top of the
+    pre-existing `_robots.txt` / site-config localhost errors from Phase 1. Not introduced
+    by this phase. Coverage relied on ESLint + unit + e2e + component suites.
 
 ### Phase 4 — Graph UI
 - [ ] `graph-canvas.vue`: Note node labels render `name <rootName>`

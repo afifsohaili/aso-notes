@@ -13,16 +13,26 @@ export interface TopicGroup {
 
 export type GraphNodeAction
   = { type: 'select-concept', conceptId: string }
-    | { type: 'navigate-note', path: string }
+    | { type: 'navigate-note', path: string, syncedFolderId?: string }
     | { type: 'noop' }
 
-export function resolveGraphNodeAction(node: { id: string, label: 'Concept' | 'Note' | 'Tag' | 'Topic', name: string, ref: string }): GraphNodeAction {
+export interface GraphNodeInput {
+  id: string
+  label: 'Concept' | 'Note' | 'Tag' | 'Topic'
+  name: string
+  ref: string
+  syncedFolderId?: string
+}
+
+export function resolveGraphNodeAction(node: GraphNodeInput): GraphNodeAction {
   switch (node.label) {
     case 'Concept':
       return { type: 'select-concept', conceptId: node.id }
     case 'Note': {
       const path = node.ref.startsWith('/') ? node.ref : `/${node.ref}`
-      return { type: 'navigate-note', path }
+      return node.syncedFolderId
+        ? { type: 'navigate-note', path, syncedFolderId: node.syncedFolderId }
+        : { type: 'navigate-note', path }
     }
     default:
       return { type: 'noop' }

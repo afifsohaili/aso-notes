@@ -49,14 +49,41 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
     .returning(['id', 'name'])
     .executeTakeFirstOrThrow()
 
+  const syncedFolderNoAlias = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: '/data/branch/plans' })
+    .returning(['id', 'path', 'alias'])
+    .executeTakeFirstOrThrow()
+
+  const syncedFolderAliased = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: '/elsewhere/plans', alias: 'Roadmap' })
+    .returning(['id', 'path', 'alias'])
+    .executeTakeFirstOrThrow()
+
   const note = await trx
     .insertInto('notes')
     .values({
       workspace_id: workspaceId,
+      synced_folder_id: syncedFolderNoAlias.id,
       path: '/project/main.md',
       title: 'Main Note',
       content: '# Main\n\nGraph RAG uses Kysely.',
       content_hash: 'hash-main',
+      status: 'ingested',
+    })
+    .returning(['id', 'path', 'title'])
+    .executeTakeFirstOrThrow()
+
+  const aliasNote = await trx
+    .insertInto('notes')
+    .values({
+      workspace_id: workspaceId,
+      synced_folder_id: syncedFolderAliased.id,
+      path: '/vault/alias-note.md',
+      title: 'Alias Note',
+      content: '# Alias\n\nStandalone note in an aliased root.',
+      content_hash: 'hash-alias',
       status: 'ingested',
     })
     .returning(['id', 'path', 'title'])
@@ -136,6 +163,7 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
   await mergeConceptNode(trx, { id: conceptB.id, workspaceId, name: conceptB.name })
   await mergeConceptNode(trx, { id: conceptC.id, workspaceId, name: conceptC.name })
   await mergeNoteNode(trx, { id: note.id, workspaceId })
+  await mergeNoteNode(trx, { id: aliasNote.id, workspaceId })
   await mergeTagNode(trx, { id: tag.id, workspaceId, name: tag.name })
   await mergeRelatesToEdge(trx, { fromId: conceptA.id, toId: conceptB.id, type: 'implemented-with', workspaceId })
   await mergeRelatesToEdge(trx, { fromId: conceptC.id, toId: conceptA.id, type: 'depends-on', workspaceId })
@@ -172,7 +200,7 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
   await mergeGroupedUnderEdge(trx, { conceptId: conceptB.id, topicId: topicDb.id, workspaceId })
   await mergeGroupedUnderEdge(trx, { conceptId: conceptC.id, topicId: topicAi.id, workspaceId })
 
-  return { conceptA, conceptB, conceptC, note, tag, topicAi, topicDb }
+  return { conceptA, conceptB, conceptC, note, aliasNote, tag, topicAi, topicDb, syncedFolderNoAlias, syncedFolderAliased }
 }
 
 describe('graph API', () => {
@@ -195,7 +223,7 @@ describe('graph API', () => {
       expect(nodeIds.has(seeded.topicAi.id)).toBe(true)
       expect(nodeIds.has(seeded.topicDb.id)).toBe(true)
 
-      expect(body.nodes).toHaveLength(6)
+      expect(body.nodes).toHaveLength(7)
       for (const node of body.nodes) {
         expect(node).toHaveProperty('id')
         expect(node).toHaveProperty('label')
@@ -208,12 +236,33 @@ describe('graph API', () => {
       expect(conceptNode).toMatchObject({ label: 'Concept', name: 'Graph RAG', ref: seeded.conceptA.id })
 
       const noteNode = body.nodes.find((n: any) => n.id === seeded.note.id)
-      expect(noteNode).toMatchObject({ label: 'Note', name: 'Main Note', ref: seeded.note.path })
+      expect(noteNode).toMatchObject({
+        label: 'Note',
+        name: 'Main Note',
+        ref: seeded.note.path,
+        rootName: 'plans',
+        syncedFolderId: seeded.syncedFolderNoAlias.id,
+      })
+
+      const aliasNoteNode = body.nodes.find((n: any) => n.id === seeded.aliasNote.id)
+      expect(aliasNoteNode).toMatchObject({
+        label: 'Note',
+        name: 'Alias Note',
+        ref: seeded.aliasNote.path,
+        rootName: 'Roadmap',
+        syncedFolderId: seeded.syncedFolderAliased.id,
+      })
+
+      // Concept/Topic nodes carry no synced-folder identity.
+      expect(conceptNode.rootName).toBeUndefined()
+      expect(conceptNode.syncedFolderId).toBeUndefined()
+      const topicNodeAi = body.nodes.find((n: any) => n.id === seeded.topicAi.id)
+      expect(topicNodeAi.rootName).toBeUndefined()
+      expect(topicNodeAi.syncedFolderId).toBeUndefined()
 
       const tagNode = body.nodes.find((n: any) => n.id === seeded.tag.id)
       expect(tagNode).toBeUndefined()
 
-      const topicNodeAi = body.nodes.find((n: any) => n.id === seeded.topicAi.id)
       expect(topicNodeAi).toMatchObject({ label: 'Topic', name: 'AI Engineering', ref: seeded.topicAi.id })
 
       const topicNodeDb = body.nodes.find((n: any) => n.id === seeded.topicDb.id)
@@ -351,6 +400,8 @@ describe('graph API', () => {
       expect(body.mentionedIn[0]).toMatchObject({
         path: seeded.note.path,
         title: seeded.note.title,
+        rootName: 'plans',
+        syncedFolderId: seeded.syncedFolderNoAlias.id,
       })
     })
 

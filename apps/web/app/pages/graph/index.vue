@@ -48,7 +48,8 @@ function handleNodeClick(node: GraphNode) {
     selectedConceptId.value = action.conceptId
   }
   else if (action.type === 'navigate-note') {
-    navigateTo(`/notes${action.path}`)
+    const query = action.syncedFolderId ? `?syncedFolder=${encodeURIComponent(action.syncedFolderId)}` : ''
+    navigateTo(`/notes${action.path}${query}`)
   }
 }
 

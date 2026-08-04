@@ -1,8 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import { groupConceptsByTopic } from '../../app/utils/graph'
-import { parseOptionalString, toConceptSummaries } from '../../server/lib/graph/ui'
+import { parseOptionalString, rootNameFor, toConceptSummaries } from '../../server/lib/graph/ui'
 
 describe('graph/ui response shaping', () => {
+  describe('rootNameFor', () => {
+    it('uses the alias when set', () => {
+      expect(rootNameFor('/Users/x/plans', 'Roadmap')).toBe('Roadmap')
+    })
+
+    it('falls back to the basename when alias is null', () => {
+      expect(rootNameFor('/Users/x/plans', null)).toBe('plans')
+    })
+
+    it('falls back to the basename when alias is undefined', () => {
+      expect(rootNameFor('/Users/x/plans', undefined)).toBe('plans')
+    })
+
+    it('treats an empty or blank alias as unset', () => {
+      expect(rootNameFor('/Users/x/plans', '')).toBe('plans')
+      expect(rootNameFor('/Users/x/plans', '   ')).toBe('plans')
+    })
+
+    it('strips a trailing slash before taking the basename', () => {
+      expect(rootNameFor('/Users/x/plans/', null)).toBe('plans')
+    })
+
+    it('returns the basename for root-level paths', () => {
+      expect(rootNameFor('/plans', null)).toBe('plans')
+    })
+  })
+
   describe('parseOptionalString', () => {
     it('unwraps JSON-encoded agtype strings', () => {
       expect(parseOptionalString('"hello"')).toBe('hello')

@@ -1,4 +1,5 @@
 import type { GraphDb } from './age'
+import path from 'node:path'
 import { agLiteral, parseAgtype, queryCypher } from './age'
 
 export interface GraphNode {
@@ -6,6 +7,20 @@ export interface GraphNode {
   label: 'Concept' | 'Note' | 'Tag' | 'Topic'
   name: string
   ref: string
+  /** Root display name of the note's Synced Folder (alias ?? basename). Only set on Note nodes. */
+  rootName?: string
+  /** Id of the note's Synced Folder. Only set on Note nodes. */
+  syncedFolderId?: string
+}
+
+/**
+ * Root display name of a Synced Folder: `alias ?? basename(path)`.
+ * An empty/blank alias is treated as unset.
+ */
+export function rootNameFor(syncedFolderPath: string, alias: string | null | undefined): string {
+  if (alias && alias.trim().length > 0)
+    return alias
+  return path.basename(syncedFolderPath)
 }
 
 export interface GraphEdge {
@@ -33,6 +48,8 @@ export interface ConceptNeighbor {
 export interface MentionedNote {
   path: string
   title: string
+  rootName?: string
+  syncedFolderId?: string
 }
 
 export interface ConceptDetail {
@@ -95,15 +112,35 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
   )
 
   const noteIds = noteRows.map(row => String(parseAgtype(row.id)))
-  const notePaths = new Map<string, { title: string, path: string }>()
+  const notePaths = new Map<string, {
+    title: string
+    path: string
+    syncedFolderId: string | null
+    syncedFolderPath: string | null
+    syncedFolderAlias: string | null
+  }>()
   if (noteIds.length > 0) {
     const notes = await db
       .selectFrom('notes')
-      .select(['id', 'title', 'path'])
-      .where('id', 'in', noteIds)
+      .leftJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
+      .select([
+        'notes.id',
+        'notes.title',
+        'notes.path',
+        'synced_folders.id as synced_folder_id',
+        'synced_folders.path as synced_folder_path',
+        'synced_folders.alias as synced_folder_alias',
+      ])
+      .where('notes.id', 'in', noteIds)
       .execute()
     for (const note of notes) {
-      notePaths.set(note.id, { title: note.title, path: note.path })
+      notePaths.set(note.id, {
+        title: note.title,
+        path: note.path,
+        syncedFolderId: note.synced_folder_id,
+        syncedFolderPath: note.synced_folder_path,
+        syncedFolderAlias: note.synced_folder_alias,
+      })
     }
   }
 
@@ -122,6 +159,10 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
       label: 'Note',
       name: info?.title ?? id,
       ref: info?.path ?? id,
+      rootName: info?.syncedFolderPath != null
+        ? rootNameFor(info.syncedFolderPath, info.syncedFolderAlias)
+        : undefined,
+      syncedFolderId: info?.syncedFolderId ?? undefined,
     }
   })
 
@@ -262,10 +303,17 @@ export async function getConceptDetail(
     .selectFrom('mentions')
     .innerJoin('chunks', 'chunks.id', 'mentions.chunk_id')
     .innerJoin('notes', 'notes.id', 'chunks.note_id')
-    .select(['notes.path', 'notes.title'])
+    .leftJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
+    .select([
+      'notes.path',
+      'notes.title',
+      'synced_folders.id as synced_folder_id',
+      'synced_folders.path as synced_folder_path',
+      'synced_folders.alias as synced_folder_alias',
+    ])
     .where('mentions.workspace_id', '=', workspaceId)
     .where('mentions.concept_id', '=', conceptId)
-    .groupBy(['notes.id', 'notes.path', 'notes.title'])
+    .groupBy(['notes.id', 'notes.path', 'notes.title', 'synced_folders.id', 'synced_folders.path', 'synced_folders.alias'])
     .execute()
 
   const topics = await db
@@ -296,6 +344,10 @@ export async function getConceptDetail(
     mentionedIn: mentionedIn.map(n => ({
       path: n.path,
       title: n.title,
+      rootName: n.synced_folder_path != null
+        ? rootNameFor(n.synced_folder_path, n.synced_folder_alias)
+        : undefined,
+      syncedFolderId: n.synced_folder_id ?? undefined,
     })),
   }
 }

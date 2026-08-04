@@ -43,6 +43,8 @@ function buildElements() {
         label: node.label,
         name: node.name,
         ref: node.ref,
+        rootName: node.rootName,
+        syncedFolderId: node.syncedFolderId,
         color: nodeColor(node.label),
       },
     })
@@ -143,12 +145,9 @@ async function initCytoscape() {
 
     cy.on('tap', 'node', (evt: any) => {
       const node = evt.target.data() as GraphNode
-      emit('selectNode', {
-        id: node.id,
-        label: node.label,
-        name: node.name,
-        ref: node.ref,
-      })
+      emit('selectNode', node.syncedFolderId
+        ? { id: node.id, label: node.label, name: node.name, ref: node.ref, syncedFolderId: node.syncedFolderId }
+        : { id: node.id, label: node.label, name: node.name, ref: node.ref })
     })
   }
   catch (err) {
