@@ -85,3 +85,25 @@ export function computePathPrefixes(roots: SyncedFolderRoot[]): Map<string, stri
 
   return prefixById
 }
+
+/**
+ * Display label for every Synced Folder root of a workspace, keyed by root id.
+ *
+ * `alias ?? ((pathPrefix ?? '') + basename)`: the alias wins, otherwise the
+ * collision disambiguation prefix (recomputed via `computePathPrefixes`) is
+ * prepended to the basename — e.g. `justjom/plans` vs `cntctus/plans`.
+ */
+export function computeRootLabels(roots: SyncedFolderRoot[]): Map<string, string> {
+  const pathPrefixById = computePathPrefixes(roots)
+  const labels = new Map<string, string>()
+  for (const root of roots) {
+    if (root.alias && root.alias.trim().length > 0) {
+      labels.set(root.id, root.alias.trim())
+    }
+    else {
+      const prefix = pathPrefixById.get(root.id) ?? ''
+      labels.set(root.id, `${prefix}${path.basename(root.path)}`)
+    }
+  }
+  return labels
+}

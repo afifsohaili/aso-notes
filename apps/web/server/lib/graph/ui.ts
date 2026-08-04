@@ -1,5 +1,5 @@
 import type { GraphDb } from './age'
-import { rootNameFor } from '../notes/disambiguation'
+import { computeRootLabels } from '../notes/disambiguation'
 import { agLiteral, parseAgtype, queryCypher } from './age'
 
 export interface GraphNode {
@@ -106,21 +106,11 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
     title: string
     path: string
     syncedFolderId: string | null
-    syncedFolderPath: string | null
-    syncedFolderAlias: string | null
   }>()
   if (noteIds.length > 0) {
     const notes = await db
       .selectFrom('notes')
-      .leftJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
-      .select([
-        'notes.id',
-        'notes.title',
-        'notes.path',
-        'synced_folders.id as synced_folder_id',
-        'synced_folders.path as synced_folder_path',
-        'synced_folders.alias as synced_folder_alias',
-      ])
+      .select(['id', 'title', 'path', 'synced_folder_id'])
       .where('notes.id', 'in', noteIds)
       .execute()
     for (const note of notes) {
@@ -128,11 +118,21 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
         title: note.title,
         path: note.path,
         syncedFolderId: note.synced_folder_id,
-        syncedFolderPath: note.synced_folder_path,
-        syncedFolderAlias: note.synced_folder_alias,
       })
     }
   }
+
+  // The collision set must match the sidebar: every Synced Folder in the
+  // workspace, not just the roots that happen to appear in the graph.
+  const syncedFolders = await db
+    .selectFrom('synced_folders')
+    .select(['id', 'path', 'alias'])
+    .where('workspace_id', '=', workspaceId)
+    .execute()
+
+  const rootLabels = computeRootLabels(
+    syncedFolders.map(sf => ({ id: sf.id, path: sf.path, alias: sf.alias })),
+  )
 
   const conceptNodes: GraphNode[] = conceptRows.map(row => ({
     id: String(parseAgtype(row.id)),
@@ -149,9 +149,7 @@ export async function getFullGraph(db: GraphDb, workspaceId: string): Promise<{ 
       label: 'Note',
       name: info?.title ?? id,
       ref: info?.path ?? id,
-      rootName: info?.syncedFolderPath != null
-        ? rootNameFor(info.syncedFolderPath, info.syncedFolderAlias)
-        : undefined,
+      rootName: info?.syncedFolderId != null ? rootLabels.get(info.syncedFolderId) : undefined,
       syncedFolderId: info?.syncedFolderId ?? undefined,
     }
   })
@@ -289,21 +287,29 @@ export async function getConceptDetail(
 
   const neighborById = new Map(neighbors.map(n => [n.id, n.name]))
 
+  // Collision set must match the sidebar (all workspace Synced Folders).
+  const syncedFolders = await db
+    .selectFrom('synced_folders')
+    .select(['id', 'path', 'alias'])
+    .where('workspace_id', '=', workspaceId)
+    .execute()
+
+  const rootLabels = computeRootLabels(
+    syncedFolders.map(sf => ({ id: sf.id, path: sf.path, alias: sf.alias })),
+  )
+
   const mentionedIn = await db
     .selectFrom('mentions')
     .innerJoin('chunks', 'chunks.id', 'mentions.chunk_id')
     .innerJoin('notes', 'notes.id', 'chunks.note_id')
-    .leftJoin('synced_folders', 'synced_folders.id', 'notes.synced_folder_id')
     .select([
       'notes.path',
       'notes.title',
-      'synced_folders.id as synced_folder_id',
-      'synced_folders.path as synced_folder_path',
-      'synced_folders.alias as synced_folder_alias',
+      'notes.synced_folder_id',
     ])
     .where('mentions.workspace_id', '=', workspaceId)
     .where('mentions.concept_id', '=', conceptId)
-    .groupBy(['notes.id', 'notes.path', 'notes.title', 'synced_folders.id', 'synced_folders.path', 'synced_folders.alias'])
+    .groupBy(['notes.id', 'notes.path', 'notes.title', 'notes.synced_folder_id'])
     .execute()
 
   const topics = await db
@@ -334,9 +340,7 @@ export async function getConceptDetail(
     mentionedIn: mentionedIn.map(n => ({
       path: n.path,
       title: n.title,
-      rootName: n.synced_folder_path != null
-        ? rootNameFor(n.synced_folder_path, n.synced_folder_alias)
-        : undefined,
+      rootName: n.synced_folder_id != null ? rootLabels.get(n.synced_folder_id) : undefined,
       syncedFolderId: n.synced_folder_id ?? undefined,
     })),
   }

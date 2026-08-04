@@ -203,6 +203,82 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
   return { conceptA, conceptB, conceptC, note, aliasNote, tag, topicAi, topicDb, syncedFolderNoAlias, syncedFolderAliased }
 }
 
+/**
+ * Seeds three synced folders whose basenames collide (`plans`) plus one note
+ * per folder in the graph, and a concept mentioned from two of the notes so
+ * concept-detail `mentionedIn` can be asserted too.
+ */
+async function seedCollidingRoots(trx: any, workspaceId: string) {
+  await ensureNotesGraphCatalog(trx)
+
+  const justjomFolder = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: '/x/justjom/plans' })
+    .returning(['id', 'path', 'alias'])
+    .executeTakeFirstOrThrow()
+
+  const cntctusFolder = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: '/x/cntctus/plans' })
+    .returning(['id', 'path', 'alias'])
+    .executeTakeFirstOrThrow()
+
+  const workFolder = await trx
+    .insertInto('synced_folders')
+    .values({ workspace_id: workspaceId, path: '/x/work/plans' })
+    .returning(['id', 'path', 'alias'])
+    .executeTakeFirstOrThrow()
+
+  async function seedNote(folder: { id: string }, path: string, title: string) {
+    const n = await trx
+      .insertInto('notes')
+      .values({
+        workspace_id: workspaceId,
+        synced_folder_id: folder.id,
+        path,
+        title,
+        content: `# ${title}`,
+        content_hash: `hash-${path}`,
+        status: 'ingested',
+      })
+      .returning(['id', 'path', 'title'])
+      .executeTakeFirstOrThrow()
+    await mergeNoteNode(trx, { id: n.id, workspaceId })
+    return n
+  }
+
+  const justjomNote = await seedNote(justjomFolder, '/a.md', 'Justjom Note')
+  const cntctusNote = await seedNote(cntctusFolder, '/b.md', 'Cntctus Note')
+  const workNote = await seedNote(workFolder, '/c.md', 'Work Note')
+
+  const concept = await trx
+    .insertInto('concepts')
+    .values({
+      workspace_id: workspaceId,
+      name: 'Collision Concept',
+      name_normalized: 'collision concept',
+      description: 'mentioned across colliding roots',
+    })
+    .returning(['id', 'name'])
+    .executeTakeFirstOrThrow()
+  await mergeConceptNode(trx, { id: concept.id, workspaceId, name: concept.name })
+
+  for (const [noteId, text] of [[justjomNote.id, 'justjom mention'], [cntctusNote.id, 'cntctus mention']] as const) {
+    const chunk = await trx
+      .insertInto('chunks')
+      .values({ workspace_id: workspaceId, note_id: noteId, seq: 0, text })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+    await trx
+      .insertInto('mentions')
+      .values({ workspace_id: workspaceId, chunk_id: chunk.id, concept_id: concept.id })
+      .execute()
+    await mergeMentionsEdge(trx, { noteId, conceptId: concept.id, workspaceId })
+  }
+
+  return { justjomFolder, cntctusFolder, workFolder, justjomNote, cntctusNote, workNote, concept }
+}
+
 describe('graph API', () => {
   describe('gET /api/graph', () => {
     test('returns full workspace-scoped graph payload', async ({ server, trx }) => {
@@ -289,6 +365,96 @@ describe('graph API', () => {
         (e: any) => e.source === seeded.conceptA.id && e.target === seeded.topicAi.id && e.type === 'GROUPED_UNDER',
       )
       expect(groupedUnderEdge).toBeTruthy()
+    })
+
+    test('disambiguates colliding root names on note nodes', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const seeded = await seedCollidingRoots(trx, workspace.id)
+
+      const res = await server('/api/graph', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const justjomNode = body.nodes.find((n: any) => n.id === seeded.justjomNote.id)
+      expect(justjomNode).toMatchObject({
+        label: 'Note',
+        rootName: 'justjom/plans',
+        syncedFolderId: seeded.justjomFolder.id,
+      })
+      const cntctusNode = body.nodes.find((n: any) => n.id === seeded.cntctusNote.id)
+      expect(cntctusNode).toMatchObject({
+        label: 'Note',
+        rootName: 'cntctus/plans',
+        syncedFolderId: seeded.cntctusFolder.id,
+      })
+      const workNode = body.nodes.find((n: any) => n.id === seeded.workNote.id)
+      expect(workNode).toMatchObject({
+        label: 'Note',
+        rootName: 'work/plans',
+        syncedFolderId: seeded.workFolder.id,
+      })
+    })
+
+    test('uses the alias for a collided root and keeps the others disambiguated', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const seeded = await seedCollidingRoots(trx, workspace.id)
+
+      const patch = await server(`/api/synced-folders/${seeded.cntctusFolder.id}`, {
+        method: 'PATCH',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ alias: '  Roadmap  ' }),
+      })
+      expect(patch.status).toBe(200)
+
+      const res = await server('/api/graph', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const cntctusNode = body.nodes.find((n: any) => n.id === seeded.cntctusNote.id)
+      expect(cntctusNode.rootName).toBe('Roadmap')
+      const justjomNode = body.nodes.find((n: any) => n.id === seeded.justjomNote.id)
+      expect(justjomNode.rootName).toBe('justjom/plans')
+      const workNode = body.nodes.find((n: any) => n.id === seeded.workNote.id)
+      expect(workNode.rootName).toBe('work/plans')
+    })
+
+    test('disambiguates against synced folders that have no notes in the graph', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await ensureNotesGraphCatalog(trx)
+
+      const justjomFolder = await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/x/justjom/plans' })
+        .returning(['id'])
+        .executeTakeFirstOrThrow()
+      // Colliding sibling with no notes and no graph presence: the collision set
+      // must match the sidebar, i.e. include every workspace synced folder.
+      await trx
+        .insertInto('synced_folders')
+        .values({ workspace_id: workspace.id, path: '/x/cntctus/plans' })
+        .execute()
+
+      const justjomNote = await trx
+        .insertInto('notes')
+        .values({
+          workspace_id: workspace.id,
+          synced_folder_id: justjomFolder.id,
+          path: '/a.md',
+          title: 'Justjom Note',
+          content: '# Justjom Note',
+          content_hash: 'hash-ghost',
+          status: 'ingested',
+        })
+        .returning(['id'])
+        .executeTakeFirstOrThrow()
+      await mergeNoteNode(trx, { id: justjomNote.id, workspaceId: workspace.id })
+
+      const res = await server('/api/graph', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const node = body.nodes.find((n: any) => n.id === justjomNote.id)
+      expect(node).toMatchObject({ rootName: 'justjom/plans' })
     })
 
     test('returns empty graph when workspace has no graph data', async ({ server, trx }) => {
@@ -402,6 +568,27 @@ describe('graph API', () => {
         title: seeded.note.title,
         rootName: 'plans',
         syncedFolderId: seeded.syncedFolderNoAlias.id,
+      })
+    })
+
+    test('disambiguates mentioned-note root names on collision', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const seeded = await seedCollidingRoots(trx, workspace.id)
+
+      const res = await server(`/api/graph/concepts/${seeded.concept.id}`, { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      const byPath = new Map(body.mentionedIn.map((m: any) => [m.path, m]))
+      expect(byPath.get(seeded.justjomNote.path)).toMatchObject({
+        title: 'Justjom Note',
+        rootName: 'justjom/plans',
+        syncedFolderId: seeded.justjomFolder.id,
+      })
+      expect(byPath.get(seeded.cntctusNote.path)).toMatchObject({
+        title: 'Cntctus Note',
+        rootName: 'cntctus/plans',
+        syncedFolderId: seeded.cntctusFolder.id,
       })
     })
 

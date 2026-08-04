@@ -143,9 +143,40 @@ graph→note navigation is ambiguous for collided relative paths.
     all touched files. `nuxi typecheck` still cannot run (pre-existing overrides error, see
     Phase 3).
 
+### Phase 6 — Bug fix: graph labels still ambiguous for collided roots
+- [x] `disambiguation.ts`: new `computeRootLabels(roots) → Map<id, displayLabel>`
+      (`alias ?? ((pathPrefix ?? '') + basename)`), reusing `computePathPrefixes`
+- [x] `getFullGraph`: fetches ALL workspace synced folders (id, path, alias), labels via
+      the helper, sets each Note node's `rootName` from the map keyed by syncedFolderId;
+      NULL synced_folder_id → rootName omitted (Phase 3 behavior kept)
+- [x] `getConceptDetail`: same treatment for `MentionedNote.rootName`
+- [x] Unit tests: `computeRootLabels` edge cases (no collision, one-level collision,
+      deep collision, alias wins, alias keeps remaining colliders disambiguated, alias trims)
+- [x] Feature specs: graph note nodes carry `justjom/plans` vs `cntctus/plans` vs
+      `work/plans`; alias-wins via `PATCH /api/synced-folders/:id`; collision set includes
+      synced folders absent from the graph; concept-detail `mentionedIn` disambiguated
+- Status: done
+- Divergences:
+  - User report: canvas labels showed `title <plans>` for both `justjom/plans` and
+    `cntctus/plans` — the graph endpoints used only `rootNameFor(path, alias)`
+    (= alias ?? basename) with no collision logic, while `/api/folders` disambiguates.
+  - `rootNameFor` is kept: `GET /api/folders` still consumes it for the sidebar root
+    `name` (rendered separately from `pathPrefix`), so it is not dead code.
+  - The per-note `leftJoin` on `synced_folders` in `getFullGraph`/`getConceptDetail` was
+    dropped — the workspace-wide `synced_folders` fetch replaces it, and the `rootName`
+    lookup is keyed by `notes.synced_folder_id` directly.
+  - The collision set now provably matches the sidebar: a new e2e case seeds a colliding
+    `plans` folder with *no* notes or graph presence and asserts the other folder's note
+    still renders `justjom/plans` (not bare `plans`).
+  - No frontend changes: canvas/concept-detail already render whatever `rootName` the
+    payload carries; labels automatically become `name <justjom/plans>` vs
+    `name <cntctus/plans>`.
+  - Suite after phase: unit 387 / e2e 244 / components 102 (733 total), ESLint clean on
+    touched files.
+
 ## Key files
 
-- `apps/web/server/lib/notes/disambiguation.ts` (shared `rootNameFor` + `computePathPrefixes`)
+- `apps/web/server/lib/notes/disambiguation.ts` (shared `rootNameFor` + `computePathPrefixes` + `computeRootLabels`)
 - `apps/web/server/api/folders/index.get.ts` (root label via `rootNameFor`, payload has `absolutePath`)
 - `apps/web/server/api/synced-folders/*` (list response also carries `basename`)
 - `apps/web/app/components/notes/notes-layout.vue` (root label at :166)
