@@ -175,74 +175,9 @@ async function seedGraphDomain(trx: any, workspaceId: string) {
   return { conceptA, conceptB, conceptC, note, tag, topicAi, topicDb }
 }
 
-async function seedTopicWithConcepts(
-  trx: any,
-  workspaceId: string,
-  topicName: string,
-  concepts: Array<{ name: string, mentionCount: number }>,
-) {
-  await ensureNotesGraphCatalog(trx)
-
-  const note = await trx
-    .insertInto('notes')
-    .values({
-      workspace_id: workspaceId,
-      path: '/topic/main.md',
-      title: 'Topic Note',
-      content: 'x',
-      content_hash: 'hash-topic',
-      status: 'ingested',
-    })
-    .returning(['id'])
-    .executeTakeFirstOrThrow()
-
-  const topic = await trx
-    .insertInto('topics')
-    .values({ workspace_id: workspaceId, name: topicName, name_normalized: topicName.toLowerCase(), description: '' })
-    .returning(['id'])
-    .executeTakeFirstOrThrow()
-
-  await mergeTopicNode(trx, { id: topic.id, workspaceId, name: topicName })
-
-  const rows: Array<{ id: string, name: string }> = []
-  for (const concept of concepts) {
-    const row = await trx
-      .insertInto('concepts')
-      .values({
-        workspace_id: workspaceId,
-        name: concept.name,
-        name_normalized: concept.name.toLowerCase(),
-        description: '',
-      })
-      .returning(['id'])
-      .executeTakeFirstOrThrow()
-    rows.push({ id: row.id, name: concept.name })
-    await mergeConceptNode(trx, { id: row.id, workspaceId, name: concept.name })
-    await mergeGroupedUnderEdge(trx, { conceptId: row.id, topicId: topic.id, workspaceId })
-    await trx
-      .insertInto('concept_topics')
-      .values({ workspace_id: workspaceId, concept_id: row.id, topic_id: topic.id })
-      .execute()
-    // mentions has a unique (chunk_id, concept_id) constraint: one chunk per mention
-    for (let i = 0; i < concept.mentionCount; i++) {
-      const chunk = await trx
-        .insertInto('chunks')
-        .values({ workspace_id: workspaceId, note_id: note.id, seq: i, text: 'x' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      await trx
-        .insertInto('mentions')
-        .values({ workspace_id: workspaceId, chunk_id: chunk.id, concept_id: row.id })
-        .execute()
-    }
-  }
-
-  return { topic, rows }
-}
-
 describe('graph API', () => {
   describe('gET /api/graph', () => {
-    test('returns topic overview: topics + top concepts + edges among included nodes', async ({ server, trx }) => {
+    test('returns full workspace-scoped graph payload', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
       const seeded = await seedGraphDomain(trx, workspace.id)
 
@@ -254,17 +189,16 @@ describe('graph API', () => {
       expect(nodeIds.has(seeded.conceptA.id)).toBe(true)
       expect(nodeIds.has(seeded.conceptB.id)).toBe(true)
       expect(nodeIds.has(seeded.conceptC.id)).toBe(true)
+      expect(nodeIds.has(seeded.note.id)).toBe(true)
+      expect(nodeIds.has(seeded.tag.id)).toBe(true)
       expect(nodeIds.has(seeded.topicAi.id)).toBe(true)
       expect(nodeIds.has(seeded.topicDb.id)).toBe(true)
-      // Notes and Tags are not part of the overview
-      expect(nodeIds.has(seeded.note.id)).toBe(false)
-      expect(nodeIds.has(seeded.tag.id)).toBe(false)
-      expect(body.nodes).toHaveLength(5)
 
+      expect(body.nodes).toHaveLength(7)
       for (const node of body.nodes) {
         expect(node).toHaveProperty('id')
         expect(node).toHaveProperty('label')
-        expect(['Concept', 'Topic']).toContain(node.label)
+        expect(['Concept', 'Note', 'Tag', 'Topic']).toContain(node.label)
         expect(node).toHaveProperty('name')
         expect(node).toHaveProperty('ref')
       }
@@ -272,183 +206,39 @@ describe('graph API', () => {
       const conceptNode = body.nodes.find((n: any) => n.id === seeded.conceptA.id)
       expect(conceptNode).toMatchObject({ label: 'Concept', name: 'Graph RAG', ref: seeded.conceptA.id })
 
+      const noteNode = body.nodes.find((n: any) => n.id === seeded.note.id)
+      expect(noteNode).toMatchObject({ label: 'Note', name: 'Main Note', ref: seeded.note.path })
+
+      const tagNode = body.nodes.find((n: any) => n.id === seeded.tag.id)
+      expect(tagNode).toMatchObject({ label: 'Tag', name: 'AI', ref: seeded.tag.id })
+
       const topicNodeAi = body.nodes.find((n: any) => n.id === seeded.topicAi.id)
       expect(topicNodeAi).toMatchObject({ label: 'Topic', name: 'AI Engineering', ref: seeded.topicAi.id })
 
       const topicNodeDb = body.nodes.find((n: any) => n.id === seeded.topicDb.id)
       expect(topicNodeDb).toMatchObject({ label: 'Topic', name: 'Databases', ref: seeded.topicDb.id })
 
-      // only GROUPED_UNDER (included concepts) and RELATES_TO (both endpoints included)
-      expect(body.edges).toHaveLength(6)
-      const grouped = body.edges.filter((e: any) => e.type === 'GROUPED_UNDER')
-      expect(grouped).toHaveLength(4)
-      const relates = body.edges.filter((e: any) => e.type === 'RELATES_TO')
-      expect(relates).toHaveLength(2)
-
-      const groupedUnderEdge = body.edges.find(
-        (e: any) => e.source === seeded.conceptA.id && e.target === seeded.topicAi.id && e.type === 'GROUPED_UNDER',
-      )
-      expect(groupedUnderEdge).toBeTruthy()
-
+      expect(body.edges.length).toBeGreaterThanOrEqual(9)
       const relatesEdge = body.edges.find(
         (e: any) => e.source === seeded.conceptA.id && e.target === seeded.conceptB.id && e.type === 'RELATES_TO',
       )
       expect(relatesEdge).toBeTruthy()
       expect(relatesEdge.edgeType).toBe('implemented-with')
 
-      expect(body.edges.find((e: any) => e.type === 'MENTIONS')).toBeFalsy()
-      expect(body.edges.find((e: any) => e.type === 'TAGGED')).toBeFalsy()
-    })
+      const mentionsEdge = body.edges.find(
+        (e: any) => e.source === seeded.note.id && e.target === seeded.conceptA.id && e.type === 'MENTIONS',
+      )
+      expect(mentionsEdge).toBeTruthy()
 
-    test('limits to top 10 concepts per topic, ties broken by name asc', async ({ server, trx }) => {
-      const { workspace, cookies } = await givenVerifiedUser()
+      const taggedEdge = body.edges.find(
+        (e: any) => e.source === seeded.note.id && e.target === seeded.tag.id && e.type === 'TAGGED',
+      )
+      expect(taggedEdge).toBeTruthy()
 
-      const concepts = [
-        ...Array.from({ length: 9 }, (_, i) => ({ name: `Concept 0${i + 1}`, mentionCount: 12 - i })),
-        { name: 'Zulu', mentionCount: 3 },
-        { name: 'Alpha', mentionCount: 3 },
-      ]
-      const seeded = await seedTopicWithConcepts(trx, workspace.id, 'Overflow', concepts)
-
-      const res = await server('/api/graph', { headers: { cookie: cookies } })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-
-      const byName = new Map(seeded.rows.map(r => [r.name, r.id]))
-      const nodeIds = new Set(body.nodes.map((n: any) => n.id))
-      // 9 high-count concepts + Alpha (wins the count-3 tie on name) + 1 topic node
-      expect(body.nodes).toHaveLength(11)
-      for (let i = 1; i <= 9; i++)
-        expect(nodeIds.has(byName.get(`Concept 0${i}`)!)).toBe(true)
-      expect(nodeIds.has(byName.get('Alpha')!)).toBe(true)
-      expect(nodeIds.has(byName.get('Zulu')!)).toBe(false)
-    })
-
-    test('includes a concept once even when it tops multiple topics', async ({ server, trx }) => {
-      const { workspace, cookies } = await givenVerifiedUser()
-      await ensureNotesGraphCatalog(trx)
-
-      const note = await trx
-        .insertInto('notes')
-        .values({ workspace_id: workspace.id, path: '/d.md', title: 'D', content: 'x', content_hash: 'h', status: 'ingested' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-
-      const shared = await trx
-        .insertInto('concepts')
-        .values({ workspace_id: workspace.id, name: 'Shared', name_normalized: 'shared', description: '' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      await mergeConceptNode(trx, { id: shared.id, workspaceId: workspace.id, name: 'Shared' })
-      // mentions has a unique (chunk_id, concept_id) constraint: one chunk per mention
-      for (let i = 0; i < 50; i++) {
-        const chunk = await trx
-          .insertInto('chunks')
-          .values({ workspace_id: workspace.id, note_id: note.id, seq: i, text: 'x' })
-          .returning(['id'])
-          .executeTakeFirstOrThrow()
-        await trx
-          .insertInto('mentions')
-          .values({ workspace_id: workspace.id, chunk_id: chunk.id, concept_id: shared.id })
-          .execute()
-      }
-
-      const fillerNames = ['Alpha Filler', 'Beta Filler']
-      for (let i = 0; i < 2; i++) {
-        const topicName = `Topic ${i}`
-        const topic = await trx
-          .insertInto('topics')
-          .values({ workspace_id: workspace.id, name: topicName, name_normalized: topicName.toLowerCase(), description: '' })
-          .returning(['id'])
-          .executeTakeFirstOrThrow()
-        await mergeTopicNode(trx, { id: topic.id, workspaceId: workspace.id, name: topicName })
-        await mergeGroupedUnderEdge(trx, { conceptId: shared.id, topicId: topic.id, workspaceId: workspace.id })
-        await trx
-          .insertInto('concept_topics')
-          .values({ workspace_id: workspace.id, concept_id: shared.id, topic_id: topic.id })
-          .execute()
-
-        const filler = await trx
-          .insertInto('concepts')
-          .values({ workspace_id: workspace.id, name: fillerNames[i], name_normalized: fillerNames[i].toLowerCase(), description: '' })
-          .returning(['id'])
-          .executeTakeFirstOrThrow()
-        await mergeConceptNode(trx, { id: filler.id, workspaceId: workspace.id, name: fillerNames[i] })
-        await mergeGroupedUnderEdge(trx, { conceptId: filler.id, topicId: topic.id, workspaceId: workspace.id })
-        await trx
-          .insertInto('concept_topics')
-          .values({ workspace_id: workspace.id, concept_id: filler.id, topic_id: topic.id })
-          .execute()
-      }
-
-      const res = await server('/api/graph', { headers: { cookie: cookies } })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-
-      const sharedNodes = body.nodes.filter((n: any) => n.id === shared.id)
-      expect(sharedNodes).toHaveLength(1)
-      expect(sharedNodes[0]).toMatchObject({ label: 'Concept', name: 'Shared', ref: shared.id })
-      expect(body.nodes).toHaveLength(5) // 2 topics + shared + 2 fillers
-    })
-
-    test('excludes topic-less concepts but keeps empty topics', async ({ server, trx }) => {
-      const { workspace, cookies } = await givenVerifiedUser()
-      await ensureNotesGraphCatalog(trx)
-
-      // concept with a high mention count but no topic membership
-      const orphan = await trx
-        .insertInto('concepts')
-        .values({ workspace_id: workspace.id, name: 'Orphan', name_normalized: 'orphan', description: '' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      await mergeConceptNode(trx, { id: orphan.id, workspaceId: workspace.id, name: 'Orphan' })
-      const note = await trx
-        .insertInto('notes')
-        .values({ workspace_id: workspace.id, path: '/o.md', title: 'O', content: 'x', content_hash: 'ho', status: 'ingested' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      // mentions has a unique (chunk_id, concept_id) constraint: one chunk per mention
-      for (let i = 0; i < 100; i++) {
-        const chunk = await trx
-          .insertInto('chunks')
-          .values({ workspace_id: workspace.id, note_id: note.id, seq: i, text: 'x' })
-          .returning(['id'])
-          .executeTakeFirstOrThrow()
-        await trx
-          .insertInto('mentions')
-          .values({ workspace_id: workspace.id, chunk_id: chunk.id, concept_id: orphan.id })
-          .execute()
-      }
-
-      // an empty topic with no concepts — must still appear
-      const emptyTopic = await trx
-        .insertInto('topics')
-        .values({ workspace_id: workspace.id, name: 'Empty Topic', name_normalized: 'empty topic', description: '' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      await mergeTopicNode(trx, { id: emptyTopic.id, workspaceId: workspace.id, name: 'Empty Topic' })
-
-      // a populated topic so the overview is non-empty
-      const kept = await trx
-        .insertInto('concepts')
-        .values({ workspace_id: workspace.id, name: 'Kept', name_normalized: 'kept', description: '' })
-        .returning(['id'])
-        .executeTakeFirstOrThrow()
-      await mergeConceptNode(trx, { id: kept.id, workspaceId: workspace.id, name: 'Kept' })
-      await mergeGroupedUnderEdge(trx, { conceptId: kept.id, topicId: emptyTopic.id, workspaceId: workspace.id })
-      await trx
-        .insertInto('concept_topics')
-        .values({ workspace_id: workspace.id, concept_id: kept.id, topic_id: emptyTopic.id })
-        .execute()
-
-      const res = await server('/api/graph', { headers: { cookie: cookies } })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-
-      const nodeIds = new Set(body.nodes.map((n: any) => n.id))
-      expect(nodeIds.has(orphan.id)).toBe(false)
-      expect(nodeIds.has(kept.id)).toBe(true)
-      expect(nodeIds.has(emptyTopic.id)).toBe(true)
+      const groupedUnderEdge = body.edges.find(
+        (e: any) => e.source === seeded.conceptA.id && e.target === seeded.topicAi.id && e.type === 'GROUPED_UNDER',
+      )
+      expect(groupedUnderEdge).toBeTruthy()
     })
 
     test('returns empty graph when workspace has no graph data', async ({ server, trx }) => {

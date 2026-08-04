@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { ConceptDetail, GraphEdge, GraphNode } from '~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
-import { mergeGraphEdges, mergeGraphNodes } from '~/lib/graph-renderer/merge'
 
 interface GraphPayload {
   nodes: GraphNode[]
@@ -35,44 +34,11 @@ const { data: detail } = useFetch<ConceptDetail>(() =>
   watch: [selectedConceptId],
 })
 
-// Drill-down state (Phase 4): the overview loads once; clicking a Topic or
-// Concept fetches its 1-hop ego graph and merges it in place (deduped).
-const nodes = ref<GraphNode[]>(graph.value?.nodes ?? [])
-const edges = ref<GraphEdge[]>(graph.value?.edges ?? [])
-const expandedNodeIds = ref<Set<string>>(new Set())
-const inflightNodeIds = new Set<string>()
-const drilldownError = ref<string | null>(null)
-
-function dismissDrilldownError() {
-  drilldownError.value = null
-}
-
-async function expandNode(node: GraphNode) {
-  if (expandedNodeIds.value.has(node.id) || inflightNodeIds.has(node.id))
-    return
-  inflightNodeIds.add(node.id)
-  try {
-    const payload = await $fetch<GraphPayload>(`/api/graph/neighborhood?node=${encodeURIComponent(node.id)}&depth=1`)
-    nodes.value = mergeGraphNodes(nodes.value, payload.nodes)
-    edges.value = mergeGraphEdges(edges.value, payload.edges)
-    expandedNodeIds.value = new Set(expandedNodeIds.value).add(node.id)
-  }
-  catch (err) {
-    console.error(`Failed to expand graph node ${node.id}:`, err)
-    drilldownError.value = err instanceof Error ? err.message : String(err)
-  }
-  finally {
-    inflightNodeIds.delete(node.id)
-  }
-}
-
 function selectConcept(conceptId: string) {
   selectedConceptId.value = conceptId
 }
 
 function handleNodeClick(node: GraphNode) {
-  if (node.label === 'Concept' || node.label === 'Topic')
-    expandNode(node)
   const action = resolveGraphNodeAction(node)
   if (action.type === 'select-concept') {
     selectedConceptId.value = action.conceptId
@@ -104,31 +70,13 @@ function openNote(path: string) {
 
       <!-- Graph canvas -->
       <main class="flex-1 bg-gray-50 overflow-hidden relative">
-        <div
-          v-if="drilldownError"
-          data-testid="graph-error"
-          role="alert"
-          class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-3 py-2 shadow-sm"
-        >
-          <span>{{ drilldownError }}</span>
-          <button
-            type="button"
-            data-testid="graph-error-dismiss"
-            class="text-red-500 hover:text-red-700 font-semibold"
-            :aria-label="t('graph.dismissError')"
-            @click="dismissDrilldownError"
-          >
-            ×
-          </button>
-        </div>
         <ClientOnly>
           <graph-canvas
             v-if="graph && graph.nodes.length > 0"
-            :nodes="nodes"
-            :edges="edges"
+            :nodes="graph.nodes"
+            :edges="graph.edges"
             :selected-node-id="selectedConceptId"
             @select-node="handleNodeClick"
-            @error="drilldownError = $event"
           />
           <div v-else class="h-full flex items-center justify-center text-gray-500">
             {{ t('graph.empty') }}

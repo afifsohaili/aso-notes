@@ -35,7 +35,6 @@ export default defineNuxtConfig({
     public: {
       turnstileSiteKey: '',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
-      graphRenderer: process.env.NUXT_PUBLIC_GRAPH_RENDERER || 'sigma',
     },
     betterAuthSecret: '',
     posthogApiKey: '',

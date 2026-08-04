@@ -1,6 +1,6 @@
 # Plan 008 — Graph Page Performance (Ego-Graph + WebGL Renderer)
 
-Status: complete — all four phases shipped (ego-graph API, renderer seam, sigma WebGL renderer, drill-down + renderer flag). 2026-08-03.
+Status: REVERTED 2026-08-04 (back to 375e302, full-graph Cytoscape). All four phases shipped and worked, but UX regressed: every drill-down expansion re-ran the full layout, so the canvas visibly shifted on every click. Kept learnings: sigma v3 camera operates in normalized space (graph always centered at 0.5,0.5); sigma refreshes synchronously per graphology mutation; real DBs contain duplicate undirected relation pairs; edge attr `type` is sigma-reserved. If re-attempted: incremental layout (append-only, no re-fit on expand) is the key requirement.
 Glossary: see `../CONTEXT.md`.
 
 ## Problem

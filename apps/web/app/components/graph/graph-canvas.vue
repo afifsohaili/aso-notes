@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import type { GraphEdge, GraphNode, GraphRenderer } from '~/lib/graph-renderer/types'
+import type { GraphEdge, GraphNode } from '~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
-import { createGraphRenderer } from '~/lib/graph-renderer'
-import { resolveGraphRenderer } from '~/lib/graph-renderer/config'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -12,17 +10,19 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'selectNode', node: GraphNode): void
-  (e: 'error', message: string): void
 }>()
 
 const { t } = useI18n()
 
 const containerRef = ref<HTMLDivElement | null>(null)
-let renderer: GraphRenderer | null = null
+let cy: any = null
 
-// Read once at setup: the renderer is fixed per page load by runtime config
-// (`NUXT_PUBLIC_GRAPH_RENDERER`), defaulting to the sigma (WebGL) renderer.
-const graphRendererImpl = resolveGraphRenderer(useRuntimeConfig().public.graphRenderer)
+const nodeColorMap = {
+  Concept: '#4f46e5',
+  Topic: '#7c3aed',
+  Note: '#059669',
+  Tag: '#d97706',
+} as const
 
 const legendItems = computed(() => [
   { label: t('graph.legend.topic'), colorClass: 'bg-[#7c3aed]' },
@@ -31,34 +31,154 @@ const legendItems = computed(() => [
   { label: t('graph.legend.tag'), colorClass: 'bg-[#d97706]' },
 ])
 
-onMounted(async () => {
-  if (!containerRef.value)
+function nodeColor(label: GraphNode['label']): string {
+  return nodeColorMap[label] ?? '#6b7280'
+}
+
+function buildElements() {
+  const elements: any[] = []
+  for (const node of props.nodes) {
+    elements.push({
+      data: {
+        id: node.id,
+        label: node.label,
+        name: node.name,
+        ref: node.ref,
+        color: nodeColor(node.label),
+      },
+    })
+  }
+  for (const edge of props.edges) {
+    elements.push({
+      data: {
+        id: `${edge.source}-${edge.target}-${edge.type}`,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+        edgeType: edge.edgeType,
+      },
+    })
+  }
+  return elements
+}
+
+function applyHighlight() {
+  if (!cy)
     return
+  cy.elements().removeStyle()
+  if (!props.selectedNodeId) {
+    return
+  }
+  const selected = cy.getElementById(props.selectedNodeId)
+  if (!selected.length)
+    return
+  const neighborhood = selected.neighborhood().add(selected)
+  cy.elements().difference(neighborhood).style({ opacity: 0.2 })
+}
+
+async function initCytoscape() {
   try {
-    renderer = createGraphRenderer(graphRendererImpl)
-    renderer.onNodeClick(node => emit('selectNode', node))
-    await renderer.mount(containerRef.value)
-    renderer.setGraph(props.nodes, props.edges)
-    renderer.highlight(props.selectedNodeId)
+    if (!containerRef.value)
+      return
+    const cytoscape = (await import('cytoscape')).default
+    const fcose = (await import('cytoscape-fcose')).default
+    cytoscape.use(fcose)
+
+    cy = cytoscape({
+      container: containerRef.value,
+      elements: buildElements(),
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': 'data(color)',
+            'label': 'data(name)',
+            'width': 32,
+            'height': 32,
+            'font-size': '10px',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'color': '#374151',
+            'text-background-color': '#ffffff',
+            'text-background-opacity': 0.8,
+            'text-background-padding': '2px',
+            'text-background-shape': 'roundrectangle',
+          },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 1.5,
+            'line-color': '#9ca3af',
+            'target-arrow-color': '#9ca3af',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'arrow-scale': 0.8,
+          },
+        },
+        {
+          selector: ':selected',
+          style: {
+            'border-width': 3,
+            'border-color': '#111827',
+          },
+        },
+        {
+          selector: 'node[label = "Topic"]',
+          style: {
+            width: 40,
+            height: 40,
+          },
+        },
+      ],
+      layout: {
+        name: 'fcose',
+        padding: 16,
+        animate: false,
+        fit: true,
+        componentSpacing: 60,
+        nodeRepulsion: 4000,
+        idealEdgeLength: 80,
+      },
+    })
+
+    cy.on('tap', 'node', (evt: any) => {
+      const node = evt.target.data() as GraphNode
+      emit('selectNode', {
+        id: node.id,
+        label: node.label,
+        name: node.name,
+        ref: node.ref,
+      })
+    })
   }
   catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('Graph renderer init failed:', err)
-    emit('error', message)
+    console.error('Cytoscape init failed:', err)
   }
+}
+
+onMounted(() => {
+  initCytoscape()
 })
 
 onUnmounted(() => {
-  renderer?.destroy()
-  renderer = null
+  if (cy) {
+    cy.destroy()
+    cy = null
+  }
 })
 
 watch(() => [props.nodes, props.edges], () => {
-  renderer?.setGraph(props.nodes, props.edges)
+  if (!cy)
+    return
+  cy.elements().remove()
+  cy.add(buildElements())
+  cy.layout({ name: 'fcose', padding: 16, animate: false, fit: true }).run()
+  applyHighlight()
 }, { deep: true })
 
 watch(() => props.selectedNodeId, () => {
-  renderer?.highlight(props.selectedNodeId)
+  applyHighlight()
 })
 </script>
 
