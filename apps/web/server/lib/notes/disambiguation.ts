@@ -7,14 +7,24 @@ export interface SyncedFolderRoot {
 }
 
 /**
+ * Root display name of a Synced Folder: `alias ?? basename(path)`.
+ * An empty/blank alias is treated as unset; a set alias is returned trimmed.
+ */
+export function rootNameFor(syncedFolderPath: string, alias: string | null | undefined): string {
+  if (alias && alias.trim().length > 0)
+    return alias.trim()
+  return path.basename(syncedFolderPath)
+}
+
+/**
  * Ancestor segment names of a path, top-most first.
  * `/Users/x/Projects/justjom/plans` → `['Users', 'x', 'Projects', 'justjom']`.
  * A root-level path such as `/plans` → `[]`.
  */
-function ancestorSegments(p: string): string[] {
+function ancestorSegments(folderPath: string): string[] {
   const segments: string[] = []
-  let dir = path.dirname(p)
-  while (dir !== p && dir !== path.parse(dir).root && dir !== '.') {
+  let dir = path.dirname(folderPath)
+  while (dir !== folderPath && dir !== path.parse(dir).root && dir !== '.') {
     segments.push(path.basename(dir))
     dir = path.dirname(dir)
   }
@@ -27,13 +37,13 @@ function ancestorSegments(p: string): string[] {
  * until the segment sequence is unique within the group. Returns null when the
  * root has no parent segments to draw from.
  */
-function distinguishingPrefix(p: string, groupPaths: string[]): string | null {
-  const segments = ancestorSegments(p)
+function distinguishingPrefix(folderPath: string, groupPaths: string[]): string | null {
+  const segments = ancestorSegments(folderPath)
   const prefixes = new Map(groupPaths.map(other => [other, ancestorSegments(other)]))
   for (let depth = 1; depth <= segments.length; depth++) {
     const candidate = segments.slice(-depth).join('/')
     const unique = groupPaths.every((other) => {
-      if (other === p)
+      if (other === folderPath)
         return true
       return prefixes.get(other)!.slice(-depth).join('/') !== candidate
     })

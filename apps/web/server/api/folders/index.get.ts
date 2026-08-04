@@ -1,6 +1,5 @@
-import path from 'node:path'
 import { useDatabase } from '~~/utils/db'
-import { computePathPrefixes } from '../../lib/notes/disambiguation'
+import { computePathPrefixes, rootNameFor } from '../../lib/notes/disambiguation'
 import { buildFolderTree } from '../../lib/notes/tree'
 
 export default defineEventHandler(async (event) => {
@@ -98,7 +97,7 @@ export default defineEventHandler(async (event) => {
 
     return {
       syncedFolderId: sf.id,
-      name: sf.alias ?? path.basename(sf.path),
+      name: rootNameFor(sf.path, sf.alias),
       pathPrefix: pathPrefixById.get(sf.id) ?? null,
       absolutePath: sf.path,
       hasCover: rootCoverByFolder.get(sf.id) ?? false,

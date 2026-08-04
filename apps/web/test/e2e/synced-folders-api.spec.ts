@@ -176,7 +176,12 @@ describe('synced-folders API', () => {
       expect(res.status).toBe(200)
       const list = await res.json()
       expect(list).toHaveLength(1)
-      expect(list[0]).toMatchObject({ id: body.id, path: body.path, noteCount: 1 })
+      expect(list[0]).toMatchObject({
+        id: body.id,
+        path: body.path,
+        noteCount: 1,
+        basename: path.basename(body.path),
+      })
     })
 
     test('rejects a relative path', async ({ server }) => {

@@ -1,6 +1,6 @@
 # Plan — Synced Folder Disambiguation & Aliases
 
-Status: in progress
+Status: done
 Created: 2026-08-04
 
 ## Problem
@@ -108,13 +108,49 @@ graph→note navigation is ambiguous for collided relative paths.
   - The `<rootName>` suffix uses `&lt;`/`&gt;` HTML entities in the template per
     plan decision 7, rendered as literal text content via Vue's entity decoding.
 
+### Phase 5 — Review fixes (code review, two axes)
+- [x] FIX 1 (spec, navigation): `concept-detail.vue` emits `openNote(path, syncedFolderId?)`;
+      `pages/graph/index.vue` `openNote` navigates to `/notes${path}?syncedFolder=<id>`
+      (URL-encoded, omitted when absent), mirroring `handleNodeClick`
+- [x] FIX 2 (spec, settings label): manager row always shows bold basename + gray parent
+      path; alias renders as a secondary gray `· alias` suffix, never replacing the basename
+- [x] FIX 3 (standards, dedupe): `rootNameFor` moved to `server/lib/notes/disambiguation.ts`;
+      `server/api/folders/index.get.ts` and `server/lib/graph/ui.ts` both import it;
+      `GET /api/synced-folders` returns `basename`; manager dropped `splitPath`/`folderLabel`
+- [x] FIX 4 (locale keys): audited keys touched by phases 1-4 — see divergence below
+- [x] FIX 5 (naming): renamed `p` → `folderPath` in `ancestorSegments`/`distinguishingPrefix`;
+      `rootNameFor` now returns the *trimmed* alias
+- Status: done
+- Divergences:
+  - FIX 4's premise was wrong: `settings.folders.help` is not dead. Phase 2 deleted only
+    the *duplicate* usage in `settings.vue`; `synced-folder-manager.vue:123` still renders
+    it, and `settings-page.nuxt.spec.ts` asserts the description renders exactly once.
+    User decision: keep the key and its paragraph; document the review's claim here. No
+    other keys were orphaned by phases 1-4 (the 5 keys those phases added — `editAlias`,
+    `aliasPlaceholder`, `save`, `cancel`, `aliasTooLong` — are all still referenced).
+    `settings.folders.errors.hasNotes` is orphaned but predates this plan (007 phase 6 GC
+    removed its only use) — out of scope.
+  - FIX 2/3 changed the manager's `SyncedFolder` prop shape: `basename` is now required
+    (computed server-side). `settings.vue` mapping and the settings-page/manager specs were
+    updated to supply it. The manager derives the gray parent path by stripping the
+    server-provided `basename` (handles the trailing-slash case) instead of re-splitting
+    the path client-side.
+  - FIX 1: `MentionedNote.path` already includes a leading `/`, so the no-synced-folder
+    navigation lands on `/notes/notes/plain.md` — same semantics as before the fix.
+  - One unrelated flake: `test/e2e/folder-sync.spec.ts` (chokidar smoke) failed once during
+    a parallel run and passed in isolation; not introduced by this phase.
+  - Full suite green: 93 files / 737 tests (unit + e2e + nuxt components), ESLint clean on
+    all touched files. `nuxi typecheck` still cannot run (pre-existing overrides error, see
+    Phase 3).
+
 ## Key files
 
-- `apps/web/server/api/folders/index.get.ts` (root label at :96, payload has `absolutePath`)
-- `apps/web/server/api/synced-folders/*`
+- `apps/web/server/lib/notes/disambiguation.ts` (shared `rootNameFor` + `computePathPrefixes`)
+- `apps/web/server/api/folders/index.get.ts` (root label via `rootNameFor`, payload has `absolutePath`)
+- `apps/web/server/api/synced-folders/*` (list response also carries `basename`)
 - `apps/web/app/components/notes/notes-layout.vue` (root label at :166)
-- `apps/web/app/components/settings/synced-folder-manager.vue` (full path at :89)
-- `apps/web/server/lib/graph/ui.ts` (note node build :97-126; mentioned notes :261-269)
+- `apps/web/app/components/settings/synced-folder-manager.vue` (bold basename + gray parent, alias suffix)
+- `apps/web/server/lib/graph/ui.ts` (note node build; mentioned notes)
 - `apps/web/app/components/graph/graph-canvas.vue` (label at :94)
-- `apps/web/app/components/graph/concept-detail.vue` (mentioned list :69-88)
+- `apps/web/app/components/graph/concept-detail.vue` (mentioned list :69-88; openNote carries syncedFolderId)
 - `apps/web/app/utils/graph.ts` (navigateTo :23-26)

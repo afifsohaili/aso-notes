@@ -1,5 +1,5 @@
 import type { GraphDb } from './age'
-import path from 'node:path'
+import { rootNameFor } from '../notes/disambiguation'
 import { agLiteral, parseAgtype, queryCypher } from './age'
 
 export interface GraphNode {
@@ -11,16 +11,6 @@ export interface GraphNode {
   rootName?: string
   /** Id of the note's Synced Folder. Only set on Note nodes. */
   syncedFolderId?: string
-}
-
-/**
- * Root display name of a Synced Folder: `alias ?? basename(path)`.
- * An empty/blank alias is treated as unset.
- */
-export function rootNameFor(syncedFolderPath: string, alias: string | null | undefined): string {
-  if (alias && alias.trim().length > 0)
-    return alias
-  return path.basename(syncedFolderPath)
 }
 
 export interface GraphEdge {

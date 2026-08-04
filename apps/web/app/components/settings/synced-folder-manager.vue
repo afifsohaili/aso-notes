@@ -8,6 +8,8 @@ import XCircleIcon from '~icons/heroicons/x-circle'
 export interface SyncedFolder {
   id: string
   path: string
+  /** Folder name on disk, computed server-side. */
+  basename: string
   noteCount: number
   alias?: string | null
 }
@@ -50,22 +52,12 @@ const aliasDraft = ref('')
 const isRemoveConfirmed = computed(() => confirmText.value.trim() === REMOVE_CONFIRM_TEXT)
 const confirmingFolder = computed(() => props.folders.find(f => f.id === confirmingFolderId.value) ?? null)
 
-function splitPath(path: string): { parent: string, basename: string } {
-  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
-  const idx = trimmed.lastIndexOf('/')
-  if (idx === -1)
-    return { parent: '', basename: trimmed }
-  return { parent: `${trimmed.slice(0, idx + 1)}`, basename: trimmed.slice(idx + 1) }
-}
-
 function folderParent(folder: SyncedFolder): string {
-  return splitPath(folder.path).parent
-}
-
-function folderLabel(folder: SyncedFolder): string {
-  if (folder.alias)
-    return folder.alias
-  return splitPath(folder.path).basename
+  const { path, basename } = folder
+  if (!basename)
+    return ''
+  const end = path.endsWith(`${basename}/`) ? basename.length + 1 : basename.length
+  return path.slice(0, path.length - end)
 }
 
 function submit() {
@@ -164,12 +156,13 @@ function saveAlias(folder: SyncedFolder) {
             </p>
             <p
               v-else
-              class="truncate text-sm font-medium text-gray-900"
+              class="truncate text-sm text-gray-900"
               :title="folder.path"
               data-testid="folder-label"
             >
               <span v-if="folderParent(folder)" class="font-normal text-gray-400" data-testid="folder-parent-path">{{ folderParent(folder) }}</span>
-              <span data-testid="folder-name">{{ folderLabel(folder) }}</span>
+              <span class="font-semibold" data-testid="folder-name">{{ folder.basename }}</span>
+              <span v-if="folder.alias" class="font-normal text-gray-400" data-testid="folder-alias"> · {{ folder.alias }}</span>
             </p>
             <p class="text-xs text-gray-500">
               {{ t('settings.folders.noteCount', { count: folder.noteCount }) }}

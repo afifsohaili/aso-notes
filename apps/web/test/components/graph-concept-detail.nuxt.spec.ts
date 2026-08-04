@@ -63,19 +63,35 @@ describe('graph-concept-detail', () => {
     expect(button.text()).toContain('/notes/named.md')
   })
 
-  it('emits openNote with the note path when a mentioned note is clicked', async () => {
+  it('emits openNote with the note path and syncedFolderId when a mentioned note is clicked', async () => {
     const component = await mountSuspended(ConceptDetail, {
       props: {
         detail: {
           ...baseDetail,
           mentionedIn: [
-            { path: '/justjom/plans/a.md', title: 'Plan A', rootName: 'justjom' },
+            { path: '/justjom/plans/a.md', title: 'Plan A', rootName: 'justjom', syncedFolderId: 'sf-1' },
           ],
         },
       },
     })
 
     await component.find('button').trigger('click')
-    expect(component.emitted('openNote')).toEqual([['/justjom/plans/a.md']])
+    expect(component.emitted('openNote')).toEqual([['/justjom/plans/a.md', 'sf-1']])
+  })
+
+  it('omits syncedFolderId from the openNote emit when the note has none', async () => {
+    const component = await mountSuspended(ConceptDetail, {
+      props: {
+        detail: {
+          ...baseDetail,
+          mentionedIn: [
+            { path: '/notes/plain.md', title: 'Plain' },
+          ],
+        },
+      },
+    })
+
+    await component.find('button').trigger('click')
+    expect(component.emitted('openNote')).toEqual([['/notes/plain.md', undefined]])
   })
 })

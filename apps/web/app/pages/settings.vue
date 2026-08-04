@@ -24,6 +24,7 @@ interface SettingsPayload {
 interface SyncedFolderApiItem {
   id: string
   path: string
+  basename: string
   noteCount: number
   alias: string | null
 }
@@ -374,6 +375,7 @@ function normalisedFolders(): SyncedFolder[] {
     ? folders.value.map(f => ({
         id: f.id,
         path: f.path,
+        basename: f.basename,
         noteCount: f.noteCount,
         alias: f.alias ?? null,
       }))

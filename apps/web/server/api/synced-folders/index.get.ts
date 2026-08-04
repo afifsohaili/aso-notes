@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { useDatabase } from '~~/utils/db'
 
 async function resolveWorkspaceId(db: any, userId: string): Promise<string | null> {
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
   return rows.map(row => ({
     id: row.id,
     path: row.path,
+    basename: path.basename(row.path),
     alias: row.alias,
     noteCount: Number(row.note_count),
     createdAt: row.created_at.toISOString(),

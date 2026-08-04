@@ -142,7 +142,7 @@ describe('settings page', () => {
         return mockUseFetch(url)
       if (url === '/api/synced-folders') {
         return {
-          data: ref([{ id: 'f1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 2, alias: null }]) as Ref<unknown[]>,
+          data: ref([{ id: 'f1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 2, alias: null }]) as Ref<unknown[]>,
           pending: ref(false),
           refresh: refreshFolders,
         }
@@ -174,7 +174,7 @@ describe('settings page', () => {
         return mockUseFetch(url)
       if (url === '/api/synced-folders') {
         return {
-          data: ref([{ id: 'f1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 2, alias: null }]) as Ref<unknown[]>,
+          data: ref([{ id: 'f1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 2, alias: null }]) as Ref<unknown[]>,
           pending: ref(false),
           refresh: vi.fn(),
         }
@@ -226,7 +226,7 @@ describe('settings wizard mode', () => {
   })
 
   it('enables the LLM step once a synced folder exists', async () => {
-    mockWizardResponse({}, [{ id: '1', path: '/notes', noteCount: 0 }])
+    mockWizardResponse({}, [{ id: '1', path: '/notes', basename: 'notes', noteCount: 0 }])
 
     const component = await mountSuspended(SettingsPage)
     const llmStep = component.find('[data-testid="wizard-step-llm"]')

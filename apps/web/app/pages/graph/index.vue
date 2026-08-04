@@ -53,8 +53,9 @@ function handleNodeClick(node: GraphNode) {
   }
 }
 
-function openNote(path: string) {
-  navigateTo(`/notes${path}`)
+function openNote(path: string, syncedFolderId?: string) {
+  const query = syncedFolderId ? `?syncedFolder=${encodeURIComponent(syncedFolderId)}` : ''
+  navigateTo(`/notes${path}${query}`)
 }
 </script>
 

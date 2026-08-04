@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { groupConceptsByTopic } from '../../app/utils/graph'
-import { parseOptionalString, rootNameFor, toConceptSummaries } from '../../server/lib/graph/ui'
+import { parseOptionalString, toConceptSummaries } from '../../server/lib/graph/ui'
+import { rootNameFor } from '../../server/lib/notes/disambiguation'
 
 describe('graph/ui response shaping', () => {
   describe('rootNameFor', () => {
@@ -19,6 +20,10 @@ describe('graph/ui response shaping', () => {
     it('treats an empty or blank alias as unset', () => {
       expect(rootNameFor('/Users/x/plans', '')).toBe('plans')
       expect(rootNameFor('/Users/x/plans', '   ')).toBe('plans')
+    })
+
+    it('returns the alias trimmed of surrounding whitespace', () => {
+      expect(rootNameFor('/Users/x/plans', '  Roadmap  ')).toBe('Roadmap')
     })
 
     it('strips a trailing slash before taking the basename', () => {

@@ -2,6 +2,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import ConceptDetail from '../../app/components/graph/concept-detail.vue'
 import GraphCanvas from '../../app/components/graph/graph-canvas.vue'
 import GraphIndexPage from '../../app/pages/graph/index.vue'
 
@@ -81,6 +82,44 @@ describe('graph index page', () => {
     await flushPromises()
 
     expect(navigateToMock).toHaveBeenCalledWith('/notes/relative.md')
+  })
+
+  it('navigates to a mentioned note with the syncedFolder query when the note has one', async () => {
+    mockFetch({ nodes: [noteNode], edges: [] })
+
+    const component = await mountSuspended(GraphIndexPage, {
+      global: {
+        stubs: {
+          ClientOnly: { template: '<div><slot /></div>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const detail = component.findComponent(ConceptDetail)
+    detail.vm.$emit('openNote', '/justjom/plans/a.md', 'sf-1')
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/notes/justjom/plans/a.md?syncedFolder=sf-1')
+  })
+
+  it('navigates to a mentioned note without a syncedFolder query when the note lacks one', async () => {
+    mockFetch({ nodes: [noteNode], edges: [] })
+
+    const component = await mountSuspended(GraphIndexPage, {
+      global: {
+        stubs: {
+          ClientOnly: { template: '<div><slot /></div>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const detail = component.findComponent(ConceptDetail)
+    detail.vm.$emit('openNote', '/notes/plain.md')
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/notes/notes/plain.md')
   })
 
   it('selects a concept and keeps navigateTo untouched', async () => {

@@ -7,8 +7,8 @@ describe('synced-folder-manager', () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
         folders: [
-          { id: 'folder-1', path: '/notes/personal', noteCount: 3 },
-          { id: 'folder-2', path: '/notes/work', noteCount: 0 },
+          { id: 'folder-1', path: '/notes/personal', basename: 'personal', noteCount: 3 },
+          { id: 'folder-2', path: '/notes/work', basename: 'work', noteCount: 0 },
         ],
       },
     })
@@ -22,7 +22,7 @@ describe('synced-folder-manager', () => {
   it('opens a type-to-confirm dialog when the remove button is clicked', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/notes/personal', noteCount: 3 }],
+        folders: [{ id: 'folder-1', path: '/notes/personal', basename: 'personal', noteCount: 3 }],
       },
     })
 
@@ -39,7 +39,7 @@ describe('synced-folder-manager', () => {
   it('enables confirm only after typing REMOVE', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/notes/personal', noteCount: 1 }],
+        folders: [{ id: 'folder-1', path: '/notes/personal', basename: 'personal', noteCount: 1 }],
       },
     })
 
@@ -60,7 +60,7 @@ describe('synced-folder-manager', () => {
   it('emits delete when confirmed and closes the dialog', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/notes/personal', noteCount: 1 }],
+        folders: [{ id: 'folder-1', path: '/notes/personal', basename: 'personal', noteCount: 1 }],
       },
     })
 
@@ -76,7 +76,7 @@ describe('synced-folder-manager', () => {
   it('closes the dialog without emitting when cancelled', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/notes/personal', noteCount: 1 }],
+        folders: [{ id: 'folder-1', path: '/notes/personal', basename: 'personal', noteCount: 1 }],
       },
     })
 
@@ -92,31 +92,36 @@ describe('synced-folder-manager alias labels', () => {
   it('renders a bold basename with a gray parent path', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3 }],
       },
     })
 
     const parent = component.find('[data-testid="folder-parent-path"]')
     expect(parent.exists()).toBe(true)
     expect(parent.text()).toBe('/Users/afifsohaili/Projects/')
-    expect(component.find('[data-testid="folder-name"]').text()).toBe('justjom')
+    const name = component.find('[data-testid="folder-name"]')
+    expect(name.text()).toBe('justjom')
+    expect(name.classes()).toContain('font-semibold')
   })
 
-  it('shows the alias as the label when one is set, instead of the basename', async () => {
+  it('keeps the basename visible and shows the alias as a secondary element when one is set', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3, alias: 'JustJom' }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3, alias: 'JustJom' }],
       },
     })
 
-    expect(component.find('[data-testid="folder-name"]').text()).toBe('JustJom')
-    expect(component.text()).not.toContain('justjom')
+    expect(component.find('[data-testid="folder-name"]').text()).toBe('justjom')
+    expect(component.text()).toContain('justjom')
+    const alias = component.find('[data-testid="folder-alias"]')
+    expect(alias.exists()).toBe(true)
+    expect(alias.text()).toContain('JustJom')
   })
 
   it('sets the full path as the title tooltip on the row label', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3 }],
       },
     })
 
@@ -128,7 +133,7 @@ describe('synced-folder-manager alias editing', () => {
   it('emits saveAlias with the entered alias when saved', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3 }],
       },
     })
 
@@ -144,7 +149,7 @@ describe('synced-folder-manager alias editing', () => {
   it('sends null when the alias input is empty', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3, alias: 'Work' }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3, alias: 'Work' }],
       },
     })
 
@@ -160,7 +165,7 @@ describe('synced-folder-manager alias editing', () => {
   it('cancels alias editing on Escape without emitting', async () => {
     const component = await mountSuspended(SyncedFolderManager, {
       props: {
-        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', basename: 'justjom', noteCount: 3 }],
       },
     })
 

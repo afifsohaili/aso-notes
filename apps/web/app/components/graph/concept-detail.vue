@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'openNote', path: string): void
+  (e: 'openNote', path: string, syncedFolderId?: string): void
 }>()
 
 const { t } = useI18n()
@@ -78,7 +78,7 @@ const topics = computed(() => props.detail?.concept.topics ?? [])
           >
             <button
               class="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-900"
-              @click="emit('openNote', note.path)"
+              @click="emit('openNote', note.path, note.syncedFolderId)"
             >
               <DocumentIcon class="h-4 w-4" />
               <span>{{ note.title || note.path }}</span>
