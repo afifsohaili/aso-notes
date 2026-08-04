@@ -98,6 +98,18 @@ _Avoid_: Session, chat, thread
 A top-level directory on disk registered in the database (per Workspace) whose contents are synced. Replaces the old `NUXT_NOTES_DIR` env var; multiple Synced Folders per Workspace are supported. Removing one wipes its Notes and garbage-collects orphaned graph rows.
 _Avoid_: Sync root, vault, notes dir
 
+**Synced Folder Alias**:
+A user-set display name for a Synced Folder (nullable `alias` column), editable from Settings. When set, it replaces the Root Label everywhere — sidebar, graph, settings — and exempts the Synced Folder from Root Collision handling.
+_Avoid_: Nickname, rename, custom name
+
+**Root Label**:
+The display name of a Synced Folder: Alias ?? basename of its absolute path. Computed server-side; clients never re-derive it.
+_Avoid_: Folder name, root name (bare — `rootName` is the JSON field carrying it in graph payloads)
+
+**Root Collision**:
+When two or more Synced Folders in a Workspace share the same basename and none has an Alias. The UI disambiguates by prepending the minimal distinguishing parent-path segment(s) — rendered as a gray prefix in the /notes sidebar (e.g. `justjom/ plans`) and inside the `<…>` suffix on graph Note labels (e.g. `plan-005 <justjom/plans>`).
+_Avoid_: Duplicate folder, name clash
+
 **Sync**:
 The process of ingesting Notes from Synced Folders on disk, watching for changes with a debounce.
 _Avoid_: Watch, import, poll
