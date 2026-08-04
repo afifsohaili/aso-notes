@@ -3,9 +3,8 @@
  *
  * `GraphNode` / `GraphEdge` mirror the graph API response shapes
  * (`server/lib/graph/ui.ts`) so API payloads can be handed to a renderer
- * as-is. Renderer implementations (Cytoscape today, sigma.js later) only
- * ever talk through `GraphRenderer`; swapping one for the other is a factory
- * decision.
+ * as-is. Both cytoscape and sigma.js implementations talk through
+ * `GraphRenderer`; swapping one for the other is a factory decision.
  */
 
 export interface GraphNode {
@@ -26,8 +25,7 @@ export interface GraphEdge {
  * Contract between the graph page and a concrete graph renderer.
  *
  * `setGraph` is a full replacement: the renderer drops its current elements
- * and lays out the new graph from scratch (merges happen at the page level,
- * Phase 4).
+ * and lays out the new graph from scratch (merges are the page's responsibility).
  */
 export interface GraphRenderer {
   mount: (container: HTMLElement) => Promise<void>

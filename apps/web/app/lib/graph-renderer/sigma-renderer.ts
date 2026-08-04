@@ -1,9 +1,9 @@
 import type { GraphEdge, GraphNode, GraphRenderer } from './types'
 import Graph from 'graphology'
+import { LABEL_RENDERED_SIZE_THRESHOLD } from './constants'
 import {
   applyHighlightToGraph,
   computeCameraFit,
-  LABEL_RENDERED_SIZE_THRESHOLD,
   populateGraphologyGraph,
   runLayout,
 } from './sigma-graph'

@@ -1,12 +1,6 @@
 import type cytoscape from 'cytoscape'
 import type { GraphEdge, GraphNode, GraphRenderer } from './types'
-
-const NODE_COLORS: Record<GraphNode['label'], string> = {
-  Concept: '#4f46e5',
-  Topic: '#7c3aed',
-  Note: '#059669',
-  Tag: '#d97706',
-}
+import { NODE_COLORS } from './constants'
 
 function nodeColor(label: GraphNode['label']): string {
   return NODE_COLORS[label] ?? '#6b7280'
