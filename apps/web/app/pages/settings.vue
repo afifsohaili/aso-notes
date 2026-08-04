@@ -25,6 +25,7 @@ interface SyncedFolderApiItem {
   id: string
   path: string
   noteCount: number
+  alias: string | null
 }
 
 interface ProviderAvailabilityPayload {
@@ -298,6 +299,8 @@ const folderAddError = ref('')
 const folderAdding = ref(false)
 const folderDeleteErrorId = ref('')
 const folderDeleteError = ref('')
+const folderAliasErrorId = ref('')
+const folderAliasError = ref('')
 
 async function addFolder(path: string) {
   folderAddError.value = ''
@@ -347,12 +350,32 @@ async function deleteFolder(id: string) {
   }
 }
 
+async function saveFolderAlias(id: string, alias: string | null) {
+  folderAliasErrorId.value = ''
+  folderAliasError.value = ''
+  try {
+    await $fetch(`/api/synced-folders/${id}`, {
+      method: 'PATCH',
+      body: { alias },
+    })
+    await refreshFolders()
+  }
+  catch (err) {
+    folderAliasErrorId.value = id
+    if (err instanceof Error && 'statusCode' in err && (err as any).statusCode === 400)
+      folderAliasError.value = t('settings.folders.errors.aliasTooLong')
+    else
+      folderAliasError.value = t('settings.folders.errors.unknown')
+  }
+}
+
 function normalisedFolders(): SyncedFolder[] {
   return Array.isArray(folders.value)
     ? folders.value.map(f => ({
         id: f.id,
         path: f.path,
         noteCount: f.noteCount,
+        alias: f.alias ?? null,
       }))
     : []
 }
@@ -514,8 +537,11 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
               :add-error="folderAddError"
               :delete-error-id="folderDeleteErrorId"
               :delete-error="folderDeleteError"
+              :alias-error-id="folderAliasErrorId"
+              :alias-error="folderAliasError"
               @add="addFolder"
               @delete="deleteFolder"
+              @save-alias="saveFolderAlias"
             />
           </div>
         </div>
@@ -581,9 +607,6 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
           <h2 class="text-lg font-semibold text-gray-900">
             {{ t('settings.folders.title') }}
           </h2>
-          <p class="mt-1 text-sm text-gray-600">
-            {{ t('settings.folders.help') }}
-          </p>
 
           <div class="mt-4">
             <SyncedFolderManager
@@ -592,8 +615,11 @@ const noRedisBlock = computed(() => isWizardMode.value && !hasRedis.value)
               :add-error="folderAddError"
               :delete-error-id="folderDeleteErrorId"
               :delete-error="folderDeleteError"
+              :alias-error-id="folderAliasErrorId"
+              :alias-error="folderAliasError"
               @add="addFolder"
               @delete="deleteFolder"
+              @save-alias="saveFolderAlias"
             />
           </div>
         </section>

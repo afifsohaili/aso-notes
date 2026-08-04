@@ -45,13 +45,23 @@ graph→note navigation is ambiguous for collided relative paths.
     passes clean. Not introduced by this phase.
 
 ### Phase 2 — Sidebar + Settings UI
-- [ ] `notes-layout.vue`: render gray `pathPrefix` + `name`, `title` tooltip on root rows
-- [ ] `synced-folder-manager.vue`: bold basename + gray truncated parent, alias edit UI,
+- [x] `notes-layout.vue`: render gray `pathPrefix` + `name`, `title` tooltip on root rows
+- [x] `synced-folder-manager.vue`: bold basename + gray truncated parent, alias edit UI,
       remove duplicated description
-- [ ] i18n keys in `locales/en.json`
-- [ ] Component tests
-- Status: pending
-- Divergences: none yet
+- [x] i18n keys in `locales/en.json`
+- [x] Component tests
+- Status: done
+- Divergences:
+  - `GET /api/synced-folders` did not return `alias` after Phase 1, so saved aliases
+    could not be displayed or survive a list refresh. Added `alias` to the list
+    response (select + map) with user approval — a one-line server extension within
+    Phase 2 scope.
+  - The duplicated description was removed from `settings.vue` (steady-state section);
+    the copy inside `synced-folder-manager.vue` is kept since that component renders it
+    in both wizard and steady-state modes.
+  - Alias edit errors follow the existing add/delete error-prop pattern
+    (`aliasErrorId`/`aliasError` props); the editor closes optimistically on save, and
+    400/404 errors surface as inline text under the row.
 
 ### Phase 3 — Graph server + navigation fix
 - [ ] `server/lib/graph/ui.ts` `getFullGraph`: join `synced_folders`; note nodes gain

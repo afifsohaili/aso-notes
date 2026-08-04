@@ -87,3 +87,87 @@ describe('synced-folder-manager', () => {
     expect(component.find('[data-testid="folder-remove-confirm-input"]').exists()).toBe(false)
   })
 })
+
+describe('synced-folder-manager alias labels', () => {
+  it('renders a bold basename with a gray parent path', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+      },
+    })
+
+    const parent = component.find('[data-testid="folder-parent-path"]')
+    expect(parent.exists()).toBe(true)
+    expect(parent.text()).toBe('/Users/afifsohaili/Projects/')
+    expect(component.find('[data-testid="folder-name"]').text()).toBe('justjom')
+  })
+
+  it('shows the alias as the label when one is set, instead of the basename', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3, alias: 'JustJom' }],
+      },
+    })
+
+    expect(component.find('[data-testid="folder-name"]').text()).toBe('JustJom')
+    expect(component.text()).not.toContain('justjom')
+  })
+
+  it('sets the full path as the title tooltip on the row label', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+      },
+    })
+
+    expect(component.find('p[data-testid="folder-label"]').attributes('title')).toBe('/Users/afifsohaili/Projects/justjom/')
+  })
+})
+
+describe('synced-folder-manager alias editing', () => {
+  it('emits saveAlias with the entered alias when saved', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+      },
+    })
+
+    await component.find('[data-testid="alias-edit-button"]').trigger('click')
+    await component.find('[data-testid="alias-input"]').setValue('Work Plans')
+    await component.find('[data-testid="alias-save-button"]').trigger('click')
+
+    expect(component.emitted('saveAlias')).toHaveLength(1)
+    expect(component.emitted('saveAlias')?.[0]).toEqual(['folder-1', 'Work Plans'])
+    expect(component.find('[data-testid="alias-input"]').exists()).toBe(false)
+  })
+
+  it('sends null when the alias input is empty', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3, alias: 'Work' }],
+      },
+    })
+
+    await component.find('[data-testid="alias-edit-button"]').trigger('click')
+    const input = component.find('[data-testid="alias-input"]')
+    expect(input.element.value).toBe('Work')
+    await input.setValue('   ')
+    await component.find('[data-testid="alias-save-button"]').trigger('click')
+
+    expect(component.emitted('saveAlias')?.[0]).toEqual(['folder-1', null])
+  })
+
+  it('cancels alias editing on Escape without emitting', async () => {
+    const component = await mountSuspended(SyncedFolderManager, {
+      props: {
+        folders: [{ id: 'folder-1', path: '/Users/afifsohaili/Projects/justjom/', noteCount: 3 }],
+      },
+    })
+
+    await component.find('[data-testid="alias-edit-button"]').trigger('click')
+    await component.find('[data-testid="alias-input"]').trigger('keydown.esc')
+
+    expect(component.find('[data-testid="alias-input"]').exists()).toBe(false)
+    expect(component.emitted('saveAlias')).toBeUndefined()
+  })
+})

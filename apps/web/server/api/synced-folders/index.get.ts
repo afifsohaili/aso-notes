@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
     .select([
       'synced_folders.id',
       'synced_folders.path',
+      'synced_folders.alias',
       'synced_folders.created_at',
       'synced_folders.updated_at',
       eb => eb.fn.count('notes.id').as('note_count'),
@@ -39,6 +40,7 @@ export default defineEventHandler(async (event) => {
     .groupBy([
       'synced_folders.id',
       'synced_folders.path',
+      'synced_folders.alias',
       'synced_folders.created_at',
       'synced_folders.updated_at',
     ])
@@ -48,6 +50,7 @@ export default defineEventHandler(async (event) => {
   return rows.map(row => ({
     id: row.id,
     path: row.path,
+    alias: row.alias,
     noteCount: Number(row.note_count),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

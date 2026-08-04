@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import FolderIcon from '~icons/heroicons/folder'
+import PencilSquareIcon from '~icons/heroicons/pencil-square'
 import TrashIcon from '~icons/heroicons/trash'
 import XCircleIcon from '~icons/heroicons/x-circle'
 
@@ -8,6 +9,7 @@ export interface SyncedFolder {
   id: string
   path: string
   noteCount: number
+  alias?: string | null
 }
 
 interface Props {
@@ -16,6 +18,8 @@ interface Props {
   addError?: string
   deleteErrorId?: string
   deleteError?: string
+  aliasErrorId?: string
+  aliasError?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -23,11 +27,14 @@ const props = withDefaults(defineProps<Props>(), {
   addError: '',
   deleteErrorId: '',
   deleteError: '',
+  aliasErrorId: '',
+  aliasError: '',
 })
 
 const emit = defineEmits<{
   (e: 'add', path: string): void
   (e: 'delete', id: string): void
+  (e: 'saveAlias', id: string, alias: string | null): void
 }>()
 
 const REMOVE_CONFIRM_TEXT = 'REMOVE'
@@ -37,9 +44,29 @@ const { t } = useI18n()
 const newPath = ref('')
 const confirmingFolderId = ref<string | null>(null)
 const confirmText = ref('')
+const editingAliasId = ref<string | null>(null)
+const aliasDraft = ref('')
 
 const isRemoveConfirmed = computed(() => confirmText.value.trim() === REMOVE_CONFIRM_TEXT)
 const confirmingFolder = computed(() => props.folders.find(f => f.id === confirmingFolderId.value) ?? null)
+
+function splitPath(path: string): { parent: string, basename: string } {
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
+  const idx = trimmed.lastIndexOf('/')
+  if (idx === -1)
+    return { parent: '', basename: trimmed }
+  return { parent: `${trimmed.slice(0, idx + 1)}`, basename: trimmed.slice(idx + 1) }
+}
+
+function folderParent(folder: SyncedFolder): string {
+  return splitPath(folder.path).parent
+}
+
+function folderLabel(folder: SyncedFolder): string {
+  if (folder.alias)
+    return folder.alias
+  return splitPath(folder.path).basename
+}
 
 function submit() {
   const path = newPath.value.trim()
@@ -68,6 +95,26 @@ function confirmRemove() {
   cancelRemoveConfirm()
   emit('delete', id)
 }
+
+function startAliasEdit(folder: SyncedFolder) {
+  if (props.adding)
+    return
+  editingAliasId.value = folder.id
+  aliasDraft.value = folder.alias ?? ''
+}
+
+function cancelAliasEdit() {
+  editingAliasId.value = null
+  aliasDraft.value = ''
+}
+
+function saveAlias(folder: SyncedFolder) {
+  if (props.adding)
+    return
+  const trimmed = aliasDraft.value.trim()
+  emit('saveAlias', folder.id, trimmed === '' ? null : trimmed)
+  cancelAliasEdit()
+}
 </script>
 
 <template>
@@ -85,16 +132,72 @@ function confirmRemove() {
         <div class="flex min-w-0 items-center gap-2">
           <FolderIcon class="h-5 w-5 flex-shrink-0 text-gray-400" />
           <div class="min-w-0">
-            <p class="truncate text-sm font-medium text-gray-900">
-              {{ folder.path }}
+            <p v-if="editingAliasId === folder.id" class="flex items-center gap-2">
+              <input
+                v-model="aliasDraft"
+                type="text"
+                class="block w-56 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                :placeholder="t('settings.folders.aliasPlaceholder')"
+                :disabled="adding"
+                data-testid="alias-input"
+                @keydown.enter="saveAlias(folder)"
+                @keydown.esc="cancelAliasEdit"
+              >
+              <button
+                type="button"
+                class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                :disabled="adding"
+                data-testid="alias-save-button"
+                @click="saveAlias(folder)"
+              >
+                {{ t('settings.folders.save') }}
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                :disabled="adding"
+                data-testid="alias-cancel-button"
+                @click="cancelAliasEdit"
+              >
+                {{ t('settings.folders.cancel') }}
+              </button>
+            </p>
+            <p
+              v-else
+              class="truncate text-sm font-medium text-gray-900"
+              :title="folder.path"
+              data-testid="folder-label"
+            >
+              <span v-if="folderParent(folder)" class="font-normal text-gray-400" data-testid="folder-parent-path">{{ folderParent(folder) }}</span>
+              <span data-testid="folder-name">{{ folderLabel(folder) }}</span>
             </p>
             <p class="text-xs text-gray-500">
               {{ t('settings.folders.noteCount', { count: folder.noteCount }) }}
+            </p>
+            <p
+              v-if="aliasErrorId === folder.id"
+              class="mt-1 text-xs text-red-600"
+              role="alert"
+              data-testid="folder-alias-error"
+            >
+              {{ aliasError }}
             </p>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
+          <button
+            v-if="editingAliasId !== folder.id"
+            type="button"
+            class="inline-flex items-center rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+            :title="t('settings.folders.editAlias')"
+            :disabled="adding"
+            data-testid="alias-edit-button"
+            @click="startAliasEdit(folder)"
+          >
+            <PencilSquareIcon class="h-4 w-4" />
+          </button>
+
           <span
             v-if="deleteErrorId === folder.id"
             class="max-w-xs text-right text-xs text-red-600"

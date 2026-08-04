@@ -14,6 +14,7 @@ import PlusIcon from '~icons/heroicons/plus'
 export interface SyncedFolderGroup {
   syncedFolderId: string
   name: string
+  pathPrefix: string | null
   absolutePath: string
   hasCover: boolean
   noteCount: number
@@ -150,6 +151,7 @@ function selectFolder(group: SyncedFolderGroup, folderPath: string) {
                 <div
                   class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer"
                   :class="isGroupSelected(group) ? 'bg-indigo-50 text-indigo-900' : 'text-gray-700'"
+                  :title="group.absolutePath"
                   data-testid="folder-tree-row"
                   @click="selectFolder(group, '/')"
                 >
@@ -163,7 +165,10 @@ function selectFolder(group: SyncedFolderGroup, folderPath: string) {
                     <span v-else class="inline-block w-3.5" />
                   </button>
                   <FolderIcon class="h-4 w-4 text-gray-400" />
-                  <span class="flex-1 text-left truncate">{{ group.name }}</span>
+                  <span class="flex-1 min-w-0 text-left flex items-center gap-1">
+                    <span v-if="group.pathPrefix" class="shrink-0 text-gray-400">{{ group.pathPrefix }}</span>
+                    <span class="truncate">{{ group.name }}</span>
+                  </span>
                   <span class="text-xs text-gray-400">{{ group.noteCount }}</span>
                 </div>
                 <div
