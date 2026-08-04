@@ -1,24 +1,25 @@
+import type { SigmaSurface, SigmaSurfaceFactory } from './sigma-surface'
 import type { GraphEdge, GraphNode, GraphRenderer } from './types'
 import Graph from 'graphology'
-import { LABEL_RENDERED_SIZE_THRESHOLD } from './constants'
 import {
   applyHighlightToGraph,
   computeCameraFit,
   populateGraphologyGraph,
   runLayout,
 } from './sigma-graph'
+import { createSigmaSurface } from './sigma-surface'
 
 /**
  * sigma.js (WebGL) implementation of `GraphRenderer`.
  *
  * sigma is intentionally NOT statically imported: its module-level code
  * touches `WebGL2RenderingContext`, which throws in a Node/SSR context, so
- * the instance is created client-side inside `mount()` only. graphology and
- * the layout algorithms are pure JS and safe to import anywhere.
+ * the surface instance is created client-side inside `mount()` only. The
+ * graphology and layout code is pure JS and safe to import anywhere.
  *
  * sigma v3 removed the v2 node/edge reducer API; highlight is implemented by
  * mutating node/edge `color` attributes on the graphology graph and calling
- * `sigma.refresh()`, which is sigma v3's supported dynamic-styling path.
+ * `refresh()`, which is sigma v3's supported dynamic-styling path.
  *
  * Graph construction, layout, camera framing and highlight logic are factored
  * into `sigma-graph.ts` so they can be tested against the real graphology +
@@ -26,29 +27,28 @@ import {
  */
 export class SigmaRenderer implements GraphRenderer {
   private graph: Graph
-  private sigma: any = null
+  private surface: SigmaSurface | null = null
+  private surfaceFactory: SigmaSurfaceFactory
   private clickHandler: ((node: GraphNode) => void) | null = null
   private highlightedNodeId: string | null = null
   private pendingNodes: GraphNode[] | null = null
   private pendingEdges: GraphEdge[] | null = null
 
-  constructor() {
+  constructor(surfaceFactory: SigmaSurfaceFactory = createSigmaSurface) {
     // Undirected is fine: graph edges are bidirectional for layout purposes.
     // The edge `type` is kept in the attributes.
     this.graph = new Graph({ type: 'undirected' })
+    this.surfaceFactory = surfaceFactory
   }
 
   async mount(container: HTMLElement): Promise<void> {
-    if (this.sigma)
+    if (this.surface)
       return
 
-    const { default: Sigma } = await import('sigma')
+    const surface = await this.surfaceFactory(this.graph, container)
+    this.surface = surface
 
-    this.sigma = new Sigma(this.graph, container, {
-      labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
-    })
-
-    this.sigma.on('clickNode', ({ node }: { node: string }) => {
+    surface.onClickNode((node) => {
       if (!this.clickHandler)
         return
       const nodeData = this.graph.getNodeAttribute(node, 'nodeData')
@@ -68,11 +68,11 @@ export class SigmaRenderer implements GraphRenderer {
     this.pendingEdges = null
 
     // Initial render of the (now possibly populated) graph.
-    this.sigma.refresh()
+    surface.refresh()
   }
 
   setGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
-    if (!this.sigma) {
+    if (!this.surface) {
       this.pendingNodes = nodes
       this.pendingEdges = edges
       return
@@ -94,9 +94,9 @@ export class SigmaRenderer implements GraphRenderer {
   }
 
   destroy(): void {
-    if (this.sigma) {
-      this.sigma.kill()
-      this.sigma = null
+    if (this.surface) {
+      this.surface.kill()
+      this.surface = null
     }
     this.clickHandler = null
     this.highlightedNodeId = null
@@ -106,17 +106,17 @@ export class SigmaRenderer implements GraphRenderer {
   }
 
   private applyHighlight(): void {
-    if (!this.sigma)
+    if (!this.surface)
       return
 
     applyHighlightToGraph(this.graph, this.highlightedNodeId)
-    this.sigma.refresh()
+    this.surface.refresh()
   }
 
   private fitCamera(): void {
-    if (!this.sigma)
+    if (!this.surface)
       return
 
-    this.sigma.getCamera().setState(computeCameraFit())
+    this.surface.getCamera().setState(computeCameraFit())
   }
 }

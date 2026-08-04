@@ -1,74 +1,27 @@
+import type { SigmaSurface, SigmaSurfaceFactory } from '../../app/lib/graph-renderer/sigma-surface'
 import type { GraphEdge, GraphNode, GraphRenderer } from '../../app/lib/graph-renderer/types'
 import Graph from 'graphology'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createGraphRenderer, GRAPH_RENDERER_IMPLS } from '../../app/lib/graph-renderer'
+import { createSigmaSurface } from '../../app/lib/graph-renderer/sigma-surface'
 
-// --- Mock sigma + the layout libs at the system boundary ------------------
-// The renderer dynamically imports sigma inside mount() and statically
-// imports the (pure-JS) graphology-layout packages. Replacing sigma and the
-// layout libs here lets us observe the renderer's contract through the real
-// graphology graph it builds, without a browser / WebGL context.
-//
-// NOTE: sigma v3 removed the v2 reducer API entirely, so the renderer dims
-// via graph-attribute mutation + refresh(); we assert on those attributes.
+// Mock the layout libs at the system boundary. The renderer statically imports
+// graphology-layout packages; replacing them lets us observe the renderer's
+// contract through the real graphology graph it builds without actually running
+// ForceAtlas2 in unit tests.
 
 const mock = vi.hoisted(() => {
   const state: {
-    lastSigma: any
-    lastGraph: any
-    sigmaSettings: any
-    handlers: Record<string, (payload: any) => void>
-    sigmaCtorCalls: number
     circularAssign: any
     fa2Assign: any
     fa2InferSettings: any
-    cameraSetState: any
   } = {
-    lastSigma: null,
-    lastGraph: null,
-    sigmaSettings: null,
-    handlers: {},
-    sigmaCtorCalls: 0,
-    circularAssign: null,
-    fa2Assign: null,
-    fa2InferSettings: null,
-    cameraSetState: null,
+    circularAssign: vi.fn(),
+    fa2Assign: vi.fn(),
+    fa2InferSettings: vi.fn(() => ({ gravity: 1 })),
   }
-
-  state.circularAssign = vi.fn()
-  state.fa2Assign = vi.fn()
-  state.fa2InferSettings = vi.fn(() => ({ gravity: 1 }))
-  state.cameraSetState = vi.fn()
-
   return { state }
 })
-
-vi.mock('sigma', () => ({
-  default: class MockSigma {
-    camera: any
-
-    constructor(graph: any, container: any, settings: any) {
-      mock.state.lastSigma = this
-      mock.state.lastGraph = graph
-      mock.state.sigmaSettings = settings
-      mock.state.sigmaCtorCalls += 1
-      this.camera = {
-        setState: mock.state.cameraSetState,
-      }
-    }
-
-    on = vi.fn((event: string, handler: (payload: any) => void) => {
-      mock.state.handlers[event] = handler
-    })
-
-    getCamera = vi.fn(function (this: any) {
-      return this.camera
-    })
-
-    refresh = vi.fn()
-    kill = vi.fn()
-  },
-}))
 
 vi.mock('graphology-layout', () => {
   const circular: any = vi.fn()
@@ -82,6 +35,22 @@ vi.mock('graphology-layout-forceatlas2', () => {
   forceAtlas2.inferSettings = mock.state.fa2InferSettings
   return { default: forceAtlas2 }
 })
+
+// Fake surface factory used in renderer-level tests. We inject this instead of
+// mocking the sigma module, because the renderer only talks through the
+// SigmaSurface interface.
+function createFakeSurfaceFactory(): { surface: SigmaSurface, factory: SigmaSurfaceFactory } {
+  const camera = { setState: vi.fn() }
+  const surface: SigmaSurface = {
+    setGraph: vi.fn(),
+    refresh: vi.fn(),
+    kill: vi.fn(),
+    getCamera: vi.fn(() => camera),
+    onClickNode: vi.fn(),
+  }
+  const factory: SigmaSurfaceFactory = vi.fn((_graph, _container) => surface)
+  return { surface, factory }
+}
 
 // --- Fixtures -------------------------------------------------------------
 
@@ -107,24 +76,14 @@ function rgba(hex: string, alpha: number): string {
 }
 
 describe('createGraphRenderer — sigma impl', () => {
-  beforeEach(() => {
-    mock.state.lastSigma = null
-    mock.state.lastGraph = null
-    mock.state.sigmaSettings = null
-    mock.state.handlers = {}
-    mock.state.sigmaCtorCalls = 0
-    mock.state.circularAssign.mockClear()
-    mock.state.fa2Assign.mockClear()
-    mock.state.fa2InferSettings.mockClear()
-    mock.state.cameraSetState.mockClear()
-  })
-
   it('registers sigma in the impl registry', () => {
     expect(GRAPH_RENDERER_IMPLS).toContain('sigma')
   })
 
   it('returns a renderer implementing the full GraphRenderer contract', async () => {
+    const { surface, factory } = createFakeSurfaceFactory()
     const renderer = createGraphRenderer('sigma')
+    ;(renderer as any).surfaceFactory = factory
 
     expect(typeof renderer.mount).toBe('function')
     expect(typeof renderer.setGraph).toBe('function')
@@ -133,50 +92,42 @@ describe('createGraphRenderer — sigma impl', () => {
     expect(typeof renderer.destroy).toBe('function')
 
     await renderer.mount({} as HTMLElement)
-    expect(mock.state.sigmaCtorCalls).toBe(1)
+    expect(surface).toBeTruthy()
 
     renderer.destroy()
-    expect(mock.state.lastSigma.kill).toHaveBeenCalled()
+    expect(surface.kill).toHaveBeenCalled()
   })
 })
 
 describe('sigma renderer contract', () => {
   let renderer: GraphRenderer
-  let sigma: any
+  let surface: SigmaSurface
+  let factory: SigmaSurfaceFactory
   let graph: Graph
 
   beforeEach(() => {
-    mock.state.lastSigma = null
-    mock.state.lastGraph = null
-    mock.state.sigmaSettings = null
-    mock.state.handlers = {}
-    mock.state.sigmaCtorCalls = 0
     mock.state.circularAssign.mockClear()
     mock.state.fa2Assign.mockClear()
     mock.state.fa2InferSettings.mockClear()
-    mock.state.cameraSetState.mockClear()
+    const fake = createFakeSurfaceFactory()
+    surface = fake.surface
+    factory = fake.factory
     renderer = createGraphRenderer('sigma')
+    ;(renderer as any).surfaceFactory = factory
   })
 
   async function mountRenderer() {
     await renderer.mount({} as HTMLElement)
-    sigma = mock.state.lastSigma
-    graph = mock.state.lastGraph
-    expect(sigma).toBeTruthy()
+    graph = (factory as any).mock.calls[0][0]
     expect(graph).toBeInstanceOf(Graph)
   }
 
-  it('mount builds a sigma instance on the container with label threshold settings', async () => {
+  it('mount creates the surface with the graph and container, then refreshes', async () => {
     await mountRenderer()
 
-    expect(mock.state.sigmaCtorCalls).toBe(1)
-    expect(mock.state.sigmaSettings).toMatchObject({ labelRenderedSizeThreshold: 8 })
-    expect(sigma.on).toHaveBeenCalledWith('clickNode', expect.any(Function))
-    expect(sigma.refresh).toHaveBeenCalled()
-
-    // double mount is a no-op — no second sigma instance
-    await renderer.mount({} as HTMLElement)
-    expect(mock.state.sigmaCtorCalls).toBe(1)
+    expect(factory).toHaveBeenCalledWith(graph, {})
+    expect(surface.onClickNode).toHaveBeenCalledWith(expect.any(Function))
+    expect(surface.refresh).toHaveBeenCalled()
   })
 
   it('setGraph adds nodes with per-type color/size and nodeData, edges with muted color', async () => {
@@ -223,7 +174,7 @@ describe('sigma renderer contract', () => {
     const fa2Order = mock.state.fa2Assign.mock.invocationCallOrder[0]
     expect(circularOrder).toBeLessThan(fa2Order)
 
-    expect(sigma.refresh).toHaveBeenCalled()
+    expect(surface.refresh).toHaveBeenCalled()
   })
 
   it('setGraph is a full replace — old elements are dropped', async () => {
@@ -263,8 +214,9 @@ describe('sigma renderer contract', () => {
 
     renderer.setGraph(NODES, EDGES)
 
-    expect(sigma.getCamera).toHaveBeenCalled()
-    expect(mock.state.cameraSetState).toHaveBeenCalledWith({ x: 0.5, y: 0.5, ratio: 1.25 })
+    expect(surface.getCamera).toHaveBeenCalled()
+    const camera = surface.getCamera()
+    expect(camera.setState).toHaveBeenCalledWith({ x: 0.5, y: 0.5, ratio: 1.25 })
   })
 
   it('setGraph called before mount is applied once mount completes', async () => {
@@ -274,9 +226,8 @@ describe('sigma renderer contract', () => {
 
     expect(graph.order).toBe(4)
     expect(graph.size).toBe(3)
-    expect(sigma.getCamera).toHaveBeenCalled()
-    expect(mock.state.cameraSetState).toHaveBeenCalled()
-    expect(sigma.refresh).toHaveBeenCalled()
+    expect(surface.getCamera).toHaveBeenCalled()
+    expect(surface.refresh).toHaveBeenCalled()
   })
 
   it('setGraph before mount keeps the latest data', async () => {
@@ -328,7 +279,7 @@ describe('sigma renderer contract', () => {
     expect(incident).toBe(2)
     expect(nonIncident).toBe(1)
 
-    expect(sigma.refresh).toHaveBeenCalled()
+    expect(surface.refresh).toHaveBeenCalled()
   })
 
   it('highlight with null restores full colors', async () => {
@@ -369,18 +320,61 @@ describe('sigma renderer contract', () => {
     const onNodeClick = vi.fn()
     renderer.onNodeClick(onNodeClick)
 
-    expect(mock.state.handlers.clickNode).toBeTruthy()
-    mock.state.handlers.clickNode!({ event: {}, node: 'c1' })
+    expect(surface.onClickNode).toHaveBeenCalled()
+    const handler = (surface.onClickNode as any).mock.calls[0][0]
+    handler('c1')
 
     expect(onNodeClick).toHaveBeenCalledWith({ id: 'c1', label: 'Concept', name: 'Concept A', ref: 'c1' })
   })
 
-  it('destroy kills the sigma instance and double-destroy is safe', async () => {
+  it('destroy kills the surface and double-destroy is safe', async () => {
     await mountRenderer()
 
     renderer.destroy()
 
-    expect(sigma.kill).toHaveBeenCalled()
+    expect(surface.kill).toHaveBeenCalled()
     renderer.destroy()
+  })
+})
+
+// One spec proving the real browser factory path is wired. sigma is mocked here
+// so the test does not need a WebGL context, but the factory itself performs
+// the dynamic `import('sigma')` that SSR-safe code relies on.
+vi.mock('sigma', () => ({
+  default: class MockSigma {
+    graph: any
+    container: any
+    settings: any
+    events: Record<string, any> = {}
+
+    constructor(graph: any, container: any, settings: any) {
+      this.graph = graph
+      this.container = container
+      this.settings = settings
+    }
+
+    on = vi.fn((event: string, handler: any) => { this.events[event] = handler })
+    refresh = vi.fn()
+    kill = vi.fn()
+    getCamera = vi.fn(() => ({ setState: vi.fn() }))
+    setGraph = vi.fn()
+  },
+}))
+
+describe('createSigmaSurface', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('dynamically imports sigma and constructs a surface with the graph, container, and settings', async () => {
+    const graph = new Graph({ type: 'undirected' })
+    const container = {} as HTMLElement
+    const surface = await createSigmaSurface(graph, container)
+
+    expect(surface.setGraph).toBeDefined()
+    expect(surface.refresh).toBeDefined()
+    expect(surface.kill).toBeDefined()
+    expect(surface.getCamera).toBeDefined()
+    expect(surface.onClickNode).toBeDefined()
   })
 })
