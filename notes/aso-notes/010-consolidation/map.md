@@ -36,10 +36,11 @@ Skills to consult when working tickets: `/grilling`, `/domain-modeling`, `/proto
 - [Merge execution mechanics](ticket-merge-execution-mechanics.md) — LLM judge picks survivor + merged description (re-embed on change); Mentions/Relations re-point + dedupe; AGE re-mirrored wholesale at end of run; cron = self-rescheduling BullMQ job with idle-queue gate.
 - [Prune criteria](ticket-prune-criteria.md) — Concept shortlist ≤1 Mention AND ≤1 Relation + 7-day grace, LLM judges; empty Topics deleted outright, singleton Topics LLM-reviewed (keep vs dissolve); no bridge check (shortlist = leaves only).
 - [Incremental run bookkeeping](ticket-incremental-run-bookkeeping.md) — HWM = last successful run's `finished_at`; neighbor net top-10 above cosine 0.75; nightly incremental + weekly full repeatable jobs, `NUXT_DISABLE_CONSOLIDATION` gate, manual button = full mode.
+- [Consolidation observability](ticket-consolidation-observability.md) — change lines written at execution (no snapshot diffing); run history + detail on the Consolidation page; per-run restore button (one-way, no pre-snapshot); failures via history + nav badge. Spawned the Consolidation page UI prototype ticket.
 
 ## Not yet specified
 
-- **Measuring success:** does Consolidation actually improve retrieval quality? Eval approach hangs on observability being decided first.
+_(nothing — all fog has graduated)_
 
 ## Out of scope
 
