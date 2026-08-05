@@ -148,4 +148,38 @@ Divergences from ticket resolutions (with reasons):
 - Scheduled cron jobs are single global jobs that iterate over all workspaces rather than per-workspace repeatable jobs. This avoids the need to manage adding/removing repeatable jobs as workspaces are created or deleted, and the per-workspace engine already handles the mode and high-water mark correctly.
 - Restore is one-way with no pre-restore snapshot, as specified in the observability ticket. The endpoint delegates to the existing `restoreSnapshot` service, which re-mirrors AGE and resets post-snapshot ingested notes to pending.
 
+## Phase 6: settings UI reorg (sidebar nav + child pages)
+
+Built:
+
+- Reorganised the single `apps/web/app/pages/settings.vue` (~865 lines) into a multi-page settings section:
+  - Root `pages/settings.vue` — detects onboarding/wizard mode and redirects to `/settings/folders` in steady state; hosts the unchanged wizard UI.
+  - `components/settings/settings-wizard.vue` — extracted wizard component (folder step, LLM step, verification step) moved out of the page.
+  - `pages/settings/folders.vue` — Synced Folders section.
+  - `pages/settings/llm-providers.vue` — LLM providers section with Verification folded in (re-verify smoke test).
+  - `pages/settings/extraction.vue` — extraction strategy form + danger-zone rebuild.
+  - `pages/settings/extraction/consolidation.vue` — empty Phase 7 placeholder page.
+  - `layouts/settings.vue` — shared settings layout with desktop sidebar nav and a mobile horizontal-scroll nav.
+- Routing: `/settings` redirects to `/settings/folders`; each section has its own route; Consolidation is nested under `/settings/extraction/consolidation`.
+- Mobile responsive: desktop sidebar collapses to a top horizontal-scroll pill nav on small screens (Tailwind only).
+- i18n: all new components use explicit `import { useI18n } from 'vue-i18n'`; added new locale keys for nav labels and the consolidation placeholder.
+- Wizard/onboarding mode preserved functionally — it is still a first-run gate on `/settings` and still uses the same API calls and step logic.
+- No server-side changes.
+- Tests:
+  - Updated `apps/web/test/components/settings-page.nuxt.spec.ts` for the new root page (wizard + redirect).
+  - Added `apps/web/test/components/settings-folders-page.nuxt.spec.ts`.
+  - Added `apps/web/test/components/settings-extraction-page.nuxt.spec.ts`.
+  - Added `apps/web/test/components/settings-llm-providers-page.nuxt.spec.ts`.
+  - Added `apps/web/test/components/settings-consolidation-page.nuxt.spec.ts`.
+  - Added `apps/web/test/components/settings-layout.nuxt.spec.ts` covering nav sections, active highlighting, and mobile nav presence.
+  - Existing `test/e2e/settings-api.spec.ts` and `test/e2e/settings-providers.spec.ts` still pass (no server/API changes).
+- No regressions: full component project (110 tests) and e2e settings specs pass; `pnpm lint` clean.
+
+Divergences from ticket resolutions (with reasons):
+
+- The child pages each fetch their own data rather than the original single page making all requests at once. This is a natural consequence of splitting into deep-linkable routes; the same endpoints, payloads, and behaviour are preserved. A shared composable could be added later to deduplicate fetches when users hop between settings tabs, but the current layout persists across client-side navigation so `useFetch` already caches per-key.
+- The sidebar nav renders "Consolidation" as a flat item visually indented under "Extraction"; the prototype did not prescribe a specific nested-group component, and a flat indented list keeps the mobile horizontal-scroll nav simple while still communicating the parent/child URL relationship.
+- The prototype included a dev-only variant switcher and three layout shells; only the sidebar approach was kept, and the switcher/shells were not merged into `main`.
+- Verification was folded into the LLM providers page as a re-verify section rather than as a separate wizard-only or standalone page, matching the prototype decision that "Verification folds INTO the LLM providers section".
+
 (End of file - total 124 lines)
