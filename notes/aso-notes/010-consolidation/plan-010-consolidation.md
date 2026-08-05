@@ -80,3 +80,45 @@ Divergences from ticket resolutions (with reasons):
 - Retention deletes the oldest **run rows** (cascading to their snapshots and change rows), not only snapshot rows. The Phase 1 schema cascades both `consolidation_snapshots` and `consolidation_run_changes` on run delete, and the ticket resolution said "Retention: last 10 runs, hard-coded." Keeping runs+snapshots+changes together avoids orphaned run rows and gives a consistent 10-run audit window; the UI can already display runs without snapshots.
 - Notes reset filters by `status = 'ingested'` AND `created_at > captured_at`. The ticket says "reset Notes ingested after the snapshot to pending"; since there is no `ingested_at` column, `created_at` is used as the timestamp, and filtering to `ingested` avoids resetting Notes that are already pending/queued/processing/failed.
 - Snapshot payload stores `captured_at` inside the JSONB alongside the five table dumps. The `consolidation_snapshots` row also has its own `created_at`; `captured_at` is intentionally duplicated in the payload so restore logic can read it from the self-contained payload without joining the snapshot row.
+
+## Phase 4: consolidation engine
+
+Built:
+
+- Core engine `runConsolidation(db, workspaceId, mode, options?)` in `apps/web/server/lib/consolidation/engine.ts`:
+  - Creates a `consolidation_runs` row, captures a snapshot first, then executes merges/prunes/topic cleanup, re-mirrors AGE, and finalizes the run with metrics/flags/counts.
+  - Injected `judge` and `embeddingProvider` for deterministic tests; production defaults resolve providers from workspace settings + `NUXT_LLM_CONSOLIDATION_*` / `NUXT_LLM_EXTRACTION_*` / `NUXT_LLM_EMBEDDING_*` env.
+  - Per-merge commits; a failed run marks the row failed and re-throws, leaving partial merges applied (protected by the pre-run snapshot).
+- Merge shortlist (`apps/web/server/lib/consolidation/shortlist.ts`):
+  - Concept and Topic pairs from top-10 embedding neighbors above cosine 0.75; full mode scans all rows, incremental mode only rows created after the last successful run's `finished_at`.
+  - Prune candidates: Concepts with ≤1 Mention, ≤1 Relation, and older than the 7-day grace period.
+- Merge execution (`apps/web/server/lib/consolidation/merge.ts`):
+  - Concept merge: survivor keeps its ID; loser mentions re-point via `INSERT ... ON CONFLICT DO NOTHING`; loser relations re-point + dedupe on `(from, to, type)` preferring earliest non-empty description; `concept_topics` re-point; loser deleted; survivor re-embedded when its description changes.
+  - Topic merge: `concept_topics` re-point and union; loser topic deleted; survivor re-embedded when description changes.
+- Prune execution (`apps/web/server/lib/consolidation/prune.ts`):
+  - Concept prune deletes the row (FK cascade cleans mentions/relations/concept_topics).
+  - Empty Topics deleted deterministically after merges/prunes.
+  - Singleton Topics reviewed by the judge; approved ones are dissolved (topic deleted, concept becomes topic-less).
+- Cost guardrails (`apps/web/server/lib/consolidation/engine.ts`):
+  - Shared candidate budget from `consolidation.run_budget` (default 200); merges judged first, prunes get the remainder, overflow defers to the next run.
+  - LLM judge batches candidates in groups of 20 per call; `counts.judgeCalls` is recorded on the run.
+- Metrics and flags (`apps/web/server/lib/consolidation/metrics.ts`):
+  - Before/after metrics: concepts, topics, near-dupe rate (pairs >0.9 cosine), orphan rate, concepts/note, topic spread.
+  - `overPruning` flag when concept count drops >20% in a run.
+  - `ineffectiveness` flag when near-dupe rate fails to drop across 3 consecutive full sweeps.
+- Default LLM judge (`apps/web/server/lib/consolidation/judge.ts`):
+  - Structured `json_schema` response; returns verdicts for merge pairs (merge boolean, survivor, merged description, reason) and prune candidates (prune boolean, reason).
+- Tests:
+  - Integration spec `apps/web/test/e2e/consolidation-engine.spec.ts` covering run lifecycle, snapshot capture, concept/topic merges, re-pointing, prunes, topic cleanup, budget enforcement, incremental mode, >20% flag, AGE re-mirror, and restore-to-snapshot.
+  - Unit spec `apps/web/test/unit/consolidation-engine.spec.ts` for pure shortlist helpers.
+- No regressions: full test suite (796 tests) passes; `pnpm lint` clean.
+
+Divergences from ticket resolutions (with reasons):
+
+- **Re-filing Concepts is not implemented as a separate step.** The map lists "re-file Concepts" as cron scope, but the closed tickets only define the mechanism (`concept_topics` delete+insert) and do not specify a decision procedure for when/why a Concept should move Topics. To avoid inventing behavior, re-filing is folded into merge/prune side-effects only (e.g., merging Concepts or Topics naturally re-points `concept_topics`). A future phase needs a dedicated decision rule before adding a separate re-file action.
+- **Singleton Topic review is not budgeted from the shared candidate budget.** The shared budget covers merge-pair candidates + concept prune candidates. Singleton topic dissolution is reviewed after the budgeted phase because the tickets do not explicitly include it in the "merge first, prune gets remainder" pool. The cost is naturally bounded by the number of singleton Topics (usually tiny), and the action still writes a `dissolve` change line.
+- **Topic merge is sorted by embedding similarity alongside concept merges.** The ticket says merges are judged "highest similarity first"; no separate prioritization by kind was specified, so concept and topic pairs share one sorted list.
+- **No token ceiling.** The cost guardrail ticket rejected a hard token ceiling in favor of an arithmetic bound from budget ÷ batch size; the engine records `counts.judgeCalls` for observability but does not cap tokens.
+- **Survivor re-embedding happens per merge when the description changes.** The ticket says "re-embed survivor if name/description changed"; the engine only detects description changes (name changes are not produced by the judge schema) and re-embeds using the same `name: description` input format as ingestion.
+- **Metrics `nearDupeRate` is computed as near-dupe pairs / total pairs, not as a per-concept rate.** The ticket says "near-dupe rate (pairs >0.9 cosine)"; the implementation uses the literal pair rate. The ineffectiveness flag uses this rate across consecutive full runs.
+
