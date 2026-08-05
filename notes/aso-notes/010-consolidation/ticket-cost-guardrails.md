@@ -1,9 +1,19 @@
 ---
 label: wayfinder:grilling
 blocked-by: []
+claimed-by: afif
+status: closed
 ---
 
 # Ticket: Cost guardrails
+
+## Resolution (2026-08-05)
+
+**Shared candidate budget: 200/run, configurable** (workspace setting `consolidation.run_budget`, editable from the Consolidation page). One budget covers merge pairs + prune candidates; merges are judged first (highest similarity first), prune gets the remainder. Overflow defers to the next run — candidates aren't lost, just spread over weeks. Incremental runs stay naturally bounded (new × top-10) but honor the same budget.
+
+**Judge batching: 20+ candidate pairs per LLM call.** One structured response returns verdict (+ survivor + merged description) per pair. 200 candidates ≈ ~10 judge calls per run. Accepted trade-off: long-context judgment quality slightly degrades vs one-pair-per-call.
+
+**No token ceiling.** Calls are arithmetically bounded by budget ÷ batch size (+ description rewrites), so a hard ceiling adds nothing. LLM usage per run is still recorded on `consolidation_runs` for visibility.
 
 ## Question
 
