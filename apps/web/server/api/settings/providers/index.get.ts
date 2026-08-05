@@ -9,8 +9,12 @@ export default defineEventHandler(async (event) => {
 
   const env = process.env
 
-  function roleAvailability(role: 'agent' | 'extraction' | 'embedding') {
-    const apiKey = env[KEYS[role].apiKey]
+  function roleAvailability(role: 'agent' | 'extraction' | 'embedding' | 'consolidation') {
+    let apiKey = env[KEYS[role].apiKey]
+    // Consolidation has no dedicated key requirement: it falls back to the
+    // extraction role's config, so its availability follows extraction.
+    if (role === 'consolidation' && (!apiKey || apiKey.length === 0))
+      apiKey = env[KEYS.extraction.apiKey]
     return {
       openrouter: typeof apiKey === 'string' && apiKey.length > 0,
       ollama: true,
@@ -22,6 +26,7 @@ export default defineEventHandler(async (event) => {
       agent: roleAvailability('agent'),
       extraction: roleAvailability('extraction'),
       embedding: roleAvailability('embedding'),
+      consolidation: roleAvailability('consolidation'),
     },
   }
 })

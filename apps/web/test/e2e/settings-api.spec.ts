@@ -18,12 +18,14 @@ describe('settings API', () => {
 
       expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'default' })
       expect(body.settings['extraction.blind_merge_threshold']).toEqual({ value: 0.85, source: 'default' })
+      expect(body.settings['consolidation.run_budget']).toEqual({ value: 200, source: 'default' })
       expect(body.settings['llm.agent.provider']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.agent.model']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.agent.base_url']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.embedding.provider']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.embedding.model']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.embedding.base_url']).toEqual({ value: expect.any(String), source: 'default' })
+      expect(body.settings['llm.consolidation.model']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['onboarding.completed_at']).toEqual({ value: null, source: 'default' })
     })
   })
@@ -133,6 +135,8 @@ describe('settings API', () => {
         { key: 'llm.extraction.model', value: 'qwen2.5:7b' },
         { key: 'llm.embedding.provider', value: 'ollama' },
         { key: 'llm.embedding.model', value: 'nomic-embed-text' },
+        { key: 'llm.consolidation.provider', value: 'ollama' },
+        { key: 'llm.consolidation.model', value: 'gemma3:4b' },
       ]
 
       for (const { key, value } of keys) {
@@ -157,6 +161,39 @@ describe('settings API', () => {
       expect(body.settings['llm.extraction.provider']).toEqual({ value: 'ollama', source: 'workspace' })
       expect(body.settings['llm.embedding.provider']).toEqual({ value: 'ollama', source: 'workspace' })
       expect(body.settings['llm.embedding.model']).toEqual({ value: 'nomic-embed-text', source: 'workspace' })
+      expect(body.settings['llm.consolidation.provider']).toEqual({ value: 'ollama', source: 'workspace' })
+      expect(body.settings['llm.consolidation.model']).toEqual({ value: 'gemma3:4b', source: 'workspace' })
+    })
+
+    test('persists consolidation.run_budget and GET reflects it with source workspace', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'consolidation.run_budget', value: 500 }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(200)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      expect(getRes.status).toBe(200)
+      const body = await getRes.json()
+      expect(body.settings['consolidation.run_budget']).toEqual({ value: 500, source: 'workspace' })
+    })
+
+    test('rejects an invalid consolidation.run_budget with 400 and does not persist', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'consolidation.run_budget', value: -5 }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(400)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      const body = await getRes.json()
+      expect(body.settings['consolidation.run_budget']).toEqual({ value: 200, source: 'default' })
     })
 
     test('rejects an invalid llm provider with 400 and does not persist', async ({ server }) => {

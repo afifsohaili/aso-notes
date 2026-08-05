@@ -83,6 +83,40 @@ export interface ConceptTopics {
   workspace_id: string;
 }
 
+export interface ConsolidationRunChanges {
+  action: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  reason: string | null;
+  run_id: string;
+  text: string;
+}
+
+export interface ConsolidationRuns {
+  counts: Json | null;
+  created_at: Generated<Timestamp>;
+  error: string | null;
+  finished_at: Timestamp | null;
+  flags: Json | null;
+  id: Generated<string>;
+  metrics_after: Json | null;
+  metrics_before: Json | null;
+  mode: string;
+  started_at: Generated<Timestamp>;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  usage: Json | null;
+  workspace_id: string;
+}
+
+export interface ConsolidationSnapshots {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  payload: Json;
+  run_id: string;
+  workspace_id: string;
+}
+
 export interface Conversations {
   archived_at: Timestamp | null;
   created_at: Generated<Timestamp>;
@@ -316,6 +350,9 @@ export interface DB {
   chunks: Chunks;
   concept_topics: ConceptTopics;
   concepts: Concepts;
+  consolidation_run_changes: ConsolidationRunChanges;
+  consolidation_runs: ConsolidationRuns;
+  consolidation_snapshots: ConsolidationSnapshots;
   conversations: Conversations;
   folders: Folders;
   links: Links;

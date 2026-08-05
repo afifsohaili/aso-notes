@@ -6,10 +6,13 @@ import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OLLAMA_BASE_URL, OPENROUTE
 import {
   assertKnownSettingKey,
   DEFAULT_BLIND_MERGE_THRESHOLD,
+  DEFAULT_CONSOLIDATION_RUN_BUDGET,
   DEFAULT_LLM_PROVIDER,
   getWorkspaceSetting,
   normalizeSettingValue,
   resolveBlindMergeThreshold,
+  resolveConsolidationProviderSettings,
+  resolveConsolidationRunBudget,
   resolveEmbeddingProviderSettings,
   resolveLLMProviderSettings,
   resolveVocabularyStrategy,
@@ -121,6 +124,7 @@ describe('resolveWorkspaceSettings', () => {
     expect(settings).toEqual({
       'extraction.vocabulary_strategy': { value: 'full', source: 'default' },
       'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
+      'consolidation.run_budget': { value: DEFAULT_CONSOLIDATION_RUN_BUDGET, source: 'default' },
       'llm.agent.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.agent.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
       'llm.agent.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
@@ -130,6 +134,9 @@ describe('resolveWorkspaceSettings', () => {
       'llm.embedding.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.embedding.model': { value: DEFAULT_EMBEDDING_MODEL, source: 'default' },
       'llm.embedding.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'llm.consolidation.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.consolidation.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
+      'llm.consolidation.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
       'onboarding.completed_at': { value: null, source: 'default' },
     })
   })
@@ -148,6 +155,7 @@ describe('resolveWorkspaceSettings', () => {
     expect(settings).toEqual({
       'extraction.vocabulary_strategy': { value: 'blind-merge', source: 'workspace' },
       'extraction.blind_merge_threshold': { value: 0.92, source: 'workspace' },
+      'consolidation.run_budget': { value: DEFAULT_CONSOLIDATION_RUN_BUDGET, source: 'default' },
       'llm.agent.provider': { value: 'ollama', source: 'workspace' },
       'llm.agent.model': { value: 'gemma3:4b', source: 'workspace' },
       'llm.agent.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
@@ -157,6 +165,9 @@ describe('resolveWorkspaceSettings', () => {
       'llm.embedding.provider': { value: 'ollama', source: 'workspace' },
       'llm.embedding.model': { value: 'nomic-embed-text', source: 'workspace' },
       'llm.embedding.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
+      'llm.consolidation.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
+      'llm.consolidation.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
+      'llm.consolidation.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
       'onboarding.completed_at': { value: null, source: 'default' },
     })
   })
@@ -180,6 +191,41 @@ describe('resolveWorkspaceSettings', () => {
     expect(settings['llm.embedding.base_url']).toEqual({ value: OLLAMA_BASE_URL, source: 'default' })
   })
 
+  it('resolves llm.consolidation keys with extraction fallback', async () => {
+    const db = fakeDb([])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env({
+      NUXT_LLM_EXTRACTION_PROVIDER: 'ollama',
+      NUXT_LLM_EXTRACTION_MODEL: 'qwen2.5:7b',
+      NUXT_LLM_EXTRACTION_BASE_URL: 'http://ollama:11434',
+    }))
+
+    expect(settings['llm.consolidation.provider']).toEqual({ value: 'ollama', source: 'default' })
+    expect(settings['llm.consolidation.model']).toEqual({ value: 'qwen2.5:7b', source: 'default' })
+    expect(settings['llm.consolidation.base_url']).toEqual({ value: 'http://ollama:11434', source: 'default' })
+  })
+
+  it('resolves llm.consolidation from workspace rows with extraction workspace fallback', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.consolidation.model', value: 'gemma3:4b' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.provider', value: 'ollama' },
+    ])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
+
+    expect(settings['llm.consolidation.provider']).toEqual({ value: 'ollama', source: 'workspace' })
+    expect(settings['llm.consolidation.model']).toEqual({ value: 'gemma3:4b', source: 'workspace' })
+    expect(settings['llm.consolidation.base_url']).toEqual({ value: OLLAMA_BASE_URL, source: 'default' })
+  })
+
+  it('returns consolidation.run_budget default 200 when unset and stored value when set', async () => {
+    const db = fakeDb([])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
+    expect(settings['consolidation.run_budget']).toEqual({ value: DEFAULT_CONSOLIDATION_RUN_BUDGET, source: 'default' })
+
+    const db2 = fakeDb([{ workspace_id: 'ws-1', key: 'consolidation.run_budget', value: 500 }])
+    const settings2 = await resolveWorkspaceSettings(db2, 'ws-1', env())
+    expect(settings2['consolidation.run_budget']).toEqual({ value: 500, source: 'workspace' })
+  })
+
   it('ignores unknown keys from the database', async () => {
     const db = fakeDb([
       { workspace_id: 'ws-1', key: 'extraction.vocabulary_strategy', value: 'full' },
@@ -194,6 +240,28 @@ describe('resolveWorkspaceSettings', () => {
   })
 })
 
+describe('resolveConsolidationRunBudget', () => {
+  it('returns the code default when unset', async () => {
+    const db = fakeDb([])
+    expect(await resolveConsolidationRunBudget(db, 'ws-1')).toBe(DEFAULT_CONSOLIDATION_RUN_BUDGET)
+  })
+
+  it('returns the stored integer value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'consolidation.run_budget', value: 500 }])
+    expect(await resolveConsolidationRunBudget(db, 'ws-1')).toBe(500)
+  })
+
+  it('parses a numeric string value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'consolidation.run_budget', value: '250' }])
+    expect(await resolveConsolidationRunBudget(db, 'ws-1')).toBe(250)
+  })
+
+  it('falls back to the code default for invalid stored values', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'consolidation.run_budget', value: -3 }])
+    expect(await resolveConsolidationRunBudget(db, 'ws-1')).toBe(DEFAULT_CONSOLIDATION_RUN_BUDGET)
+  })
+})
+
 describe('assertKnownSettingKey', () => {
   it('accepts known keys', () => {
     expect(assertKnownSettingKey('extraction.vocabulary_strategy')).toBe('extraction.vocabulary_strategy')
@@ -204,6 +272,10 @@ describe('assertKnownSettingKey', () => {
     expect(assertKnownSettingKey('llm.embedding.provider')).toBe('llm.embedding.provider')
     expect(assertKnownSettingKey('llm.embedding.model')).toBe('llm.embedding.model')
     expect(assertKnownSettingKey('llm.embedding.base_url')).toBe('llm.embedding.base_url')
+    expect(assertKnownSettingKey('consolidation.run_budget')).toBe('consolidation.run_budget')
+    expect(assertKnownSettingKey('llm.consolidation.provider')).toBe('llm.consolidation.provider')
+    expect(assertKnownSettingKey('llm.consolidation.model')).toBe('llm.consolidation.model')
+    expect(assertKnownSettingKey('llm.consolidation.base_url')).toBe('llm.consolidation.base_url')
     expect(assertKnownSettingKey('onboarding.completed_at')).toBe('onboarding.completed_at')
   })
 
@@ -253,6 +325,34 @@ describe('normalizeSettingValue', () => {
 
   it('rejects unknown keys', () => {
     expect(() => normalizeSettingValue('unknown.key' as KnownSettingKey, 'x')).toThrow('unknown setting key')
+  })
+
+  describe('consolidation keys', () => {
+    it('accepts a positive integer run_budget', () => {
+      expect(normalizeSettingValue('consolidation.run_budget', 200)).toBe(200)
+      expect(normalizeSettingValue('consolidation.run_budget', '500')).toBe(500)
+    })
+
+    it('rejects zero or negative run_budget', () => {
+      expect(() => normalizeSettingValue('consolidation.run_budget', 0)).toThrow('run_budget must be a positive integer')
+      expect(() => normalizeSettingValue('consolidation.run_budget', -5)).toThrow('run_budget must be a positive integer')
+    })
+
+    it('rejects non-numeric or fractional run_budget', () => {
+      expect(() => normalizeSettingValue('consolidation.run_budget', 'many')).toThrow('run_budget must be a positive integer')
+      expect(() => normalizeSettingValue('consolidation.run_budget', 1.5)).toThrow('run_budget must be a positive integer')
+    })
+
+    it('accepts llm.consolidation keys through the llm validation path', () => {
+      expect(normalizeSettingValue('llm.consolidation.provider', 'ollama')).toBe('ollama')
+      expect(normalizeSettingValue('llm.consolidation.model', 'gemma3:4b')).toBe('gemma3:4b')
+      expect(normalizeSettingValue('llm.consolidation.base_url', 'http://localhost:11434')).toBe('http://localhost:11434')
+      expect(normalizeSettingValue('llm.consolidation.base_url', null)).toBeNull()
+    })
+
+    it('rejects an unknown provider for llm.consolidation', () => {
+      expect(() => normalizeSettingValue('llm.consolidation.provider', 'mistral')).toThrow('invalid provider')
+    })
   })
 
   describe('llm keys', () => {
@@ -348,6 +448,80 @@ describe('resolveLLMProviderSettings', () => {
   it('falls back to null when no workspace or env value exists', async () => {
     const db = fakeDb([])
     const settings = await resolveLLMProviderSettings(db, 'ws-1', 'agent', env())
+
+    expect(settings).toEqual({
+      provider: undefined,
+      model: undefined,
+      base_url: undefined,
+    })
+  })
+})
+
+describe('resolveConsolidationProviderSettings', () => {
+  it('falls back to extraction env config when consolidation is unset', async () => {
+    const db = fakeDb([])
+    const settings = await resolveConsolidationProviderSettings(db, 'ws-1', env({
+      NUXT_LLM_EXTRACTION_PROVIDER: 'ollama',
+      NUXT_LLM_EXTRACTION_MODEL: 'qwen2.5:7b',
+      NUXT_LLM_EXTRACTION_BASE_URL: 'http://env:11434',
+    }))
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'qwen2.5:7b',
+      base_url: 'http://env:11434',
+    })
+  })
+
+  it('prefers consolidation workspace rows over extraction rows', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.consolidation.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.consolidation.model', value: 'gemma3:4b' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.provider', value: 'openrouter' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.model', value: 'deepseek/deepseek-v4-flash' },
+    ])
+    const settings = await resolveConsolidationProviderSettings(db, 'ws-1', env())
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'gemma3:4b',
+      base_url: undefined,
+    })
+  })
+
+  it('falls back to extraction workspace rows when consolidation rows are absent', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.extraction.provider', value: 'ollama' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.model', value: 'qwen2.5:7b' },
+    ])
+    const settings = await resolveConsolidationProviderSettings(db, 'ws-1', env())
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'qwen2.5:7b',
+      base_url: undefined,
+    })
+  })
+
+  it('honors consolidation env vars over extraction env', async () => {
+    const db = fakeDb([])
+    const settings = await resolveConsolidationProviderSettings(db, 'ws-1', env({
+      NUXT_LLM_CONSOLIDATION_PROVIDER: 'ollama',
+      NUXT_LLM_CONSOLIDATION_MODEL: 'gemma3:4b',
+      NUXT_LLM_EXTRACTION_PROVIDER: 'openrouter',
+      NUXT_LLM_EXTRACTION_MODEL: 'deepseek/deepseek-v4-flash',
+    }))
+
+    expect(settings).toEqual({
+      provider: 'ollama',
+      model: 'gemma3:4b',
+      base_url: undefined,
+    })
+  })
+
+  it('returns undefined for all fields when nothing is set anywhere', async () => {
+    const db = fakeDb([])
+    const settings = await resolveConsolidationProviderSettings(db, 'ws-1', env())
 
     expect(settings).toEqual({
       provider: undefined,

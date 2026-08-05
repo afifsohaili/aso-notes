@@ -18,6 +18,7 @@
     "db:migrate": "kysely migrate latest",
     "db:migrate:generate": "kysely migrate latest && kysely-codegen --out-file ../../packages/shared/types.d.ts",
     "db:schema:dump": "PATH=\"$PWD/scripts:$PATH\" vite-node scripts/dump-schema.ts",
+    "vitest": "vitest",
     "report:mention-gaps": "vite-node scripts/mention-gap-report.ts",
     "test": "vitest run",
     "test:watch": "vitest --watch",

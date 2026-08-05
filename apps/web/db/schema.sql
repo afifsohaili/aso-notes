@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict mN29ck2OrbCqc0gnW98UeS6fwTs9sbbufDTrQWMzPxfE28KzFGbMOrL7Z4AtGmn
+\restrict N9kZG7v1OdGodeMK3Z4BBhxMHu1GKqFmXxrRBqjuEEYkR0bnzYI6nl0Cg6MqgBw
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -54,6 +54,10 @@ ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_from_not
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_synced_folder_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.conversations DROP CONSTRAINT IF EXISTS conversations_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_snapshots DROP CONSTRAINT IF EXISTS consolidation_snapshots_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_snapshots DROP CONSTRAINT IF EXISTS consolidation_snapshots_run_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_runs DROP CONSTRAINT IF EXISTS consolidation_runs_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_run_changes DROP CONSTRAINT IF EXISTS consolidation_run_changes_run_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concepts DROP CONSTRAINT IF EXISTS concepts_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_topic_id_fkey;
@@ -89,6 +93,10 @@ DROP INDEX IF EXISTS public.idx_chunks_note_id;
 DROP INDEX IF EXISTS public.idx_chunks_embedding_hnsw;
 DROP INDEX IF EXISTS public.folders_synced_folder_path_unique;
 DROP INDEX IF EXISTS public.folders_synced_folder_id_idx;
+DROP INDEX IF EXISTS public.consolidation_snapshots_workspace_id_idx;
+DROP INDEX IF EXISTS public.consolidation_snapshots_run_id_idx;
+DROP INDEX IF EXISTS public.consolidation_runs_workspace_id_idx;
+DROP INDEX IF EXISTS public.consolidation_run_changes_run_id_idx;
 DROP INDEX IF EXISTS public.concepts_workspace_name_normalized_unique;
 ALTER TABLE IF EXISTS ONLY public.workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
 ALTER TABLE IF EXISTS ONLY public.workspace_settings DROP CONSTRAINT IF EXISTS workspace_settings_pkey;
@@ -116,6 +124,9 @@ ALTER TABLE IF EXISTS ONLY public.kysely_migration DROP CONSTRAINT IF EXISTS kys
 ALTER TABLE IF EXISTS ONLY public.kysely_migration_lock DROP CONSTRAINT IF EXISTS kysely_migration_lock_pkey;
 ALTER TABLE IF EXISTS ONLY public.folders DROP CONSTRAINT IF EXISTS folders_pkey;
 ALTER TABLE IF EXISTS ONLY public.conversations DROP CONSTRAINT IF EXISTS conversations_pkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_snapshots DROP CONSTRAINT IF EXISTS consolidation_snapshots_pkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_runs DROP CONSTRAINT IF EXISTS consolidation_runs_pkey;
+ALTER TABLE IF EXISTS ONLY public.consolidation_run_changes DROP CONSTRAINT IF EXISTS consolidation_run_changes_pkey;
 ALTER TABLE IF EXISTS ONLY public.concepts DROP CONSTRAINT IF EXISTS concepts_pkey;
 ALTER TABLE IF EXISTS ONLY public.concept_topics DROP CONSTRAINT IF EXISTS concept_topics_pkey;
 ALTER TABLE IF EXISTS ONLY public.chunks DROP CONSTRAINT IF EXISTS chunks_pkey;
@@ -154,6 +165,9 @@ DROP TABLE IF EXISTS public.kysely_migration_lock;
 DROP TABLE IF EXISTS public.kysely_migration;
 DROP TABLE IF EXISTS public.folders;
 DROP TABLE IF EXISTS public.conversations;
+DROP TABLE IF EXISTS public.consolidation_snapshots;
+DROP TABLE IF EXISTS public.consolidation_runs;
+DROP TABLE IF EXISTS public.consolidation_run_changes;
 DROP TABLE IF EXISTS public.concepts;
 DROP TABLE IF EXISTS public.concept_topics;
 DROP TABLE IF EXISTS public.chunks;
@@ -375,6 +389,55 @@ CREATE TABLE public.concepts (
 
 
 --
+-- Name: consolidation_run_changes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.consolidation_run_changes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid NOT NULL,
+    action character varying NOT NULL,
+    text character varying NOT NULL,
+    reason text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: consolidation_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.consolidation_runs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    mode character varying NOT NULL,
+    status character varying DEFAULT 'running'::character varying NOT NULL,
+    started_at timestamp without time zone DEFAULT now() NOT NULL,
+    finished_at timestamp without time zone,
+    counts jsonb,
+    usage jsonb,
+    metrics_before jsonb,
+    metrics_after jsonb,
+    flags jsonb,
+    error text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: consolidation_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.consolidation_snapshots (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    payload jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: conversations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -543,7 +606,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-04 06:41:46.795434'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-05 21:22:16.1626'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -576,7 +639,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-04 06:41:46.795434'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-05 21:22:16.1626'::timestamp without time zone NOT NULL
 );
 
 
@@ -865,6 +928,30 @@ ALTER TABLE ONLY public.concepts
 
 
 --
+-- Name: consolidation_run_changes consolidation_run_changes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_run_changes
+    ADD CONSTRAINT consolidation_run_changes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: consolidation_runs consolidation_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_runs
+    ADD CONSTRAINT consolidation_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: consolidation_snapshots consolidation_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_snapshots
+    ADD CONSTRAINT consolidation_snapshots_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1077,6 +1164,34 @@ ALTER TABLE ONLY public.workspaces
 --
 
 CREATE UNIQUE INDEX concepts_workspace_name_normalized_unique ON public.concepts USING btree (workspace_id, name_normalized);
+
+
+--
+-- Name: consolidation_run_changes_run_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX consolidation_run_changes_run_id_idx ON public.consolidation_run_changes USING btree (run_id);
+
+
+--
+-- Name: consolidation_runs_workspace_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX consolidation_runs_workspace_id_idx ON public.consolidation_runs USING btree (workspace_id);
+
+
+--
+-- Name: consolidation_snapshots_run_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX consolidation_snapshots_run_id_idx ON public.consolidation_snapshots USING btree (run_id);
+
+
+--
+-- Name: consolidation_snapshots_workspace_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX consolidation_snapshots_workspace_id_idx ON public.consolidation_snapshots USING btree (workspace_id);
 
 
 --
@@ -1329,6 +1444,38 @@ ALTER TABLE ONLY public.concept_topics
 
 ALTER TABLE ONLY public.concepts
     ADD CONSTRAINT concepts_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: consolidation_run_changes consolidation_run_changes_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_run_changes
+    ADD CONSTRAINT consolidation_run_changes_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.consolidation_runs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: consolidation_runs consolidation_runs_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_runs
+    ADD CONSTRAINT consolidation_runs_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: consolidation_snapshots consolidation_snapshots_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_snapshots
+    ADD CONSTRAINT consolidation_snapshots_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.consolidation_runs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: consolidation_snapshots consolidation_snapshots_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consolidation_snapshots
+    ADD CONSTRAINT consolidation_snapshots_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
@@ -1623,5 +1770,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict mN29ck2OrbCqc0gnW98UeS6fwTs9sbbufDTrQWMzPxfE28KzFGbMOrL7Z4AtGmn
+\unrestrict N9kZG7v1OdGodeMK3Z4BBhxMHu1GKqFmXxrRBqjuEEYkR0bnzYI6nl0Cg6MqgBw
 

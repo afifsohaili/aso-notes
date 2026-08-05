@@ -19,6 +19,7 @@ import { defaultVocabularyStrategy, getVocabularyStrategy } from './pipeline/voc
 export const KNOWN_SETTING_KEYS = [
   'extraction.vocabulary_strategy',
   'extraction.blind_merge_threshold',
+  'consolidation.run_budget',
   'llm.agent.provider',
   'llm.agent.model',
   'llm.agent.base_url',
@@ -28,12 +29,21 @@ export const KNOWN_SETTING_KEYS = [
   'llm.embedding.provider',
   'llm.embedding.model',
   'llm.embedding.base_url',
+  'llm.consolidation.provider',
+  'llm.consolidation.model',
+  'llm.consolidation.base_url',
   'onboarding.completed_at',
 ] as const
 
 export type KnownSettingKey = typeof KNOWN_SETTING_KEYS[number]
 
 export const DEFAULT_LLM_PROVIDER = 'openrouter'
+
+/**
+ * Default per-run candidate budget for Consolidation (cost guardrails):
+ * shared across merge pairs + prune candidates, merges judged first.
+ */
+export const DEFAULT_CONSOLIDATION_RUN_BUDGET = 200
 
 export interface ResolvedSetting {
   value: Json
@@ -107,15 +117,28 @@ export async function resolveBlindMergeThreshold(db: PipelineDb, workspaceId: st
   return DEFAULT_BLIND_MERGE_THRESHOLD
 }
 
-function llmRoleFromSettingKey(key: KnownSettingKey): 'agent' | 'extraction' | 'embedding' | null {
-  const match = key.match(/^llm\.(agent|extraction|embedding)\./)
+/**
+ * Resolve the per-run consolidation candidate budget for a workspace.
+ * Key: `consolidation.run_budget`. Falls back to the code default (200)
+ * when the setting is missing or malformed.
+ */
+export async function resolveConsolidationRunBudget(db: PipelineDb, workspaceId: string): Promise<number> {
+  const raw = await getWorkspaceSetting<unknown>(db, workspaceId, 'consolidation.run_budget', null)
+  const parsed = typeof raw === 'number' ? raw : Number.parseFloat(typeof raw === 'string' ? raw : '')
+  if (Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 1)
+    return parsed
+  return DEFAULT_CONSOLIDATION_RUN_BUDGET
+}
+
+function llmRoleFromSettingKey(key: KnownSettingKey): 'agent' | 'extraction' | 'embedding' | 'consolidation' | null {
+  const match = key.match(/^llm\.(agent|extraction|embedding|consolidation)\./)
   if (!match)
     return null
-  return match[1] as 'agent' | 'extraction' | 'embedding'
+  return match[1] as 'agent' | 'extraction' | 'embedding' | 'consolidation'
 }
 
 function llmSettingField(key: KnownSettingKey): 'provider' | 'model' | 'base_url' | null {
-  const match = key.match(/^llm\.(?:agent|extraction|embedding)\.(provider|model|base_url)$/)
+  const match = key.match(/^llm\.(?:agent|extraction|embedding|consolidation)\.(provider|model|base_url)$/)
   if (!match)
     return null
   return match[1] as 'provider' | 'model' | 'base_url'
@@ -139,6 +162,34 @@ export async function resolveLLMProviderSettings(
     provider: provider ?? undefined,
     model: model ?? undefined,
     base_url: baseUrl ?? undefined,
+  }
+}
+
+/**
+ * Resolve consolidation provider settings from workspace_settings with env
+ * fallback. The consolidation role is optional by design: each field falls
+ * back to the extraction role's config when unset —
+ * workspace llm.consolidation.* → workspace llm.extraction.* →
+ * env NUXT_LLM_CONSOLIDATION_* → env NUXT_LLM_EXTRACTION_*.
+ */
+export async function resolveConsolidationProviderSettings(
+  db: PipelineDb,
+  workspaceId: string,
+  env: EnvMap = process.env,
+): Promise<ResolvedProviderSettings> {
+  const keys = KEYS.extraction
+  const [consProvider, consModel, consBaseUrl, extProvider, extModel, extBaseUrl] = await Promise.all([
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.consolidation.provider', env[KEYS.consolidation.provider] ?? null),
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.consolidation.model', env[KEYS.consolidation.model] ?? null),
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.consolidation.base_url', env[KEYS.consolidation.baseUrl] ?? null),
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.extraction.provider', env[keys.provider] ?? null),
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.extraction.model', env[keys.model] ?? null),
+    getWorkspaceSetting<string | null>(db, workspaceId, 'llm.extraction.base_url', env[keys.baseUrl] ?? null),
+  ])
+  return {
+    provider: consProvider ?? extProvider ?? undefined,
+    model: consModel ?? extModel ?? undefined,
+    base_url: consBaseUrl ?? extBaseUrl ?? undefined,
   }
 }
 
@@ -207,9 +258,52 @@ export async function resolveWorkspaceSettings(
     }
   }
 
+  function resolveConsolidationLLM() {
+    const consKeys = KEYS.consolidation
+    const extKeys = KEYS.extraction
+
+    const provider = workspaceValues.get('llm.consolidation.provider')
+      ?? workspaceValues.get('llm.extraction.provider')
+      ?? env[consKeys.provider]
+      ?? env[extKeys.provider]
+      ?? DEFAULT_LLM_PROVIDER
+
+    const model = workspaceValues.get('llm.consolidation.model')
+      ?? workspaceValues.get('llm.extraction.model')
+      ?? env[consKeys.model]
+      ?? env[extKeys.model]
+      ?? (provider === 'openrouter' ? DEFAULT_CHAT_MODEL : null)
+
+    const baseUrl = workspaceValues.get('llm.consolidation.base_url')
+      ?? workspaceValues.get('llm.extraction.base_url')
+      ?? env[consKeys.baseUrl]
+      ?? env[extKeys.baseUrl]
+      ?? (provider === 'openrouter' ? OPENROUTER_BASE_URL : OLLAMA_BASE_URL)
+
+    const sourceFor = (consKey: string, extKey: string) => (
+      workspaceValues.has(consKey) || workspaceValues.has(extKey) ? 'workspace' : 'default' as const
+    )
+
+    return {
+      provider: {
+        value: provider,
+        source: sourceFor('llm.consolidation.provider', 'llm.extraction.provider'),
+      },
+      model: {
+        value: model,
+        source: sourceFor('llm.consolidation.model', 'llm.extraction.model'),
+      },
+      base_url: {
+        value: baseUrl,
+        source: sourceFor('llm.consolidation.base_url', 'llm.extraction.base_url'),
+      },
+    }
+  }
+
   const agent = resolveLLM('agent')
   const extraction = resolveLLM('extraction')
   const embedding = resolveLLM('embedding')
+  const consolidation = resolveConsolidationLLM()
 
   const onboardingCompletedAt = workspaceValues.get('onboarding.completed_at') ?? null
 
@@ -222,6 +316,10 @@ export async function resolveWorkspaceSettings(
       value: workspaceValues.get('extraction.blind_merge_threshold') ?? DEFAULT_BLIND_MERGE_THRESHOLD,
       source: workspaceValues.has('extraction.blind_merge_threshold') ? 'workspace' : 'default',
     },
+    'consolidation.run_budget': {
+      value: workspaceValues.get('consolidation.run_budget') ?? DEFAULT_CONSOLIDATION_RUN_BUDGET,
+      source: workspaceValues.has('consolidation.run_budget') ? 'workspace' : 'default',
+    },
     'llm.agent.provider': agent.provider,
     'llm.agent.model': agent.model,
     'llm.agent.base_url': agent.base_url,
@@ -231,6 +329,9 @@ export async function resolveWorkspaceSettings(
     'llm.embedding.provider': embedding.provider,
     'llm.embedding.model': embedding.model,
     'llm.embedding.base_url': embedding.base_url,
+    'llm.consolidation.provider': consolidation.provider,
+    'llm.consolidation.model': consolidation.model,
+    'llm.consolidation.base_url': consolidation.base_url,
     'onboarding.completed_at': {
       value: onboardingCompletedAt,
       source: workspaceValues.has('onboarding.completed_at') ? 'workspace' : 'default',
@@ -271,6 +372,14 @@ export function normalizeSettingValue(key: KnownSettingKey, value: unknown): Jso
     const raw = typeof value === 'number' ? value : Number.parseFloat(typeof value === 'string' ? value : '')
     if (Number.isNaN(raw) || raw <= 0 || raw > 1) {
       throw new Error('threshold must be a number in (0, 1]')
+    }
+    return raw
+  }
+
+  if (key === 'consolidation.run_budget') {
+    const raw = typeof value === 'number' ? value : Number.parseFloat(typeof value === 'string' ? value : '')
+    if (!Number.isFinite(raw) || !Number.isInteger(raw) || raw < 1) {
+      throw new Error('run_budget must be a positive integer')
     }
     return raw
   }

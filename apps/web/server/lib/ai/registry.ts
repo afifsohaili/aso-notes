@@ -33,7 +33,7 @@ export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
  */
 
 export type ProviderKind = 'openrouter' | 'ollama'
-export type LlmRole = 'agent' | 'extraction'
+export type LlmRole = 'agent' | 'extraction' | 'consolidation'
 
 export type EnvMap = Record<string, string | undefined>
 
@@ -58,7 +58,7 @@ export interface ResolvedEmbedding {
   provider: EmbeddingProvider
 }
 
-export const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: string, baseUrl: string, model: string, apiKey: string, timeoutMs: string, maxAttempts: string, baseDelayMs: string }> = {
+export const KEYS: Record<'agent' | 'extraction' | 'embedding' | 'consolidation', { provider: string, baseUrl: string, model: string, apiKey: string, timeoutMs: string, maxAttempts: string, baseDelayMs: string }> = {
   agent: {
     provider: 'NUXT_LLM_AGENT_PROVIDER',
     baseUrl: 'NUXT_LLM_AGENT_BASE_URL',
@@ -85,6 +85,15 @@ export const KEYS: Record<'agent' | 'extraction' | 'embedding', { provider: stri
     timeoutMs: 'NUXT_LLM_EMBEDDING_TIMEOUT_MS',
     maxAttempts: 'NUXT_LLM_EMBEDDING_MAX_ATTEMPTS',
     baseDelayMs: 'NUXT_LLM_EMBEDDING_BASE_DELAY_MS',
+  },
+  consolidation: {
+    provider: 'NUXT_LLM_CONSOLIDATION_PROVIDER',
+    baseUrl: 'NUXT_LLM_CONSOLIDATION_BASE_URL',
+    model: 'NUXT_LLM_CONSOLIDATION_MODEL',
+    apiKey: 'NUXT_LLM_CONSOLIDATION_API_KEY',
+    timeoutMs: 'NUXT_LLM_CONSOLIDATION_TIMEOUT_MS',
+    maxAttempts: 'NUXT_LLM_CONSOLIDATION_MAX_ATTEMPTS',
+    baseDelayMs: 'NUXT_LLM_CONSOLIDATION_BASE_DELAY_MS',
   },
 }
 

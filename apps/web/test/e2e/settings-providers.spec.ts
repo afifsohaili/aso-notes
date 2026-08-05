@@ -6,6 +6,7 @@ const API_KEY_ENV_VARS = [
   'NUXT_LLM_AGENT_API_KEY',
   'NUXT_LLM_EXTRACTION_API_KEY',
   'NUXT_LLM_EMBEDDING_API_KEY',
+  'NUXT_LLM_CONSOLIDATION_API_KEY',
 ] as const
 
 describe('gET /api/settings/providers', () => {
@@ -32,9 +33,11 @@ describe('gET /api/settings/providers', () => {
         agent: { openrouter: false, ollama: true },
         extraction: { openrouter: false, ollama: true },
         embedding: { openrouter: false, ollama: true },
+        consolidation: { openrouter: false, ollama: true },
       })
 
       process.env.NUXT_LLM_AGENT_API_KEY = 'sk-test-agent'
+      process.env.NUXT_LLM_CONSOLIDATION_API_KEY = 'sk-test-consolidation'
 
       const res2 = await server('/api/settings/providers', { headers: { cookie: cookies } })
       expect(res2.status).toBe(200)
@@ -43,6 +46,33 @@ describe('gET /api/settings/providers', () => {
       expect(body2.providers.agent).toEqual({ openrouter: true, ollama: true })
       expect(body2.providers.extraction).toEqual({ openrouter: false, ollama: true })
       expect(body2.providers.embedding).toEqual({ openrouter: false, ollama: true })
+      expect(body2.providers.consolidation).toEqual({ openrouter: true, ollama: true })
+    }
+    finally {
+      for (const key of API_KEY_ENV_VARS) {
+        process.env[key] = original[key]
+      }
+    }
+  })
+
+  test('consolidation availability falls back to the extraction API key', async ({ server }) => {
+    const { cookies } = await givenVerifiedUser()
+
+    const original: Record<string, string | undefined> = {}
+    for (const key of API_KEY_ENV_VARS) {
+      original[key] = process.env[key]
+      process.env[key] = ''
+    }
+
+    try {
+      process.env.NUXT_LLM_EXTRACTION_API_KEY = 'sk-test-extraction'
+
+      const res = await server('/api/settings/providers', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+
+      expect(body.providers.extraction).toEqual({ openrouter: true, ollama: true })
+      expect(body.providers.consolidation).toEqual({ openrouter: true, ollama: true })
     }
     finally {
       for (const key of API_KEY_ENV_VARS) {
