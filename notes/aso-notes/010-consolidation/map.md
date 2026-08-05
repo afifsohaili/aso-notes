@@ -39,6 +39,9 @@ Skills to consult when working tickets: `/grilling`, `/domain-modeling`, `/proto
 - [Consolidation observability](ticket-consolidation-observability.md) — change lines written at execution (no snapshot diffing); run history + detail on the Consolidation page; per-run restore button (one-way, no pre-snapshot); failures via history + nav badge. Spawned the Consolidation page UI prototype ticket.
 - [Cost guardrails](ticket-cost-guardrails.md) — shared 200/run candidate budget (configurable, merges first, overflow defers); 20+ pairs per judge call; no token ceiling (spend arithmetically bounded).
 - [Measuring success](ticket-measuring-success.md) — structural metrics from snapshots (dupe rate, orphans, concepts/note, topic spread) with per-run before/after; two flags: flat >20% count drop (no exemptions) and no dupe-rate progress over 3 full sweeps.
+- [Consolidation page UI prototype](ticket-consolidation-page-prototype.md) — master-detail layout; must be mobile-responsive in prod. Prototype on branch `proto/consolidation-page`.
+
+**Map complete 2026-08-05 — every ticket closed, no fog remaining. The way to implementation is charted.**
 
 ## Not yet specified
 

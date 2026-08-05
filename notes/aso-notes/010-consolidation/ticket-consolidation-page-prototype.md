@@ -1,9 +1,21 @@
 ---
 label: wayfinder:prototype
 blocked-by: []
+claimed-by: afif
+status: closed
 ---
 
 # Ticket: Consolidation page UI prototype
+
+## Resolution (2026-08-05)
+
+**Answer: Master-detail (Variant C).** Compact run list on the left, detail pane on the right (status + change counts, change lines with reasons, settings, restore panel).
+
+**Requirement for the real implementation: mobile responsive.** The prototype's fixed two-column flex must collapse on small screens (e.g. run list becomes a selector/stacked above the detail pane). Note for prod code, not the prototype.
+
+Elements confirmed in place: "Consolidate now" above the run list; per-run flags surfaced in the list (⚠ count) and detail; restore as its own red panel inside the detail pane with the one-way warning; config (run budget, `CONSOLIDATION_*` fallback) inside the detail pane.
+
+Prototype captured on branch `proto/consolidation-page` (all three variants + shared switcher + mock data; question: "what should the Consolidation page look like?"). Main keeps none of it — reimplement properly with i18n, real data, tests, and responsive layout.
 
 ## Question
 
