@@ -55,3 +55,28 @@ Divergences from ticket resolutions (with reasons):
 - The routine clears workspace-scoped vertices rather than dropping/recreating the whole AGE graph. The existing graph is single-tenant (`notes_graph`) with `workspace_id` properties, so dropping the whole graph would wipe every workspace. The clear-then-replay approach preserves other workspaces and is still idempotent.
 - Note vertices are created as needed for `MENTIONS` edges but are not deleted by the routine. This mirrors store-graph semantics (Note vertices only appear when they have graph incident edges) and avoids destroying `TAGGED`/`LINKS` edges for the workspace, which are outside the five-table consolidation snapshot.
 - The existing `rebuildWorkspaceGraph` (`apps/web/server/lib/rebuild.ts`) was left unchanged because it performs a broader reset (truncates relational graph tables, resets Notes to pending, drops/recreates AGE); `remirrorGraph` is a narrower AGE-only repair tool.
+
+## Phase 3: snapshot capture & restore service
+
+Built:
+
+- Snapshot service module `apps/web/server/lib/consolidation/snapshot.ts` exporting:
+  - `captureSnapshot(db, runId, workspaceId)` — reads the five graph tables (`concepts`, `topics`, `concept_topics`, `relations`, `mentions`) workspace-scoped, writes one `consolidation_snapshots` JSONB payload with `{ concepts, topics, concept_topics, relations, mentions, captured_at }`, then prunes history.
+  - `restoreSnapshot(db, snapshotId, workspaceId)` — authorizes the snapshot belongs to the workspace, truncates the five tables workspace-scoped, bulk-inserts from the payload in FK-safe order, calls `remirrorGraph`, then resets post-snapshot ingested Notes to `pending`.
+  - `listSnapshots(db, workspaceId)` and `getSnapshot(db, snapshotId, workspaceId)` helpers scoped by workspace.
+- Hard-coded retention of 10 snapshots per workspace. Because `consolidation_snapshots` and `consolidation_run_changes` both FK to `consolidation_runs` with `ON DELETE CASCADE`, retention is enforced by deleting the oldest runs beyond 10; this keeps run history, snapshots, and change lines consistent.
+- Restore notes-reset uses `notes.created_at > snapshot.captured_at` plus `status = 'ingested'`; `notes` has no `ingested_at` column, and `created_at` is the only ingestion-relevant timestamp that marks when the Note entered the workspace.
+- Integration tests in `apps/web/test/e2e/consolidation-snapshot.spec.ts` covering:
+  - snapshot payload contents and DB row;
+  - restore reverts graph mutations and re-mirrors AGE;
+  - Notes created after the snapshot are reset to `pending`, older ingested Notes stay `ingested`;
+  - retention prunes oldest runs/snapshots beyond 10 and never touches another workspace;
+  - workspace isolation on restore (wrong workspace → error);
+  - empty workspace capture/restore;
+  - zero post-snapshot ingested notes.
+
+Divergences from ticket resolutions (with reasons):
+
+- Retention deletes the oldest **run rows** (cascading to their snapshots and change rows), not only snapshot rows. The Phase 1 schema cascades both `consolidation_snapshots` and `consolidation_run_changes` on run delete, and the ticket resolution said "Retention: last 10 runs, hard-coded." Keeping runs+snapshots+changes together avoids orphaned run rows and gives a consistent 10-run audit window; the UI can already display runs without snapshots.
+- Notes reset filters by `status = 'ingested'` AND `created_at > captured_at`. The ticket says "reset Notes ingested after the snapshot to pending"; since there is no `ingested_at` column, `created_at` is used as the timestamp, and filtering to `ingested` avoids resetting Notes that are already pending/queued/processing/failed.
+- Snapshot payload stores `captured_at` inside the JSONB alongside the five table dumps. The `consolidation_snapshots` row also has its own `created_at`; `captured_at` is intentionally duplicated in the payload so restore logic can read it from the self-contained payload without joining the snapshot row.
