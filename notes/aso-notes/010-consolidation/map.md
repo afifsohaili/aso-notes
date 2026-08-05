@@ -32,6 +32,7 @@ Skills to consult when working tickets: `/grilling`, `/domain-modeling`, `/proto
 <!-- one line per closed ticket: gist + link -->
 
 - [Settings page tabs](ticket-settings-page-tabs.md) — Sidebar nav; Verification folds into LLM providers; Consolidation gets its own page under an "Extraction" nav group. Prototype on branch `proto/settings-tabs`.
+- [Snapshot & restore mechanics](ticket-snapshot-restore-mechanics.md) — `consolidation_runs` + `consolidation_snapshots` (single JSONB payload of the 5 graph tables, retain 10); restore = copy back + deterministic AGE re-mirror (new routine) + reset later Notes to pending.
 
 ## Not yet specified
 

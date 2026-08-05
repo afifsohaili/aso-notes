@@ -1,9 +1,21 @@
 ---
 label: wayfinder:grilling
 blocked-by: []
+claimed-by: afif
+status: closed
 ---
 
 # Ticket: Snapshot & restore mechanics
+
+## Resolution (2026-08-05)
+
+**Storage:** two new tables. `consolidation_runs` records one row per run: id, started_at/finished_at, mode (`incremental` | `full` | `manual`), status, change counts (merges/prunes/rewrites), LLM usage. `consolidation_snapshots` holds one row per run with a **single JSONB payload** — the full dump `{concepts, topics, concept_topics, relations, mentions}`. **Retention: last 10 runs, hard-coded.**
+
+**Payload contents (fact-derived):** exactly the 5 graph tables. Only `relations`, `mentions`, `concept_topics` reference Concept/Topic IDs (all cascade), so the payload is self-contained. `tags`/`note_tags` are excluded — Consolidation doesn't mutate them (locked scope).
+
+**Restore flow:** truncate the 5 tables (workspace-scoped) → bulk-insert from the JSONB payload → **re-mirror AGE** → reset Notes ingested after the snapshot to `pending` so they re-extract against the restored vocabulary. Multi-step rollback works the same way for any retained snapshot; cost of going further back = LLM re-ingestion spend for more Notes.
+
+**AGE re-sync: new deterministic re-mirror routine.** Drop + recreate the AGE graph, replay every relational row (Concepts, Topics, `concept_topics`, Relations) into it. Zero LLM spend; doubles as a general graph-repair tool. Extracted from the mirror logic in store-graph (`mergeTopicNode`, `mergeGroupedUnderEdge`, relation edges). Rejected: full re-ingestion (pays LLM cost for every Note) and surgical AGE revert (complex, needs perfect inverses).
 
 ## Question
 
