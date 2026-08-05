@@ -122,3 +122,30 @@ Divergences from ticket resolutions (with reasons):
 - **Survivor re-embedding happens per merge when the description changes.** The ticket says "re-embed survivor if name/description changed"; the engine only detects description changes (name changes are not produced by the judge schema) and re-embeds using the same `name: description` input format as ingestion.
 - **Metrics `nearDupeRate` is computed as near-dupe pairs / total pairs, not as a per-concept rate.** The ticket says "near-dupe rate (pairs >0.9 cosine)"; the implementation uses the literal pair rate. The ineffectiveness flag uses this rate across consecutive full runs.
 
+## Phase 5: BullMQ worker, cron scheduling, and API endpoints
+
+Built:
+
+- Consolidation job abstraction (`apps/web/server/lib/consolidation/job.ts`): `ApplicationJob` subclass `ConsolidationJob` with queue name `consolidation`, supporting per-workspace and all-workspaces payloads.
+- Worker helpers (`apps/web/server/lib/consolidation/worker-helpers.ts`): idle ingestion-queue gate, repeatable-job scheduler for nightly incremental (`0 3 * * *`) and weekly full (`0 3 * * 0`) sweeps.
+- BullMQ adapter (`apps/web/server/utils/job-adapter.ts`): production `JobAdapter` so `ApplicationJob.performLater` reaches BullMQ; registered by the worker plugin.
+- Worker plugin (`apps/web/server/plugins/consolidation-worker.ts`): gated by `NUXT_DISABLE_CONSOLIDATION=1` and Redis presence, schedules repeatable jobs, consumes the consolidation queue, throws on busy ingestion so BullMQ retries.
+- Conflict check helper (`apps/web/server/lib/consolidation/queue-helpers.ts`): per-workspace active/waiting job detection used by the manual-run endpoint.
+- API endpoints:
+  - `POST /api/consolidation/run` — enqueues a manual `full` run for the caller's workspace; 401 unauthenticated, 400 no workspace, 503 no Redis, 409 if an active/waiting consolidation job already exists for that workspace; returns `{ enqueued: true, mode: 'manual' }`.
+  - `GET /api/consolidation/runs` — workspace-scoped run history, latest first, with full run fields (mode, status, timestamps, counts, usage, metrics, flags, error).
+  - `GET /api/consolidation/runs/:id` — run detail including change lines and a `hasSnapshot` flag.
+  - `POST /api/consolidation/runs/:id/restore` — restores the run's snapshot via `restoreSnapshot` (which re-mirrors AGE and resets later notes to pending); 404 if no snapshot or run belongs to another workspace; returns restore counts and `restored: true`.
+- Tests:
+  - `apps/web/test/e2e/consolidation-api.spec.ts` — 11 integration tests covering 401/403/404 authz, manual enqueue with queue fixture, run history, run detail, snapshot restore, and workspace isolation.
+  - `apps/web/test/unit/consolidation-worker.spec.ts` — 10 unit tests for idle-gate decision logic, 409 conflict check, and repeatable-job scheduling (no duplication, fill missing).
+- No regressions: full suite 817 tests pass; `pnpm lint` clean.
+
+Divergences from ticket resolutions (with reasons):
+
+- The 409 conflict check is scoped to the caller's workspace only, not to all active/waiting consolidation jobs. The ticket says "409 if a consolidation job already active/waiting for that workspace," so the implementation checks only jobs whose data includes the same `workspaceId`. Global scheduled jobs have no `workspaceId` and therefore do not block manual runs.
+- The `NUXT_DISABLE_CONSOLIDATION=1` guard is implemented in the worker plugin and skips both scheduling and worker initialization, mirroring the `NUXT_DISABLE_NOTES_SYNC` pattern. It does not disable the manual `POST /api/consolidation/run` endpoint; manual triggering remains available even when automatic scheduling is disabled, matching the semantics of the existing sync disable flag.
+- Scheduled cron jobs are single global jobs that iterate over all workspaces rather than per-workspace repeatable jobs. This avoids the need to manage adding/removing repeatable jobs as workspaces are created or deleted, and the per-workspace engine already handles the mode and high-water mark correctly.
+- Restore is one-way with no pre-restore snapshot, as specified in the observability ticket. The endpoint delegates to the existing `restoreSnapshot` service, which re-mirrors AGE and resets post-snapshot ingested notes to pending.
+
+(End of file - total 124 lines)
