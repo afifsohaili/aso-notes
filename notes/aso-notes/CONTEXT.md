@@ -136,6 +136,14 @@ _Avoid_: Ontology cleanup, vocabulary merge
 A single execution of Consolidation for one Workspace. Recorded in `consolidation_runs` with mode (`incremental`, `full`, `manual`), status, counts, usage, and before/after metrics.
 _Avoid_: Cleanup job, vocabulary pass
 
+**Change**:
+A human-readable record of one action performed during a Consolidation Run (merge, prune, refile, rewrite, or dissolve), including the entity names and the judge's reason. Displayed in the run detail feed.
+_Avoid_: Diff, delta, audit entry
+
+**Flag**:
+An automatic warning attached to a Consolidation Run when structural metrics indicate over-pruning or ineffectiveness. Flags advise the user; they do not block the run.
+_Avoid_: Alert, notification, badge
+
 **Snapshot**:
 A point-in-time JSONB dump of a Workspace's five graph tables (`concepts`, `topics`, `concept_topics`, `relations`, `mentions`) captured before each Consolidation Run. Used to restore the vocabulary to a previous state.
 _Avoid_: Backup, checkpoint, version

@@ -182,4 +182,28 @@ Divergences from ticket resolutions (with reasons):
 - The prototype included a dev-only variant switcher and three layout shells; only the sidebar approach was kept, and the switcher/shells were not merged into `main`.
 - Verification was folded into the LLM providers page as a re-verify section rather than as a separate wizard-only or standalone page, matching the prototype decision that "Verification folds INTO the LLM providers section".
 
+## Phase 7: Consolidation page UI
+
+Built:
+
+- Real Consolidation page at `apps/web/app/pages/settings/extraction/consolidation.vue` replacing the Phase 6 placeholder.
+- Components under `apps/web/app/components/settings/consolidation/`:
+  - `manual-run-button.vue` — triggers `POST /api/consolidation/run`, surfaces 409/503/general errors.
+  - `run-list.vue` — selectable history cards with status badge, mode, finished time, change count, and flag indicator; failed runs are styled red.
+  - `run-detail.vue` — header with timestamps + token usage + change counts + flags + error alert; structural metrics grid showing before/after values for concepts, topics, nearDupeRate, orphanRate, conceptsPerNote, and topicSpread.
+  - `change-feed.vue` — readable list of `changes[].text` with the judge's `reason`.
+  - `restore-panel.vue` — danger-styled panel shown only when `hasSnapshot` is true; confirm dialog requires typing `RESTORE` and spells out the one-way restore and post-snapshot note re-ingestion cost; calls `POST /api/consolidation/runs/:id/restore` and refreshes runs on success.
+- Master-detail layout: run list on the left, detail pane on the right on `md` and up; collapses to single-column list ↔ detail navigation on mobile.
+- Polling: while any run is `running`, the page refreshes the run list (and selected-run detail) every 3 seconds.
+- i18n: all labels use explicit `import { useI18n } from 'vue-i18n'`; new keys live under `settings.consolidation.*` in `apps/web/locales/en.json`.
+- Styling: Tailwind only, icons via `unplugin-icons` (`~icons/heroicons/...`), no inline SVG or inline styles.
+- Tests: expanded `apps/web/test/components/settings-consolidation-page.nuxt.spec.ts` to 10 component tests covering history rendering, selection, detail metrics/flags/changes feed, restore confirm flow, 409/503/unexpected manual-run errors, and mobile view toggling.
+- No regressions: `pnpm lint` clean, component project 119 tests pass, consolidation e2e specs pass, full suite passes.
+
+Divergences from ticket resolutions (with reasons):
+
+- The settings page prototype considered embedding provider config in the detail pane; Phase 7 keeps provider/budget configuration on the existing LLM providers and Extraction settings pages, since `consolidation.run_budget` and `llm.consolidation.*` settings were already wired there in Phase 1. The Consolidation page is focused on triggering, observing, and restoring runs.
+- The prototype mock showed a 4-count grid (merged/pruned/refiled/rewritten); the real implementation shows 5 counts (merges, prunes, refiles, rewrites, dissolves) to match the actual `counts` shape returned by the API.
+- The detail pane fetches the run detail endpoint imperatively with `$fetch` rather than through a second `useFetch`; this keeps the selected-run detail reactive to manual selection and polling while remaining straightforward to test with stubbed `$fetch`.
+
 (End of file - total 124 lines)
