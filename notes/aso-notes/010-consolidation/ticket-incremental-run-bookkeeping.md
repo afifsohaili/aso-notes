@@ -1,9 +1,21 @@
 ---
 label: wayfinder:task
 blocked-by: [ticket-snapshot-restore-mechanics]
+claimed-by: afif
+status: closed
 ---
 
 # Ticket: Incremental run bookkeeping
+
+## Resolution (2026-08-05)
+
+**High-water mark:** the last *successful* run's `finished_at` (from `consolidation_runs`) vs `created_at` on Concepts/Topics. Both columns already exist; failed runs don't advance the cursor, so a failed run's scope is re-examined next time. First run = full sweep (no prior watermark).
+
+**Neighbor net: top-10 embedding neighbors above cosine 0.75** per new Concept/Topic — those pairs go to the LLM judge. Bounded, predictable LLM spend per incremental run.
+
+**Race policy:** resolved upstream (Merge execution mechanics) — idle-queue gate inside the job, throw + self-reschedule.
+
+**BullMQ wiring:** two repeatable jobs — nightly incremental (~03:00) and weekly full sweep — gated by `NUXT_DISABLE_CONSOLIDATION=1`. The manual "Consolidate now" button enqueues the same job in `full` mode. Run `mode` recorded on `consolidation_runs`: `incremental` | `full` | `manual`.
 
 ## Question
 
