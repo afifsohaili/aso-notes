@@ -125,3 +125,17 @@ _Avoid_: Extraction job, outbox entry, attempt log
 **Note Status**:
 Lifecycle state of a Note row: `pending` (settling, not yet queued), `queued` (dispatched to BullMQ, waiting for a worker), `processing` (a worker is actively running the Ingestion pipeline), `ingested` (pipeline succeeded), `failed` (pipeline failed or was declared failed by BullMQ after retries).
 _Avoid_: State, job state, stage
+
+### Consolidation
+
+**Consolidation**:
+The AI-driven process that cleans a Workspace's vocabulary by merging duplicate Concepts, merging similar Topics, re-filing Concepts under the right Topics, pruning junk Concepts, and rewriting descriptions. Runs automatically on a schedule and can be triggered manually from Settings.
+_Avoid_: Ontology cleanup, vocabulary merge
+
+**Consolidation Run**:
+A single execution of Consolidation for one Workspace. Recorded in `consolidation_runs` with mode (`incremental`, `full`, `manual`), status, counts, usage, and before/after metrics.
+_Avoid_: Cleanup job, vocabulary pass
+
+**Snapshot**:
+A point-in-time JSONB dump of a Workspace's five graph tables (`concepts`, `topics`, `concept_topics`, `relations`, `mentions`) captured before each Consolidation Run. Used to restore the vocabulary to a previous state.
+_Avoid_: Backup, checkpoint, version

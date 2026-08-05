@@ -31,3 +31,27 @@ Divergences from ticket resolutions (with reasons):
 
 - Phase 1 only creates the schema and settings plumbing; no Consolidation execution engine, snapshot capture, restore, or cost-guardrail enforcement. This matches the phase boundary: Phase 1 is the vocabulary Consolidation foundation, leaving run execution for later phases.
 - The `consolidation_runs` migration file was edited after its first application to the dev DB, so the `created_at`/`updated_at` columns were added via a separate follow-up migration (`20260806000001`) instead of the base migration alone. The follow-up uses `if not exists` SQL so it is a no-op on fresh installs. This is a dev-history artifact, not a schema divergence.
+
+## Phase 2: AGE re-mirror routine
+
+Built:
+
+- Deterministic `remirrorGraph` routine in `apps/web/server/lib/graph/remirror.ts`, exported from `apps/web/server/lib/graph/index.ts`.
+- Re-mirror semantics (per workspace):
+  - Clear workspace-scoped AGE state by `DETACH DELETE`-ing `Concept` and `Topic` vertices for the workspace; this removes incident `RELATES_TO`, `GROUPED_UNDER` and `MENTIONS` edges without touching `Note`/`Tag` vertices or `TAGGED`/`LINKS` edges, which are outside the consolidation snapshot scope.
+  - Replay relational rows into AGE using the existing `mergeConceptNode`, `mergeTopicNode`, `mergeNoteNode`, `mergeMentionsEdge`, `mergeRelatesToEdge` and `mergeGroupedUnderEdge` helpers, so labels/properties match store-graph exactly.
+  - Mentions are collapsed from per-chunk relational rows to one `MENTIONS` edge per Note → Concept pair, matching store-graph behaviour.
+- Returns a `RemirrorCounts` object (concepts, topics, noteVertices, mentions, relations, conceptTopics) for observability.
+- Integration tests in `apps/web/test/e2e/graph-remirror.spec.ts` covering:
+  - full replay of concepts/topics/relations/mentions/concept_topics into AGE;
+  - idempotency (run twice yields identical AGE state);
+  - empty workspace;
+  - orphan concepts with no topics;
+  - workspace boundary (other workspace untouched);
+  - multi-chunk mention collapse into a single edge.
+
+Divergences from ticket resolutions (with reasons):
+
+- The routine clears workspace-scoped vertices rather than dropping/recreating the whole AGE graph. The existing graph is single-tenant (`notes_graph`) with `workspace_id` properties, so dropping the whole graph would wipe every workspace. The clear-then-replay approach preserves other workspaces and is still idempotent.
+- Note vertices are created as needed for `MENTIONS` edges but are not deleted by the routine. This mirrors store-graph semantics (Note vertices only appear when they have graph incident edges) and avoids destroying `TAGGED`/`LINKS` edges for the workspace, which are outside the five-table consolidation snapshot.
+- The existing `rebuildWorkspaceGraph` (`apps/web/server/lib/rebuild.ts`) was left unchanged because it performs a broader reset (truncates relational graph tables, resets Notes to pending, drops/recreates AGE); `remirrorGraph` is a narrower AGE-only repair tool.
