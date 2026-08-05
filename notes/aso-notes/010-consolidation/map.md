@@ -33,6 +33,7 @@ Skills to consult when working tickets: `/grilling`, `/domain-modeling`, `/proto
 
 - [Settings page tabs](ticket-settings-page-tabs.md) — Sidebar nav; Verification folds into LLM providers; Consolidation gets its own page under an "Extraction" nav group. Prototype on branch `proto/settings-tabs`.
 - [Snapshot & restore mechanics](ticket-snapshot-restore-mechanics.md) — `consolidation_runs` + `consolidation_snapshots` (single JSONB payload of the 5 graph tables, retain 10); restore = copy back + deterministic AGE re-mirror (new routine) + reset later Notes to pending.
+- [Merge execution mechanics](ticket-merge-execution-mechanics.md) — LLM judge picks survivor + merged description (re-embed on change); Mentions/Relations re-point + dedupe; AGE re-mirrored wholesale at end of run; cron = self-rescheduling BullMQ job with idle-queue gate.
 
 ## Not yet specified
 
