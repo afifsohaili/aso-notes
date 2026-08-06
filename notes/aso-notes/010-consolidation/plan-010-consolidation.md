@@ -235,6 +235,33 @@ Divergences from the review brief (with reasons):
 - **Advisory lock is transaction-scoped; the remirror window is documented.** `pg_advisory_xact_lock` releases at commit, so on the pooled path `remirrorGraph` runs just after the lock is released. Remirror is a deterministic replay of relational state, so a concurrent run slipping into that window simply re-mirrors again — no torn state.
 - **`nuxt typecheck` is broken on `main`** (npm `EOVERRIDE` when nuxi shells out to npm; reproduces on a clean tree). Verified `pnpm lint` + full vitest suite (856 tests) instead.
 
-Deliberately not done (deferred per brief): nav badge, run_budget UI, LLM usage recording, description-rewrite pass.
+## Phase 9: final polish
+
+Built:
+
+- **Nav badge for consolidation failures/flags** (`server/api/consolidation/badge.get.ts`, `app/layouts/settings.vue`, `app/pages/settings/extraction/consolidation.vue`):
+  - New endpoint returns whether the latest non-running run is failed or flagged and has not yet been "seen".
+  - The Settings layout shows a small red dot on the Consolidation nav item when the badge is visible.
+  - The Consolidation page marks the latest run id as seen via `PATCH /api/settings` with key `consolidation.badge_seen_run_id`; the badge hides once the setting matches the latest run id.
+  - Component tests: layout badge visible on failed/flagged runs and hidden when clean; page marks the latest run seen on mount.
+
+- **Configurable `consolidation.run_budget` UI** (`app/components/settings/consolidation/budget-card.vue`):
+  - New card on the Consolidation page fetches the current budget from `/api/settings`, allows editing, and saves via `PATCH /api/settings`.
+  - Shows saved/error feedback following the existing settings-save pattern.
+  - Component tests: renders current value, saves on submit, shows saved state, handles error.
+
+- **Description-rewrite pass** (`server/lib/consolidation/rewrite.ts`, `shortlist.ts`, `engine.ts`, `judge.ts`):
+  - After merges, prunes, and topic cleanup, the engine selects surviving Concepts whose description is null/empty or equal to the concept name as rewrite candidates.
+  - Candidates are sent to the injected judge in batches (same batching pattern as merge/prune; the default judge schema now includes `rewrites`).
+  - Applied rewrites update the description and re-embed the Concept when an embedding provider is available (reusing the merge re-embed path), increment `counts.rewrites`, and write a `rewrite` change line with the judge's reason.
+  - The shared 200 run budget is consumed in priority order: merges → prunes → singleton-topic dissolves → rewrites get the remainder. Overflow defers rewrites to the next run.
+  - Integration tests: descriptions rewritten + re-embedded, change lines written, count recorded; budget exhaustion defers rewrites; concepts with helpful descriptions untouched.
+
+Divergences from ticket resolutions (with reasons):
+
+- **Badge "seen" tracking is one id, not a per-run bit.** The page marks the latest run id as seen on mount. If a new failure/flagged run completes while the user is already on the page, the watcher will also mark it seen. This is the simplest honest implementation and matches the ticket's "until viewed" semantics without building a separate read-receipt table.
+- **Rewrite candidates are Concepts only, and the selection rule is deterministic.** The map's cron scope mentions "rewrite surviving descriptions" without specifying Topics or a judge-based unclear flag. Phase 9 scopes rewrites to Concepts and selects candidates by description null/empty/equal-to-name. Expanding this to Topics or judge-flagged unclear descriptions is a future phase once the decision procedure is specified.
+
+Deliberately not done (deferred per brief): LLM usage recording.
 
 (End of file - total 124 lines)

@@ -73,12 +73,19 @@ function detailFor(run: Run, changes: unknown[] = [], hasSnapshot = false) {
   return { run, changes, hasSnapshot }
 }
 
-function mockRunsResponse(runs: Run[]) {
+function mockRunsResponse(runs: Run[], budget = 200) {
   useFetchMock.mockImplementation((url: unknown) => {
     const resolved = typeof url === 'function' ? url() : url
     if (resolved === '/api/consolidation/runs') {
       return {
         data: ref({ runs }) as Ref<{ runs: Run[] }>,
+        pending: ref(false),
+        refresh: vi.fn(),
+      }
+    }
+    if (resolved === '/api/settings') {
+      return {
+        data: ref({ settings: { 'consolidation.run_budget': { value: budget, source: 'default' } } }) as Ref<unknown>,
         pending: ref(false),
         refresh: vi.fn(),
       }
@@ -213,6 +220,19 @@ describe('settings consolidation page', () => {
     await flushPromises()
 
     expect(component.text()).toContain('Could not start')
+  })
+
+  it('marks the latest run as seen on mount so the nav badge clears', async () => {
+    mockRunsResponse([completedRun])
+    $fetchMock.mockResolvedValue(detailFor(completedRun, [], true))
+
+    await mountSuspended(SettingsConsolidationPage)
+    await flushPromises()
+
+    expect($fetchMock).toHaveBeenCalledWith('/api/settings', {
+      method: 'PATCH',
+      body: { key: 'consolidation.badge_seen_run_id', value: completedRun.id },
+    })
   })
 
   it('toggles mobile view between list and detail', async () => {

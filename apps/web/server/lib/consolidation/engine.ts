@@ -8,7 +8,8 @@ import { acquireConsolidationLock, ConsolidationLockConflictError } from './lock
 import { executeConceptMerge, executeTopicMerge } from './merge'
 import { computeFlags, computeMetrics } from './metrics'
 import { cleanupTopics, executePruneConcept } from './prune'
-import { batchJudge, buildMergePairs, buildPruneCandidates, loserIdFromVerdict } from './shortlist'
+import { executeRewriteConcept } from './rewrite'
+import { batchJudge, buildMergePairs, buildPruneCandidates, buildRewriteCandidates, loserIdFromVerdict } from './shortlist'
 import { captureSnapshot } from './snapshot'
 
 export * from './types'
@@ -154,7 +155,22 @@ async function runConsolidationBody(
   }
 
   const cleanupBudget = Math.max(0, budget - mergePairsToJudge.length - pruneCandidatesToJudge.length)
-  await cleanupTopics(db, workspaceId, runId, judge, counts, cleanupBudget)
+  const { dissolveCandidates } = await cleanupTopics(db, workspaceId, runId, judge, counts, cleanupBudget)
+
+  const rewriteBudget = Math.max(0, cleanupBudget - dissolveCandidates)
+  const rewriteCandidates = await buildRewriteCandidates(db, workspaceId)
+  const rewriteCandidatesToJudge = rewriteCandidates.slice(0, Math.max(0, rewriteBudget))
+  const { rewrites: rewriteVerdicts, judgeCalls: rewriteJudgeCalls, skippedInvalidVerdicts: rewriteSkipped } = await batchJudge(judge, [], [], rewriteCandidatesToJudge)
+  counts.judgeCalls += rewriteJudgeCalls
+  counts.skippedInvalidVerdicts += rewriteSkipped
+
+  for (const verdict of rewriteVerdicts) {
+    if (!verdict.rewrite)
+      continue
+
+    await executeRewriteConcept(db, workspaceId, verdict, runId, embeddingProvider)
+    counts.rewrites++
+  }
 
   await remirrorGraph(db, workspaceId)
 

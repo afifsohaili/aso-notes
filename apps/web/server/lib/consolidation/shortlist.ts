@@ -1,4 +1,4 @@
-import type { ConsolidationDb, ConsolidationJudge, MergeCandidate, MergeVerdict, PruneCandidate, PruneVerdict } from './types'
+import type { ConsolidationDb, ConsolidationJudge, MergeCandidate, MergeVerdict, PruneCandidate, PruneVerdict, RewriteCandidate, RewriteVerdict } from './types'
 import { sql } from 'kysely'
 import { COSINE_THRESHOLD, JUDGE_BATCH_SIZE, NEIGHBOR_TOP_K, PRUNE_GRACE_DAYS } from './types'
 
@@ -254,9 +254,34 @@ export async function buildSingletonTopicCandidates(
   }))
 }
 
+export async function buildRewriteCandidates(
+  db: ConsolidationDb,
+  workspaceId: string,
+): Promise<RewriteCandidate[]> {
+  const rows = await db
+    .selectFrom('concepts')
+    .select(['id', 'name', 'description', 'created_at'])
+    .where('workspace_id', '=', workspaceId)
+    .orderBy('created_at', 'asc')
+    .execute()
+
+  return rows
+    .filter((row) => {
+      const desc = row.description?.trim() ?? ''
+      return desc === '' || desc.toLowerCase() === row.name.toLowerCase()
+    })
+    .map(row => ({
+      kind: 'concept' as const,
+      id: row.id,
+      name: row.name,
+      description: row.description,
+    }))
+}
+
 export interface BatchJudgeResult {
   merges: MergeVerdict[]
   prunes: PruneVerdict[]
+  rewrites: RewriteVerdict[]
   judgeCalls: number
   skippedInvalidVerdicts: number
 }
@@ -290,23 +315,35 @@ function isValidPruneVerdict(verdict: PruneVerdict, candidate: PruneCandidate | 
   return true
 }
 
+function isValidRewriteVerdict(verdict: RewriteVerdict, candidate: RewriteCandidate | undefined, seen: Set<string>): boolean {
+  if (!candidate || candidate.kind !== verdict.kind)
+    return false
+  if (seen.has(verdict.id))
+    return false
+  return true
+}
+
 export async function batchJudge(
   judge: ConsolidationJudge,
   pairs: MergeCandidate[],
   prunes: PruneCandidate[],
+  rewrites: RewriteCandidate[] = [],
 ): Promise<BatchJudgeResult> {
   const pairById = new Map(pairs.map(p => [p.pairId, p]))
   const pruneById = new Map(prunes.map(p => [p.id, p]))
+  const rewriteById = new Map(rewrites.map(r => [r.id, r]))
   const seenPairIds = new Set<string>()
   const seenPruneIds = new Set<string>()
+  const seenRewriteIds = new Set<string>()
   const merges: MergeVerdict[] = []
   const prunesOut: PruneVerdict[] = []
+  const rewritesOut: RewriteVerdict[] = []
   let judgeCalls = 0
   let skippedInvalidVerdicts = 0
 
   for (let i = 0; i < pairs.length; i += JUDGE_BATCH_SIZE) {
     const batch = pairs.slice(i, i + JUDGE_BATCH_SIZE)
-    const response = await judge({ mergePairs: batch, pruneCandidates: [] })
+    const response = await judge({ mergePairs: batch, pruneCandidates: [], rewriteCandidates: [] })
     judgeCalls++
     for (const verdict of response.merges) {
       if (!isValidMergeVerdict(verdict, pairById.get(verdict.pairId), seenPairIds)) {
@@ -320,7 +357,7 @@ export async function batchJudge(
 
   for (let i = 0; i < prunes.length; i += JUDGE_BATCH_SIZE) {
     const batch = prunes.slice(i, i + JUDGE_BATCH_SIZE)
-    const response = await judge({ mergePairs: [], pruneCandidates: batch })
+    const response = await judge({ mergePairs: [], pruneCandidates: batch, rewriteCandidates: [] })
     judgeCalls++
     for (const verdict of response.prunes) {
       if (!isValidPruneVerdict(verdict, pruneById.get(verdict.id), seenPruneIds)) {
@@ -332,5 +369,19 @@ export async function batchJudge(
     }
   }
 
-  return { merges, prunes: prunesOut, judgeCalls, skippedInvalidVerdicts }
+  for (let i = 0; i < rewrites.length; i += JUDGE_BATCH_SIZE) {
+    const batch = rewrites.slice(i, i + JUDGE_BATCH_SIZE)
+    const response = await judge({ mergePairs: [], pruneCandidates: [], rewriteCandidates: batch })
+    judgeCalls++
+    for (const verdict of response.rewrites ?? []) {
+      if (!isValidRewriteVerdict(verdict, rewriteById.get(verdict.id), seenRewriteIds)) {
+        skippedInvalidVerdicts++
+        continue
+      }
+      seenRewriteIds.add(verdict.id)
+      rewritesOut.push(verdict)
+    }
+  }
+
+  return { merges, prunes: prunesOut, rewrites: rewritesOut, judgeCalls, skippedInvalidVerdicts }
 }

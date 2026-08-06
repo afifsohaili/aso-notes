@@ -1,5 +1,5 @@
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
-import type { ConsolidationDb, ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate } from './types'
+import type { ConsolidationDb, ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate, RewriteCandidate } from './types'
 import process from 'node:process'
 import { createEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
 import { resolveConsolidationProviderSettings, resolveEmbeddingProviderSettings } from '../settings'
@@ -38,16 +38,30 @@ const JUDGE_SCHEMA = {
         required: ['id', 'prune', 'reason'],
       },
     },
+    rewrites: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          kind: { type: 'string' },
+          rewrite: { type: 'boolean' },
+          description: { type: ['string', 'null'] },
+          reason: { type: 'string' },
+        },
+        required: ['id', 'kind', 'rewrite', 'description', 'reason'],
+      },
+    },
   },
-  required: ['merges', 'prunes'],
+  required: ['merges', 'prunes', 'rewrites'],
 } as const
 
 const JUDGE_SCHEMA_NAME = 'consolidation_judge'
 
 export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
   return async (request: ConsolidationJudgeRequest): Promise<ConsolidationJudgeResponse> => {
-    if (request.mergePairs.length === 0 && request.pruneCandidates.length === 0)
-      return { merges: [], prunes: [] }
+    if (request.mergePairs.length === 0 && request.pruneCandidates.length === 0 && (request.rewriteCandidates?.length ?? 0) === 0)
+      return { merges: [], prunes: [], rewrites: [] }
 
     const messages = buildJudgeMessages(request)
 
@@ -66,6 +80,7 @@ export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
     const parsed = JSON.parse(content) as {
       merges: { pair_id: string, merge: boolean, survivor_id: string, merged_description: string | null, reason: string }[]
       prunes: { id: string, prune: boolean, reason: string }[]
+      rewrites: { id: string, kind: string, rewrite: boolean, description: string | null, reason: string }[]
     }
 
     return {
@@ -80,6 +95,13 @@ export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
         id: p.id,
         prune: p.prune,
         reason: p.reason,
+      })),
+      rewrites: parsed.rewrites.map(r => ({
+        kind: r.kind as 'concept',
+        id: r.id,
+        rewrite: r.rewrite,
+        description: r.description,
+        reason: r.reason,
       })),
     }
   }
@@ -114,6 +136,13 @@ function buildJudgeMessages(request: ConsolidationJudgeRequest): import('../ai/t
       ]
     : ['No prune candidates.']
 
+  const rewriteSection = (request.rewriteCandidates?.length ?? 0) > 0
+    ? [
+        'Rewrite candidates (concepts whose descriptions are missing, empty, or unhelpful):',
+        ...request.rewriteCandidates!.map(formatRewriteCandidate),
+      ]
+    : ['No rewrite candidates.']
+
   return [
     {
       role: 'system',
@@ -121,14 +150,24 @@ function buildJudgeMessages(request: ConsolidationJudgeRequest): import('../ai/t
         'You are a vocabulary consolidation judge for a personal knowledge graph.',
         'For each merge candidate, decide whether the two items are duplicates. If yes, pick the survivor (the ID to keep), write a merged description, and explain why.',
         'For each prune candidate, decide whether it is junk or noise that should be removed, and explain why.',
+        'For each rewrite candidate, decide whether its description should be rewritten to be succinct and disambiguating. If yes, provide the new description and explain why.',
         'Return JSON matching the provided schema.',
       ].join(' '),
     },
     {
       role: 'user',
-      content: [...mergeSection, '', ...pruneSection].join('\n'),
+      content: [...mergeSection, '', ...pruneSection, '', ...rewriteSection].join('\n'),
     },
   ]
+}
+
+function formatRewriteCandidate(candidate: RewriteCandidate): string {
+  return [
+    `- id: ${candidate.id}`,
+    `  kind: ${candidate.kind}`,
+    `  name: ${candidate.name}`,
+    `  description: ${candidate.description ?? 'no description'}`,
+  ].join('\n')
 }
 
 function formatMergeCandidate(pair: MergeCandidate): string {

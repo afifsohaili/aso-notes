@@ -79,6 +79,8 @@
   "settings.consolidation.finishedAt": "Finished {time}",
   "settings.consolidation.tokens": "{count} tokens",
   "settings.consolidation.judgeCalls": "{count} judge calls",
+  "settings.consolidation.budget.title": "Run budget",
+  "settings.consolidation.budget.help": "Maximum candidate pairs and concepts judged per consolidation run. Lower values keep LLM spend bounded.",
   "settings.consolidation.status.running": "Running",
   "settings.consolidation.status.completed": "Completed",
   "settings.consolidation.status.failed": "Failed",

@@ -247,7 +247,7 @@ async function dedupeRelations(db: ConsolidationDb, workspaceId: string): Promis
   }
 }
 
-async function reembedConcept(
+export async function reembedConcept(
   db: ConsolidationDb,
   provider: EmbeddingProvider,
   workspaceId: string,

@@ -68,7 +68,7 @@ export async function cleanupTopics(
   judge: ConsolidationJudge,
   counts: ConsolidationCounts,
   judgeBudget: number,
-): Promise<void> {
+): Promise<{ dissolveCandidates: number }> {
   const emptyTopics = await db
     .selectFrom('topics')
     .leftJoin('concept_topics', join => join
@@ -113,4 +113,6 @@ export async function cleanupTopics(
       counts.dissolves++
     }
   }
+
+  return { dissolveCandidates: dissolveCandidates.length }
 }

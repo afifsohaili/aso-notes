@@ -20,6 +20,7 @@ export const KNOWN_SETTING_KEYS = [
   'extraction.vocabulary_strategy',
   'extraction.blind_merge_threshold',
   'consolidation.run_budget',
+  'consolidation.badge_seen_run_id',
   'llm.agent.provider',
   'llm.agent.model',
   'llm.agent.base_url',
@@ -382,6 +383,14 @@ export function normalizeSettingValue(key: KnownSettingKey, value: unknown): Jso
       throw new Error('run_budget must be a positive integer')
     }
     return raw
+  }
+
+  if (key === 'consolidation.badge_seen_run_id') {
+    if (value === null || value === undefined)
+      return null
+    if (typeof value !== 'string' || value.trim().length === 0)
+      throw new Error('badge_seen_run_id must be a valid run id or null')
+    return value.trim()
   }
 
   const field = llmSettingField(key)

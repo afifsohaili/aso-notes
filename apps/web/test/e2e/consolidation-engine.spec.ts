@@ -2,7 +2,7 @@ import type { ConsolidationJudge, MergeVerdict, PruneVerdict } from '../../serve
 import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
 import { sql } from 'kysely'
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { halfvecLiteral } from '../../server/lib/agent/vector'
 import { runConsolidation } from '../../server/lib/consolidation/engine'
 import { runConsolidationSweep } from '../../server/lib/consolidation/job'
@@ -47,6 +47,37 @@ function fakeJudgeThatMergesAll(): ConsolidationJudge {
     }))
     return { merges, prunes }
   }
+}
+
+function fakeJudgeThatRewrites(description: string): ConsolidationJudge {
+  return async ({ mergePairs, pruneCandidates, rewriteCandidates }) => {
+    const merges: MergeVerdict[] = mergePairs.map(pair => ({
+      kind: pair.kind,
+      pairId: pair.pairId,
+      merge: true,
+      survivorId: pair.id,
+      mergedDescription: pair.description,
+      reason: 'fake judge: merge all',
+    }))
+    const prunes: PruneVerdict[] = pruneCandidates.map(candidate => ({
+      kind: candidate.kind,
+      id: candidate.id,
+      prune: false,
+      reason: 'fake judge: keep all',
+    }))
+    const rewrites = (rewriteCandidates ?? []).map(candidate => ({
+      kind: 'concept' as const,
+      id: candidate.id,
+      rewrite: true,
+      description,
+      reason: 'fake judge: rewrite all',
+    }))
+    return { merges, prunes, rewrites }
+  }
+}
+
+function fakeJudgeThatMergesAndRewrites(description: string): ConsolidationJudge {
+  return fakeJudgeThatRewrites(description)
 }
 
 async function seedGraph(trx: any, workspaceId: string) {
@@ -1252,11 +1283,192 @@ describe('consolidation engine', () => {
     }
   })
 
+  test('rewrites missing or unhelpful descriptions and re-embeds the concepts', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept A',
+        name_normalized: 'concept a',
+        description: null,
+        embedding: halfvecLiteral(unitVector(0)),
+        created_at: new Date(),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const b = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept B',
+        name_normalized: 'concept b',
+        description: 'Concept B',
+        embedding: halfvecLiteral(unitVector(90)),
+        created_at: new Date(),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: b.id },
+    ]).execute()
+
+    const embedSpy = vi.fn<[string[]], Promise<number[][]>>().mockResolvedValue([unitVector(45)])
+
+    await runConsolidation(trx, workspace.id, 'full', {
+      judge: fakeJudgeThatRewrites('Succinct description'),
+      embeddingProvider: { embed: embedSpy },
+    })
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select(['name', 'description'])
+      .where('workspace_id', '=', workspace.id)
+      .execute()
+
+    expect(concepts).toHaveLength(2)
+    expect(concepts.every(c => c.description === 'Succinct description')).toBe(true)
+    expect(embedSpy).toHaveBeenCalledTimes(2)
+    expect(embedSpy).toHaveBeenCalledWith(['Concept A: Succinct description'])
+    expect(embedSpy).toHaveBeenCalledWith(['Concept B: Succinct description'])
+
+    const changes = await trx
+      .selectFrom('consolidation_run_changes')
+      .select(['action', 'text'])
+      .execute()
+
+    const rewrites = changes.filter(c => c.action === 'rewrite')
+    expect(rewrites).toHaveLength(2)
+
+    const run = await trx
+      .selectFrom('consolidation_runs')
+      .select('counts')
+      .executeTakeFirstOrThrow()
+    expect((run.counts as any).rewrites).toBe(2)
+  })
+
+  test('defers description rewrites when the shared budget is exhausted', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept A',
+        name_normalized: 'concept a',
+        description: null,
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const b = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept B',
+        name_normalized: 'concept b',
+        description: null,
+        embedding: halfvecLiteral(unitVector(10)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const c = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept C',
+        name_normalized: 'concept c',
+        description: 'Concept C',
+        embedding: halfvecLiteral(unitVector(90)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: b.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: c.id },
+    ]).execute()
+
+    await sql`
+      INSERT INTO workspace_settings (workspace_id, key, value)
+      VALUES (${workspace.id}, 'consolidation.run_budget', ${JSON.stringify(1)}::jsonb)
+    `.execute(trx)
+
+    await runConsolidation(trx, workspace.id, 'full', { judge: fakeJudgeThatMergesAndRewrites('Rewritten') })
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select(['name', 'description'])
+      .where('workspace_id', '=', workspace.id)
+      .orderBy('name')
+      .execute()
+
+    expect(concepts).toHaveLength(2)
+    expect(concepts.find(c => c.name === 'Concept C')?.description).toBe('Concept C')
+
+    const run = await trx
+      .selectFrom('consolidation_runs')
+      .select('counts')
+      .executeTakeFirstOrThrow()
+    expect((run.counts as any).merges).toBe(1)
+    expect((run.counts as any).rewrites).toBe(0)
+  })
+
+  test('does not touch concepts that already have helpful descriptions', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Concept A',
+        name_normalized: 'concept a',
+        description: 'Helpful description of concept A',
+        embedding: halfvecLiteral(unitVector(0)),
+        created_at: new Date(),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+    ]).execute()
+
+    await runConsolidation(trx, workspace.id, 'full', { judge: fakeJudgeThatRewrites('Rewritten') })
+
+    const concept = await trx
+      .selectFrom('concepts')
+      .select('description')
+      .where('workspace_id', '=', workspace.id)
+      .executeTakeFirstOrThrow()
+    expect(concept.description).toBe('Helpful description of concept A')
+
+    const run = await trx
+      .selectFrom('consolidation_runs')
+      .select('counts')
+      .executeTakeFirstOrThrow()
+    expect((run.counts as any).rewrites).toBe(0)
+  })
+
   test('skips a cron sweep quietly when the workspace lock is held', async ({ db, trx }) => {
     const { workspace } = await givenVerifiedUser()
     await ensureNotesGraphCatalog(trx)
     await seedGraph(trx, workspace.id)
 
+    // Simulate an in-flight consolidation on another connection.
     const other = await db.startTransaction().execute()
     try {
       await sql`SELECT pg_advisory_xact_lock(hashtext(${workspace.id}))`.execute(other)

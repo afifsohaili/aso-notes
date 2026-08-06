@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import ArrowLeftIcon from '~icons/heroicons/arrow-left'
+import ConsolidationBudgetCard from '~/components/settings/consolidation/budget-card.vue'
 import ConsolidationChangeFeed from '~/components/settings/consolidation/change-feed.vue'
 import ConsolidationManualRunButton from '~/components/settings/consolidation/manual-run-button.vue'
 import ConsolidationRestorePanel from '~/components/settings/consolidation/restore-panel.vue'
@@ -56,6 +57,30 @@ const { data: runsData, refresh: refreshRuns } = useFetch('/api/consolidation/ru
 
 const runs = computed<ConsolidationRun[]>(() => runsData.value?.runs ?? [])
 const selectedRun = computed<ConsolidationRun | undefined>(() => runs.value.find(r => r.id === selectedRunId.value))
+const latestRunId = computed(() => runs.value[0]?.id ?? null)
+
+const lastMarkedSeenRunId = ref<string | null>(null)
+
+async function markSeen(runId: string | null) {
+  if (!runId)
+    return
+  try {
+    await $fetch('/api/settings', {
+      method: 'PATCH',
+      body: { key: 'consolidation.badge_seen_run_id', value: runId },
+    })
+    lastMarkedSeenRunId.value = runId
+  }
+  catch (error) {
+    if (error instanceof Error)
+      console.error('failed to mark consolidation badge seen', error.message)
+  }
+}
+
+watch(latestRunId, (id) => {
+  if (id && id !== lastMarkedSeenRunId.value)
+    markSeen(id)
+}, { immediate: true })
 
 const detailData = ref<{ run: ConsolidationRun, changes: unknown[], hasSnapshot: boolean } | null>(null)
 const detailLoading = ref(false)
@@ -133,6 +158,10 @@ function onRestored() {
         </p>
       </div>
       <ConsolidationManualRunButton @run-created="refreshRuns" />
+    </div>
+
+    <div class="mb-6">
+      <ConsolidationBudgetCard />
     </div>
 
     <div

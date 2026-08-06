@@ -12,6 +12,9 @@ interface NavItem {
   indent?: boolean
 }
 
+const { data: badgeData } = useFetch('/api/consolidation/badge')
+const showBadge = computed(() => badgeData.value?.badge ?? false)
+
 const items: NavItem[] = [
   { id: 'folders', label: t('settings.nav.folders'), path: '/settings/folders' },
   { id: 'llm-providers', label: t('settings.nav.llmProviders'), path: '/settings/llm-providers' },
@@ -41,12 +44,17 @@ const activeItem = computed(() => {
           v-for="item in items"
           :key="item.id"
           :to="item.path"
-          class="whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+          class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
           :class="activeItem.id === item.id
             ? 'bg-indigo-100 text-indigo-700'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
         >
           {{ item.label }}
+          <span
+            v-if="item.id === 'consolidation' && showBadge"
+            class="h-2 w-2 rounded-full bg-red-500"
+            data-testid="consolidation-nav-badge"
+          />
         </NuxtLink>
       </div>
     </nav>
@@ -59,7 +67,7 @@ const activeItem = computed(() => {
             v-for="item in items"
             :key="item.id"
             :to="item.path"
-            class="block rounded-md px-3 py-2 text-sm font-medium transition-colors"
+            class="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors"
             :class="[
               activeItem.id === item.id
                 ? 'bg-indigo-50 text-indigo-700'
@@ -67,7 +75,12 @@ const activeItem = computed(() => {
               item.indent ? 'pl-6' : '',
             ]"
           >
-            {{ item.label }}
+            <span>{{ item.label }}</span>
+            <span
+              v-if="item.id === 'consolidation' && showBadge"
+              class="ml-2 h-2 w-2 rounded-full bg-red-500"
+              data-testid="consolidation-nav-badge"
+            />
           </NuxtLink>
         </div>
       </nav>

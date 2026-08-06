@@ -93,6 +93,53 @@ async function vertexCount(trx: any, workspaceId: string, label: string): Promis
 }
 
 describe('consolidation API', () => {
+  describe('gET /api/consolidation/badge', () => {
+    test('returns 401 when unauthenticated', async ({ server }) => {
+      const res = await server('/api/consolidation/badge')
+      expect(res.status).toBe(401)
+    })
+
+    test('returns false when there are no runs', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const res = await server('/api/consolidation/badge', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.badge).toBe(false)
+      expect(body.latestRunId).toBeNull()
+    })
+
+    test('returns true for a failed run and clears after marking seen', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      const run = await createRun(trx, workspace.id, { status: 'failed', error: 'boom' })
+
+      const res1 = await server('/api/consolidation/badge', { headers: { cookie: cookies } })
+      expect(res1.status).toBe(200)
+      expect((await res1.json()).badge).toBe(true)
+
+      await server('/api/settings', {
+        method: 'PATCH',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ key: 'consolidation.badge_seen_run_id', value: run.id }),
+      })
+
+      const res2 = await server('/api/consolidation/badge', { headers: { cookie: cookies } })
+      expect(res2.status).toBe(200)
+      expect((await res2.json()).badge).toBe(false)
+    })
+
+    test('returns true for a flagged run', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await createRun(trx, workspace.id, {
+        flags: { overPruning: true, ineffectiveness: false },
+      })
+
+      const res = await server('/api/consolidation/badge', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+      expect((await res.json()).badge).toBe(true)
+    })
+  })
+
   describe('pOST /api/consolidation/run', () => {
     test('returns 401 when unauthenticated', async ({ server }) => {
       const res = await server('/api/consolidation/run', {

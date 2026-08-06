@@ -32,6 +32,13 @@ export interface PruneCandidate {
   sampleChunkText: string | null
 }
 
+export interface RewriteCandidate {
+  kind: 'concept'
+  id: string
+  name: string
+  description: string | null
+}
+
 export interface MergeVerdict {
   kind: 'concept' | 'topic'
   pairId: string
@@ -48,14 +55,24 @@ export interface PruneVerdict {
   reason: string
 }
 
+export interface RewriteVerdict {
+  kind: 'concept'
+  id: string
+  rewrite: boolean
+  description: string | null
+  reason: string
+}
+
 export interface ConsolidationJudgeRequest {
   mergePairs: MergeCandidate[]
   pruneCandidates: PruneCandidate[]
+  rewriteCandidates?: RewriteCandidate[]
 }
 
 export interface ConsolidationJudgeResponse {
   merges: MergeVerdict[]
   prunes: PruneVerdict[]
+  rewrites?: RewriteVerdict[]
 }
 
 export type ConsolidationJudge = (request: ConsolidationJudgeRequest) => Promise<ConsolidationJudgeResponse>
