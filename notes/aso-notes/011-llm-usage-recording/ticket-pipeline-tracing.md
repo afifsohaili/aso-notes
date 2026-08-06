@@ -1,6 +1,6 @@
 ---
 label: wayfinder:task
-blocked-by: [ticket-trace-data-model, ticket-instrumentation-seam]
+blocked-by: [ticket-instrumentation-seam]
 ---
 
 # Ticket: Pipeline tracing (ingestion + consolidation)

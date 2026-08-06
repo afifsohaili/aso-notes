@@ -28,7 +28,7 @@ Skills to consult: /grilling, /domain-modeling, /prototype (UI tickets).
 
 <!-- one line per closed ticket: gist + link -->
 
-_(none yet)_
+- [Trace data model](ticket-trace-data-model.md) — 3 tables: `llm_traces` (polymorphic owner_type+owner_id, no FK), `llm_generations` (inline JSONB prompt/response, cost_usd numeric(12,6)), `llm_tool_calls` (own table, ~8KB truncated output); flat + seq, no nesting; nullable content + pruned_at retention hooks.
 
 ## Not yet specified
 

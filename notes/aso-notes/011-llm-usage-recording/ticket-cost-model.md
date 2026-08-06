@@ -1,6 +1,6 @@
 ---
 label: wayfinder:grilling
-blocked-by: [ticket-trace-data-model]
+blocked-by: []
 ---
 
 # Ticket: Cost model
