@@ -147,3 +147,21 @@ _Avoid_: Alert, notification, badge
 **Snapshot**:
 A point-in-time JSONB dump of a Workspace's five graph tables (`concepts`, `topics`, `concept_topics`, `relations`, `mentions`) captured before each Consolidation Run. Used to restore the vocabulary to a previous state.
 _Avoid_: Backup, checkpoint, version
+
+### Observability
+
+**Trace**:
+The end-to-end record of one logical operation: one Ingestion Run, one Answer, or one Consolidation Run. Correlates every Generation and Tool Call that happened inside it. Aligned with OTel/Langfuse "trace".
+_Avoid_: Span tree, run record, request log
+
+**Generation**:
+A single request/response to an LLM within a Trace: prompt, response, model, token counts, latency, cost. Langfuse's term; OTel calls it "inference", OpenInference "LLM span".
+_Avoid_: LLM call, inference, span, completion
+
+**Tool Call**:
+A single invocation of a Tool by the Agent inside a Trace: tool name, input args, output, duration. Aligned with OTel/OpenInference "tool span".
+_Avoid_: Function call record, tool span
+
+**LLM Use Case**:
+A per-role provider configuration slot: `agent`, `extraction`, `embedding`, or `consolidation`. Each has its own provider/model/base-url (workspace-overridable) with env-var API keys, configured in Settings.
+_Avoid_: Role, slot, provider profile
