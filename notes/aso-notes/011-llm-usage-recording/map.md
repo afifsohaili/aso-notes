@@ -29,6 +29,7 @@ Skills to consult: /grilling, /domain-modeling, /prototype (UI tickets).
 <!-- one line per closed ticket: gist + link -->
 
 - [Trace data model](ticket-trace-data-model.md) — 3 tables: `llm_traces` (polymorphic owner_type+owner_id, no FK), `llm_generations` (inline JSONB prompt/response, cost_usd numeric(12,6)), `llm_tool_calls` (own table, ~8KB truncated output); flat + seq, no nesting; nullable content + pruned_at retention hooks.
+- [Instrumentation seam](ticket-instrumentation-seam.md) — TracedProvider decorator at registry with explicit `trace` option (~4 call sites); fire-and-forget writes (try/catch-log); embeddings traced metadata-only; streaming accumulates → one record; missing usage = null + flag.
 
 ## Not yet specified
 

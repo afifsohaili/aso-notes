@@ -1,6 +1,6 @@
 ---
 label: wayfinder:grilling
-blocked-by: [ticket-instrumentation-seam]
+blocked-by: []
 ---
 
 # Ticket: Agent chat tracing
