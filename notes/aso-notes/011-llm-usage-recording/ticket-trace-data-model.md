@@ -11,7 +11,7 @@ status: closed
 
 **Three tables, all workspace-scoped, UUID PKs:**
 
-**`llm_traces`** — id, workspace_id, kind varchar (`ingestion` | `chat` | `consolidation`), **polymorphic owner: `owner_type` varchar + `owner_id` uuid, no FK** (user decision over nullable FK columns — flexibility for future trace kinds; consequence: no cascade, retention/cleanup must handle orphaned traces explicitly), status varchar (`running` | `completed` | `failed`), started_at, finished_at, error text, created_at/updated_at.
+**`llm_traces`** — id, workspace_id, kind varchar (`ingestion` | `chat` | `consolidation`), **polymorphic owner: `owner_type` varchar + `owner_id` uuid, no FK** — `owner_type` stores the **exact table name** (`notes` | `conversations` | `consolidation_runs`), user decision 2026-08-06, so no singular/plural translation is needed (flexibility for future trace kinds; consequence: no cascade, retention/cleanup must handle orphaned traces explicitly), status varchar (`running` | `completed` | `failed`), started_at, finished_at, error text, created_at/updated_at.
 
 **`llm_generations`** — id, workspace_id, trace_id FK cascade, seq integer (flat ordering, no nesting), llm_use_case varchar, provider, model, **prompt JSONB nullable (inline full messages — TOAST handles size)**, **response JSONB nullable**, prompt_tokens int, completion_tokens int, **cost_usd numeric(12,6)** (computed at request time), latency_ms int, finish_reason varchar, error text, **pruned_at timestamp nullable**, created_at.
 
