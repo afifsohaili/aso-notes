@@ -181,6 +181,7 @@ export interface Notes {
   created_at: Generated<Timestamp>;
   folder_id: string | null;
   id: Generated<string>;
+  ingested_at: Timestamp | null;
   ingested_hash: string | null;
   last_run: Json | null;
   path: string;

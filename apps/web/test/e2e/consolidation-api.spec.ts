@@ -1,6 +1,7 @@
 import type { ConsolidationRuns } from '@monorepo/shared'
 import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
+import { sql } from 'kysely'
 import { describe, expect } from 'vitest'
 import { CONSOLIDATION_QUEUE_NAME, ConsolidationJob } from '../../server/lib/consolidation/job'
 import { captureSnapshot } from '../../server/lib/consolidation/snapshot'
@@ -227,6 +228,39 @@ describe('consolidation API', () => {
 
       expect(await vertexCount(trx, workspace.id, 'Concept')).toBe(2)
       expect(await vertexCount(trx, workspace.id, 'Topic')).toBe(1)
+    })
+
+    test('returns 409 when a consolidation run is in progress for the workspace', async ({ server, db, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await ensureNotesGraphCatalog(trx)
+      await seedGraph(trx, workspace.id)
+      const run = await createRun(trx, workspace.id)
+      await captureSnapshot(trx, run.id, workspace.id)
+
+      // Simulate an in-flight consolidation run on another connection.
+      const other = await db.startTransaction().execute()
+      try {
+        await sql`SELECT pg_advisory_xact_lock(hashtext(${workspace.id}))`.execute(other)
+
+        const res = await server(`/api/consolidation/runs/${run.id}/restore`, {
+          method: 'POST',
+          headers: { 'cookie': cookies, 'content-type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        expect(res.status).toBe(409)
+      }
+      finally {
+        await other.rollback().execute()
+      }
+
+      // Graph untouched by the rejected restore.
+      const concepts = await trx
+        .selectFrom('concepts')
+        .select('name')
+        .where('workspace_id', '=', workspace.id)
+        .orderBy('name')
+        .execute()
+      expect(concepts.map(c => c.name)).toEqual(['Concept A', 'Concept B'])
     })
 
     test('returns 404 when the run has no snapshot', async ({ server, trx }) => {

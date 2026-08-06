@@ -251,11 +251,12 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
     // note row: ingested with ingested_hash = content_hash (written inside the transaction)
     const after = await trx
       .selectFrom('notes')
-      .select(['status', 'ingested_hash'])
+      .select(['status', 'ingested_hash', 'ingested_at'])
       .where('id', '=', note.id)
       .executeTakeFirstOrThrow()
     expect(after.status).toBe('ingested')
     expect(after.ingested_hash).toBe(note.content_hash)
+    expect(after.ingested_at).not.toBeNull()
   })
 
   test('records a successful LastRun on the notes row after ingestion', async ({ trx }) => {

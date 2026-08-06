@@ -1,9 +1,10 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
 import type { RemirrorCounts } from '../graph/remirror'
+import type { ConsolidationDb } from './types'
+import { sql } from 'kysely'
 import { remirrorGraph } from '../graph/remirror'
+import { acquireConsolidationLock } from './lock'
 
-export type SnapshotDb = Kysely<DB> | Transaction<DB>
+export type SnapshotDb = ConsolidationDb
 
 interface SnapshotConcept {
   id: string
@@ -152,10 +153,48 @@ async function pruneOldSnapshots(db: SnapshotDb, workspaceId: string): Promise<v
  * AGE, and reset Notes ingested after the snapshot to pending so they re-extract
  * against the restored vocabulary.
  *
+ * The relational delete + insert + notes-reset is atomic: inside a host
+ * transaction it runs under a savepoint (so a failure rolls back only the
+ * restore), otherwise it runs in its own transaction. remirrorGraph follows
+ * after the relational restore commits.
+ *
+ * Concurrency: restore takes the same per-workspace advisory lock as
+ * runConsolidation, so a restore cannot interleave with an in-flight run (the
+ * API maps the resulting ConsolidationLockConflictError to 409). The lock is
+ * released when the relational transaction commits; remirrorGraph replays
+ * relational state deterministically, so the brief unlocked remirror window
+ * is safe.
+ *
  * Authorization: the snapshot must belong to the supplied workspaceId. Never
  * trust a snapshotId alone.
  */
 export async function restoreSnapshot(db: SnapshotDb, snapshotId: string, workspaceId: string): Promise<RestoreResult> {
+  let restored: Omit<RestoreResult, 'remirror'>
+
+  if (db.isTransaction) {
+    await acquireConsolidationLock(db, workspaceId)
+    await sql`SAVEPOINT consolidation_restore`.execute(db)
+    try {
+      restored = await restoreRelational(db, snapshotId, workspaceId)
+      await sql`RELEASE SAVEPOINT consolidation_restore`.execute(db)
+    }
+    catch (error) {
+      await sql`ROLLBACK TO SAVEPOINT consolidation_restore`.execute(db)
+      throw error
+    }
+  }
+  else {
+    restored = await db.transaction().execute(async (trx) => {
+      await acquireConsolidationLock(trx, workspaceId)
+      return restoreRelational(trx, snapshotId, workspaceId)
+    })
+  }
+
+  const remirror = await remirrorGraph(db, workspaceId)
+  return { ...restored, remirror }
+}
+
+async function restoreRelational(db: SnapshotDb, snapshotId: string, workspaceId: string): Promise<Omit<RestoreResult, 'remirror'>> {
   const snapshot = await db
     .selectFrom('consolidation_snapshots')
     .select(['id', 'run_id', 'workspace_id', 'payload'])
@@ -231,14 +270,16 @@ export async function restoreSnapshot(db: SnapshotDb, snapshotId: string, worksp
     }).execute()
   }
 
-  const remirror = await remirrorGraph(db, workspaceId)
-
+  // Reset Notes ingested after the snapshot so they re-extract against the
+  // restored vocabulary. ingested_at (Phase 8) captures "created before the
+  // snapshot but ingested after it"; rows predating the column fall back to
+  // created_at.
   const notesResetResult = await db
     .updateTable('notes')
     .set({ status: 'pending' })
     .where('workspace_id', '=', workspaceId)
     .where('status', '=', 'ingested')
-    .where('created_at', '>', capturedAt)
+    .where(sql`coalesce(ingested_at, created_at)`, '>', capturedAt)
     .executeTakeFirstOrThrow()
 
   return {
@@ -249,7 +290,6 @@ export async function restoreSnapshot(db: SnapshotDb, snapshotId: string, worksp
       relations: payload.relations.length,
       mentions: payload.mentions.length,
     },
-    remirror,
     notesReset: Number(notesResetResult.numUpdatedRows ?? 0),
   }
 }

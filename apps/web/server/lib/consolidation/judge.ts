@@ -1,12 +1,8 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
-import type { ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate } from './types'
+import type { ConsolidationDb, ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate } from './types'
 import process from 'node:process'
 import { createEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
 import { resolveConsolidationProviderSettings, resolveEmbeddingProviderSettings } from '../settings'
-
-export type ConsolidationDb = Kysely<DB> | Transaction<DB>
 
 interface JudgeOptions {
   llmProvider: LLMProvider

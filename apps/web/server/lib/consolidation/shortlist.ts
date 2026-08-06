@@ -1,10 +1,6 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
-import type { MergeCandidate, PruneCandidate } from './types'
+import type { ConsolidationDb, ConsolidationJudge, MergeCandidate, MergeVerdict, PruneCandidate, PruneVerdict } from './types'
 import { sql } from 'kysely'
 import { COSINE_THRESHOLD, JUDGE_BATCH_SIZE, NEIGHBOR_TOP_K, PRUNE_GRACE_DAYS } from './types'
-
-export type ConsolidationDb = Kysely<DB> | Transaction<DB>
 
 interface ConceptRow {
   id: string
@@ -258,28 +254,83 @@ export async function buildSingletonTopicCandidates(
   }))
 }
 
+export interface BatchJudgeResult {
+  merges: MergeVerdict[]
+  prunes: PruneVerdict[]
+  judgeCalls: number
+  skippedInvalidVerdicts: number
+}
+
+/**
+ * Validate a merge verdict against the candidate set that was actually sent
+ * to the judge. The LLM can hallucinate: unknown pair ids, self-pairs
+ * (`X::X`, which would make survivor === loser and delete the concept), a
+ * survivor outside the pair (which would merge arbitrary concepts), a wrong
+ * kind, or the same verdict repeated across batches. Invalid verdicts are
+ * dropped and counted as skipped — never executed.
+ */
+function isValidMergeVerdict(verdict: MergeVerdict, candidate: MergeCandidate | undefined, seen: Set<string>): boolean {
+  if (!candidate || candidate.kind !== verdict.kind)
+    return false
+  const [id1, id2] = verdict.pairId.split('::')
+  if (!id1 || !id2 || id1 === id2)
+    return false
+  if (verdict.survivorId !== id1 && verdict.survivorId !== id2)
+    return false
+  if (seen.has(verdict.pairId))
+    return false
+  return true
+}
+
+function isValidPruneVerdict(verdict: PruneVerdict, candidate: PruneCandidate | undefined, seen: Set<string>): boolean {
+  if (!candidate || candidate.kind !== verdict.kind)
+    return false
+  if (seen.has(verdict.id))
+    return false
+  return true
+}
+
 export async function batchJudge(
-  judge: import('./types').ConsolidationJudge,
+  judge: ConsolidationJudge,
   pairs: MergeCandidate[],
   prunes: PruneCandidate[],
-): Promise<{ merges: import('./types').MergeVerdict[], prunes: import('./types').PruneVerdict[], judgeCalls: number }> {
-  const merges: import('./types').MergeVerdict[] = []
-  const prunesOut: import('./types').PruneVerdict[] = []
+): Promise<BatchJudgeResult> {
+  const pairById = new Map(pairs.map(p => [p.pairId, p]))
+  const pruneById = new Map(prunes.map(p => [p.id, p]))
+  const seenPairIds = new Set<string>()
+  const seenPruneIds = new Set<string>()
+  const merges: MergeVerdict[] = []
+  const prunesOut: PruneVerdict[] = []
   let judgeCalls = 0
+  let skippedInvalidVerdicts = 0
 
   for (let i = 0; i < pairs.length; i += JUDGE_BATCH_SIZE) {
     const batch = pairs.slice(i, i + JUDGE_BATCH_SIZE)
     const response = await judge({ mergePairs: batch, pruneCandidates: [] })
     judgeCalls++
-    merges.push(...response.merges)
+    for (const verdict of response.merges) {
+      if (!isValidMergeVerdict(verdict, pairById.get(verdict.pairId), seenPairIds)) {
+        skippedInvalidVerdicts++
+        continue
+      }
+      seenPairIds.add(verdict.pairId)
+      merges.push(verdict)
+    }
   }
 
   for (let i = 0; i < prunes.length; i += JUDGE_BATCH_SIZE) {
     const batch = prunes.slice(i, i + JUDGE_BATCH_SIZE)
     const response = await judge({ mergePairs: [], pruneCandidates: batch })
     judgeCalls++
-    prunesOut.push(...response.prunes)
+    for (const verdict of response.prunes) {
+      if (!isValidPruneVerdict(verdict, pruneById.get(verdict.id), seenPruneIds)) {
+        skippedInvalidVerdicts++
+        continue
+      }
+      seenPruneIds.add(verdict.id)
+      prunesOut.push(verdict)
+    }
   }
 
-  return { merges, prunes: prunesOut, judgeCalls }
+  return { merges, prunes: prunesOut, judgeCalls, skippedInvalidVerdicts }
 }

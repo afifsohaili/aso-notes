@@ -206,4 +206,35 @@ Divergences from ticket resolutions (with reasons):
 - The prototype mock showed a 4-count grid (merged/pruned/refiled/rewritten); the real implementation shows 5 counts (merges, prunes, refiles, rewrites, dissolves) to match the actual `counts` shape returned by the API.
 - The detail pane fetches the run detail endpoint imperatively with `$fetch` rather than through a second `useFetch`; this keeps the selected-run detail reactive to manual selection and polling while remaining straightforward to test with stubbed `$fetch`.
 
+## Phase 8: hardening
+
+Code-review fixes for Phases 1–7. Each fix landed test-first (red → green).
+
+Built:
+
+- **LLM judge verdict validation** (`shortlist.ts` `batchJudge`, `types.ts`): every verdict is validated against the candidate set actually judged in the run before execution. A merge verdict is dropped when its `pairId` was never judged, is a self-pair (`X::X` — which previously made survivor === loser and deleted the Concept with all Mentions/Relations), names a `survivorId` outside the pair, mismatches the candidate kind, or repeats a pairId already returned in an earlier batch. Prune verdicts get the same treatment (unknown id, wrong kind, duplicate). Dropped verdicts are counted on the run as `counts.skippedInvalidVerdicts`. Unit tests in `test/unit/consolidation-engine.spec.ts`; integration tests (self-merge, outsider survivor, unknown pairId) in `test/e2e/consolidation-engine.spec.ts` assert no destructive writes happen.
+- **Transactional restore** (`snapshot.ts`): the relational delete + insert + notes-reset now runs atomically — a `SAVEPOINT consolidation_restore` inside a host transaction (test harness) or `db.transaction()` otherwise. A mid-restore failure (e.g. a corrupted payload row violating NOT NULL) rolls back and leaves the tables untouched; `remirrorGraph` still follows after the relational restore. Regression test corrupts a snapshot payload and asserts the post-mutation state survives the failed restore.
+- **Per-workspace advisory lock** (`lock.ts`, new): `acquireConsolidationLock` takes `pg_try_advisory_xact_lock(hashtext(workspaceId))`; at most one consolidation mutation (run or restore) per workspace is in flight. `runConsolidation` and `restoreSnapshot` both take it. Decision: a second concurrent attempt throws `ConsolidationLockConflictError` → the restore API maps it to **409**; the cron/worker path (`runConsolidationSweep` in `job.ts`) **skips quietly** (`'skipped'`) and the next scheduled tick picks the workspace up. Tests: concurrent run attempt rejects and leaves no run row; restore during a simulated active run returns 409; cron sweep skips without error. This closes the TOCTOU window the queue-level 409 in `run.post.ts` could not cover (cron never checked per-workspace active runs).
+- **Atomic production runs** (engine restructure): when called with a pooled Kysely, the run body now executes inside one transaction (mutations roll back on failure instead of leaving partial merges). The run row is created up-front, marked `failed` on error, and deleted when the run never started due to a lock conflict — no phantom `running` rows.
+- **Workspace filters on merge/prune lookups** (`merge.ts`, `prune.ts`): every select/update/delete on `concepts`, `topics`, and `relations` now filters by `workspace_id`, so a verdict referencing another workspace's rows rejects instead of mutating across the boundary. Tested by executing cross-workspace merges/prunes and asserting rejection + no changes.
+- **`notes.ingested_at`** (migration `20260806000002`, `store-graph.ts`, `snapshot.ts`): new nullable column set when the Ingestion pipeline flips a Note to `ingested`. Restore notes-reset uses `coalesce(ingested_at, created_at) > captured_at`, so a Note created before the snapshot but ingested after it is correctly reset to `pending` (option (a) from the review; the pipeline touchpoint was a single guarded UPDATE in store-graph). Rows predating the column fall back to `created_at`, preserving Phase 3 behaviour. Test covers the created-before/ingested-after edge.
+- **Dissolve judging respects the run budget** (`prune.ts` `cleanupTopics`): the engine threads the budget left over after merge and prune judging into `cleanupTopics`, which slices singleton-Topic candidates accordingly; overflow defers to the next run. Test: budget 2 with 4 singleton Topics → exactly 2 candidates judged, 2 dissolves.
+- **Metrics fixes** (`metrics.ts`, new `test/e2e/consolidation-metrics.spec.ts`):
+  - `computeNearDupeRate` rewritten as one set-based self-join (`a.embedding <=> b.embedding`, `a.id < b.id`, `FILTER` on the 0.9 cosine threshold) instead of one DB round-trip per pair.
+  - `computeOrphanRate` now matches the spec (ticket-measuring-success): orphan = Concept with **0 Relations** (either side), previously "no Topic". Metric tests cover both definitions.
+- **Dead code / duplication cleanup**:
+  - `cleanupTopics` now uses the exported `buildSingletonTopicCandidates` from `shortlist.ts`; the inline re-implementation is deleted.
+  - `merge.ts` uses the exported `loserIdFromVerdict` instead of re-deriving it inline.
+  - `ConsolidationDb` is declared once in `types.ts` and imported everywhere (`engine`, `merge`, `prune`, `shortlist`, `judge`, `metrics`, `job`); `SnapshotDb` in `snapshot.ts` is now an alias of it.
+  - `resolveWorkspaceId` extracted to `server/utils/workspace.ts` (typed `Kysely<Database> | Transaction<Database>` instead of `any`) and shared by all four consolidation endpoints.
+
+Divergences from the review brief (with reasons):
+
+- **Validation lives in `batchJudge`, not the engine loop.** The brief suggested tracking the candidate set "through batchJudge"; implementing the filter inside `batchJudge` means duplicates are caught across batches (the engine's `mergedIds` set only dedupes execution, not counting) and `cleanupTopics` gets the same validation for free. The engine still keeps its `mergedIds` execution guard as defence in depth.
+- **Lock conflicts during a run leave no run row.** A conflicting attempt is stopped before any snapshot/mutation work; the pre-created run row is deleted rather than marked `failed`, since the run never started and a failure entry would misrepresent a no-op as a crash.
+- **Advisory lock is transaction-scoped; the remirror window is documented.** `pg_advisory_xact_lock` releases at commit, so on the pooled path `remirrorGraph` runs just after the lock is released. Remirror is a deterministic replay of relational state, so a concurrent run slipping into that window simply re-mirrors again — no torn state.
+- **`nuxt typecheck` is broken on `main`** (npm `EOVERRIDE` when nuxi shells out to npm; reproduces on a clean tree). Verified `pnpm lint` + full vitest suite (856 tests) instead.
+
+Deliberately not done (deferred per brief): nav badge, run_budget UI, LLM usage recording, description-rewrite pass.
+
 (End of file - total 124 lines)

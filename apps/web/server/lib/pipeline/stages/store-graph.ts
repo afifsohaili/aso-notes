@@ -527,10 +527,12 @@ export class StoreGraphStage implements Stage {
       }
 
       // (i) mark the note ingested — moved here from the M3 worker so the
-      // status flip shares the atomic transaction
+      // status flip shares the atomic transaction. ingested_at records when
+      // Ingestion completed; consolidation restore uses it to reset Notes
+      // ingested after a snapshot.
       await trx
         .updateTable('notes')
-        .set({ status: 'ingested', ingested_hash: ctx.note.content_hash, updated_at: sql`now()` })
+        .set({ status: 'ingested', ingested_at: sql`now()`, ingested_hash: ctx.note.content_hash, updated_at: sql`now()` })
         .where('id', '=', noteId)
         .execute()
     }

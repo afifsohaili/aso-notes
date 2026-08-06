@@ -1,10 +1,6 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
-import type { ConsolidationFlags, ConsolidationMetrics } from './types'
+import type { ConsolidationDb, ConsolidationFlags, ConsolidationMetrics } from './types'
 import { sql } from 'kysely'
 import { NEAR_DUPE_THRESHOLD } from './types'
-
-export type ConsolidationDb = Kysely<DB> | Transaction<DB>
 
 export async function computeMetrics(db: ConsolidationDb, workspaceId: string): Promise<ConsolidationMetrics> {
   const conceptsResult = await db
@@ -46,51 +42,54 @@ export async function computeMetrics(db: ConsolidationDb, workspaceId: string): 
   }
 }
 
+/**
+ * Set-based near-dupe pair rate: one self-join query counts pairs above the
+ * cosine threshold (`<=>` is the pgvector cosine distance operator) instead of
+ * one round-trip per pair.
+ */
 async function computeNearDupeRate(db: ConsolidationDb, workspaceId: string, conceptCount: number): Promise<number> {
   if (conceptCount < 2)
     return 0
 
-  const concepts = await db
-    .selectFrom('concepts')
-    .select(['id', 'embedding'])
-    .where('workspace_id', '=', workspaceId)
-    .where('embedding', 'is not', null)
-    .execute()
+  const result = await sql<{ near_dupes: number, total: number }>`
+    SELECT
+      count(*) FILTER (WHERE 1 - (a.embedding <=> b.embedding) > ${NEAR_DUPE_THRESHOLD})::int AS near_dupes,
+      count(*)::int AS total
+    FROM concepts a
+    JOIN concepts b
+      ON b.workspace_id = a.workspace_id
+     AND a.id < b.id
+    WHERE a.workspace_id = ${workspaceId}
+      AND a.embedding IS NOT NULL
+      AND b.embedding IS NOT NULL
+  `.execute(db)
 
-  let nearDupePairs = 0
-  let totalPairs = 0
-
-  for (let i = 0; i < concepts.length; i++) {
-    for (let j = i + 1; j < concepts.length; j++) {
-      totalPairs++
-      const distance = await db
-        .selectFrom('concepts')
-        .select(sql<number>`embedding <=> (SELECT embedding FROM concepts WHERE id = ${concepts[j]!.id})`.as('d'))
-        .where('id', '=', concepts[i]!.id)
-        .executeTakeFirstOrThrow()
-      if (1 - Number(distance.d) > NEAR_DUPE_THRESHOLD)
-        nearDupePairs++
-    }
-  }
-
-  return totalPairs ? nearDupePairs / totalPairs : 0
+  const row = result.rows[0]
+  const total = Number(row?.total ?? 0)
+  return total ? Number(row!.near_dupes) / total : 0
 }
 
+/**
+ * Orphan rate per spec (ticket-measuring-success): Concepts with zero
+ * Relations on either side, regardless of Topic membership.
+ */
 async function computeOrphanRate(db: ConsolidationDb, workspaceId: string, conceptCount: number): Promise<number> {
   if (conceptCount === 0)
     return 0
 
-  const orphans = await db
-    .selectFrom('concepts')
-    .leftJoin('concept_topics', join => join
-      .onRef('concept_topics.concept_id', '=', 'concepts.id')
-      .on('concept_topics.workspace_id', '=', workspaceId))
-    .select(sql<number>`count(distinct concepts.id)::int`.as('c'))
-    .where('concepts.workspace_id', '=', workspaceId)
-    .where('concept_topics.topic_id', 'is', null)
-    .executeTakeFirstOrThrow()
+  const result = await sql<{ c: number }>`
+    SELECT count(*)::int AS c
+    FROM concepts c
+    WHERE c.workspace_id = ${workspaceId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM relations r
+        WHERE r.workspace_id = c.workspace_id
+          AND (r.from_concept_id = c.id OR r.to_concept_id = c.id)
+      )
+  `.execute(db)
 
-  return Number(orphans.c) / conceptCount
+  return Number(result.rows[0]?.c ?? 0) / conceptCount
 }
 
 async function computeTopicSpread(db: ConsolidationDb, workspaceId: string, topicCount: number): Promise<number> {

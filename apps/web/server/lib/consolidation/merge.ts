@@ -1,12 +1,9 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
 import type { EmbeddingProvider } from '../ai/types'
-import type { MergeVerdict } from './types'
+import type { ConsolidationDb, MergeVerdict } from './types'
 import { sql } from 'kysely'
 import { halfvecLiteral } from '../agent/vector'
 import { topicEmbeddingInput } from '../pipeline/stages/store-graph'
-
-export type ConsolidationDb = Kysely<DB> | Transaction<DB>
+import { loserIdFromVerdict } from './shortlist'
 
 export async function executeConceptMerge(
   db: ConsolidationDb,
@@ -15,12 +12,11 @@ export async function executeConceptMerge(
   runId: string,
   embeddingProvider?: EmbeddingProvider,
 ): Promise<void> {
-  const [id1, id2] = verdict.pairId.split('::')
-  const loserId = id1 === verdict.survivorId ? id2! : id1!
+  const loserId = loserIdFromVerdict(verdict)
 
   const [survivor, loser] = await Promise.all([
-    db.selectFrom('concepts').selectAll().where('id', '=', verdict.survivorId).executeTakeFirstOrThrow(),
-    db.selectFrom('concepts').selectAll().where('id', '=', loserId).executeTakeFirstOrThrow(),
+    db.selectFrom('concepts').selectAll().where('id', '=', verdict.survivorId).where('workspace_id', '=', workspaceId).executeTakeFirstOrThrow(),
+    db.selectFrom('concepts').selectAll().where('id', '=', loserId).where('workspace_id', '=', workspaceId).executeTakeFirstOrThrow(),
   ])
 
   const descriptionChanged = verdict.mergedDescription && verdict.mergedDescription !== survivor.description
@@ -29,6 +25,7 @@ export async function executeConceptMerge(
       .updateTable('concepts')
       .set({ description: verdict.mergedDescription, updated_at: sql`now()` })
       .where('id', '=', survivor.id)
+      .where('workspace_id', '=', workspaceId)
       .execute()
   }
 
@@ -72,7 +69,7 @@ export async function executeConceptMerge(
     const toId = relation.to_concept_id === loser.id ? survivor.id : relation.to_concept_id
 
     if (fromId === toId) {
-      await db.deleteFrom('relations').where('id', '=', relation.id).execute()
+      await db.deleteFrom('relations').where('id', '=', relation.id).where('workspace_id', '=', workspaceId).execute()
       continue
     }
 
@@ -131,7 +128,7 @@ export async function executeConceptMerge(
     .execute()
 
   if (descriptionChanged && embeddingProvider) {
-    await reembedConcept(db, embeddingProvider, survivor.id, survivor.name, verdict.mergedDescription!)
+    await reembedConcept(db, embeddingProvider, workspaceId, survivor.id, survivor.name, verdict.mergedDescription!)
   }
 
   await db
@@ -152,12 +149,11 @@ export async function executeTopicMerge(
   runId: string,
   embeddingProvider?: EmbeddingProvider,
 ): Promise<void> {
-  const [id1, id2] = verdict.pairId.split('::')
-  const loserId = id1 === verdict.survivorId ? id2! : id1!
+  const loserId = loserIdFromVerdict(verdict)
 
   const [survivor, loser] = await Promise.all([
-    db.selectFrom('topics').selectAll().where('id', '=', verdict.survivorId).executeTakeFirstOrThrow(),
-    db.selectFrom('topics').selectAll().where('id', '=', loserId).executeTakeFirstOrThrow(),
+    db.selectFrom('topics').selectAll().where('id', '=', verdict.survivorId).where('workspace_id', '=', workspaceId).executeTakeFirstOrThrow(),
+    db.selectFrom('topics').selectAll().where('id', '=', loserId).where('workspace_id', '=', workspaceId).executeTakeFirstOrThrow(),
   ])
 
   const descriptionChanged = verdict.mergedDescription && verdict.mergedDescription !== survivor.description
@@ -166,6 +162,7 @@ export async function executeTopicMerge(
       .updateTable('topics')
       .set({ description: verdict.mergedDescription, updated_at: sql`now()` })
       .where('id', '=', survivor.id)
+      .where('workspace_id', '=', workspaceId)
       .execute()
   }
 
@@ -201,7 +198,7 @@ export async function executeTopicMerge(
     .execute()
 
   if (descriptionChanged && embeddingProvider) {
-    await reembedTopic(db, embeddingProvider, survivor.id, survivor.name, verdict.mergedDescription!)
+    await reembedTopic(db, embeddingProvider, workspaceId, survivor.id, survivor.name, verdict.mergedDescription!)
   }
 
   await db
@@ -244,6 +241,7 @@ async function dedupeRelations(db: ConsolidationDb, workspaceId: string): Promis
       await db
         .deleteFrom('relations')
         .where('id', 'in', idsToDelete)
+        .where('workspace_id', '=', workspaceId)
         .execute()
     }
   }
@@ -252,6 +250,7 @@ async function dedupeRelations(db: ConsolidationDb, workspaceId: string): Promis
 async function reembedConcept(
   db: ConsolidationDb,
   provider: EmbeddingProvider,
+  workspaceId: string,
   conceptId: string,
   name: string,
   description: string,
@@ -265,12 +264,14 @@ async function reembedConcept(
     .updateTable('concepts')
     .set({ embedding: halfvecLiteral(embedding) })
     .where('id', '=', conceptId)
+    .where('workspace_id', '=', workspaceId)
     .execute()
 }
 
 async function reembedTopic(
   db: ConsolidationDb,
   provider: EmbeddingProvider,
+  workspaceId: string,
   topicId: string,
   name: string,
   description: string,
@@ -284,5 +285,6 @@ async function reembedTopic(
     .updateTable('topics')
     .set({ embedding: halfvecLiteral(embedding) })
     .where('id', '=', topicId)
+    .where('workspace_id', '=', workspaceId)
     .execute()
 }

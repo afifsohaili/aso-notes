@@ -1,9 +1,5 @@
-import type { DB } from '@monorepo/shared'
-import type { Kysely, Transaction } from 'kysely'
-import type { ConsolidationCounts, ConsolidationJudge, PruneVerdict } from './types'
-import { sql } from 'kysely'
-
-export type ConsolidationDb = Kysely<DB> | Transaction<DB>
+import type { ConsolidationCounts, ConsolidationDb, ConsolidationJudge, PruneVerdict } from './types'
+import { batchJudge, buildSingletonTopicCandidates } from './shortlist'
 
 export async function executePruneConcept(
   db: ConsolidationDb,
@@ -15,6 +11,7 @@ export async function executePruneConcept(
     .selectFrom('concepts')
     .select(['id', 'name'])
     .where('id', '=', verdict.id)
+    .where('workspace_id', '=', workspaceId)
     .executeTakeFirstOrThrow()
 
   await db
@@ -44,6 +41,7 @@ export async function executePruneTopic(
     .selectFrom('topics')
     .select(['id', 'name'])
     .where('id', '=', verdict.id)
+    .where('workspace_id', '=', workspaceId)
     .executeTakeFirstOrThrow()
 
   await db
@@ -69,7 +67,7 @@ export async function cleanupTopics(
   runId: string,
   judge: ConsolidationJudge,
   counts: ConsolidationCounts,
-  batchSize: number,
+  judgeBudget: number,
 ): Promise<void> {
   const emptyTopics = await db
     .selectFrom('topics')
@@ -100,37 +98,19 @@ export async function cleanupTopics(
     counts.prunes++
   }
 
-  const singletonTopics = await db
-    .selectFrom('topics')
-    .innerJoin('concept_topics', join => join
-      .onRef('concept_topics.topic_id', '=', 'topics.id')
-      .on('concept_topics.workspace_id', '=', workspaceId))
-    .select(['topics.id', 'topics.name', 'topics.description'])
-    .select(sql<number>`count(*)::int`.as('concept_count'))
-    .where('topics.workspace_id', '=', workspaceId)
-    .groupBy(['topics.id', 'topics.name', 'topics.description'])
-    .having(sql<number>`count(*)`, '=', 1)
-    .execute()
+  // Singleton-topic dissolves are bounded by the run budget left over after
+  // merge and prune judging; overflow defers to the next run.
+  const singletonCandidates = await buildSingletonTopicCandidates(db, workspaceId)
+  const dissolveCandidates = singletonCandidates.slice(0, Math.max(0, judgeBudget))
 
-  const dissolveCandidates = singletonTopics.map(t => ({
-    kind: 'topic' as const,
-    id: t.id,
-    name: t.name,
-    description: t.description,
-    mentionCount: 0,
-    relationCount: 0,
-    sampleChunkText: null,
-  }))
+  const { prunes: dissolveVerdicts, judgeCalls, skippedInvalidVerdicts } = await batchJudge(judge, [], dissolveCandidates)
+  counts.judgeCalls += judgeCalls
+  counts.skippedInvalidVerdicts += skippedInvalidVerdicts
 
-  for (let i = 0; i < dissolveCandidates.length; i += batchSize) {
-    const batch = dissolveCandidates.slice(i, i + batchSize)
-    const response = await judge({ mergePairs: [], pruneCandidates: batch })
-    counts.judgeCalls++
-    for (const verdict of response.prunes) {
-      if (verdict.prune) {
-        await executePruneTopic(db, workspaceId, verdict, runId)
-        counts.dissolves++
-      }
+  for (const verdict of dissolveVerdicts) {
+    if (verdict.prune) {
+      await executePruneTopic(db, workspaceId, verdict, runId)
+      counts.dissolves++
     }
   }
 }

@@ -274,6 +274,86 @@ describe('consolidation snapshot service', () => {
       expect(older.status).toBe('ingested')
       expect(newer.status).toBe('pending')
     })
+
+    test('resets a note created before the snapshot but ingested after it', async ({ trx }) => {
+      const { workspace } = await givenVerifiedUser()
+      await ensureNotesGraphCatalog(trx)
+      const seeded = await seedGraph(trx, workspace.id)
+      const run = await createRun(trx, workspace.id)
+      const { snapshotId } = await captureSnapshot(trx, run.id, workspace.id)
+
+      // Note row existed before the snapshot (created long ago) but its
+      // Ingestion only completed afterwards — its mentions/concepts postdate
+      // the snapshot and must be re-extracted on restore.
+      const lateIngestedNote = await trx
+        .insertInto('notes')
+        .values({
+          workspace_id: workspace.id,
+          synced_folder_id: seeded.note.synced_folder_id,
+          path: '/late.md',
+          title: 'Late',
+          content: 'late',
+          content_hash: 'late-hash',
+          status: 'pending',
+          created_at: new Date('2020-01-01T00:00:00Z'),
+        })
+        .returning(['id'])
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .updateTable('notes')
+        .set({ status: 'ingested', ingested_at: new Date('2099-01-01T00:00:00Z') })
+        .where('id', '=', lateIngestedNote.id)
+        .execute()
+
+      const result = await restoreSnapshot(trx, snapshotId, workspace.id)
+      expect(result.notesReset).toBe(1)
+
+      const note = await trx.selectFrom('notes').select('status').where('id', '=', lateIngestedNote.id).executeTakeFirstOrThrow()
+      expect(note.status).toBe('pending')
+    })
+
+    test('rolls back all table changes when the restore fails mid-way', async ({ trx }) => {
+      const { workspace } = await givenVerifiedUser()
+      await ensureNotesGraphCatalog(trx)
+      const seeded = await seedGraph(trx, workspace.id)
+      const run = await createRun(trx, workspace.id)
+      const { snapshotId } = await captureSnapshot(trx, run.id, workspace.id)
+
+      // Post-snapshot mutation: delete topic Y and its concept_topics rows.
+      await trx.deleteFrom('concept_topics').where('topic_id', '=', seeded.topicY.id).execute()
+      await trx.deleteFrom('topics').where('id', '=', seeded.topicY.id).execute()
+
+      // Corrupt the snapshot payload so a row violates NOT NULL on insert.
+      const row = await trx
+        .selectFrom('consolidation_snapshots')
+        .select('payload')
+        .where('id', '=', snapshotId)
+        .executeTakeFirstOrThrow()
+      const corrupted = JSON.parse(JSON.stringify(row.payload)) as any
+      corrupted.concepts[0].name = null
+      await trx
+        .updateTable('consolidation_snapshots')
+        .set({ payload: corrupted })
+        .where('id', '=', snapshotId)
+        .execute()
+
+      await expect(restoreSnapshot(trx, snapshotId, workspace.id)).rejects.toThrow()
+
+      // The relational delete+insert must roll back: tables look exactly as
+      // they did before the failed restore attempt (topic Y deleted, the rest intact).
+      const concepts = await trx.selectFrom('concepts').select('name').where('workspace_id', '=', workspace.id).orderBy('name').execute()
+      const topics = await trx.selectFrom('topics').select('name').where('workspace_id', '=', workspace.id).execute()
+      const conceptTopics = await trx.selectFrom('concept_topics').selectAll().where('workspace_id', '=', workspace.id).execute()
+      const relations = await trx.selectFrom('relations').selectAll().where('workspace_id', '=', workspace.id).execute()
+      const mentions = await trx.selectFrom('mentions').selectAll().where('workspace_id', '=', workspace.id).execute()
+
+      expect(concepts.map(c => c.name)).toEqual(['Concept A', 'Concept B'])
+      expect(topics.map(t => t.name)).toEqual(['Topic X'])
+      expect(conceptTopics).toHaveLength(2)
+      expect(relations).toHaveLength(1)
+      expect(mentions).toHaveLength(2)
+    })
   })
 
   describe('captureSnapshot retention', () => {

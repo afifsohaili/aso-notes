@@ -1,15 +1,7 @@
 import { useDatabase } from '~~/utils/db'
+import { ConsolidationLockConflictError } from '../../../../lib/consolidation/lock'
 import { restoreSnapshot } from '../../../../lib/consolidation/snapshot'
-
-async function resolveWorkspaceId(db: any, userId: string): Promise<string | null> {
-  const membership = await db
-    .selectFrom('memberships')
-    .select('workspace_id')
-    .where('user_id', '=', userId)
-    .orderBy('created_at', 'asc')
-    .executeTakeFirst()
-  return membership?.workspace_id ?? null
-}
+import { resolveWorkspaceId } from '../../../../utils/workspace'
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
@@ -51,7 +43,14 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Snapshot not found for this run' })
   }
 
-  const result = await restoreSnapshot(db, snapshot.id, workspaceId)
-
-  return { restored: true, ...result }
+  try {
+    const result = await restoreSnapshot(db, snapshot.id, workspaceId)
+    return { restored: true, ...result }
+  }
+  catch (error) {
+    if (error instanceof ConsolidationLockConflictError) {
+      throw createError({ statusCode: 409, statusMessage: 'A consolidation run is in progress for this workspace' })
+    }
+    throw error
+  }
 })

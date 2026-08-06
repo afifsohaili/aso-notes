@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict N9kZG7v1OdGodeMK3Z4BBhxMHu1GKqFmXxrRBqjuEEYkR0bnzYI6nl0Cg6MqgBw
+\restrict XdHiHyItS1avmoKN2YJuJlb9xBoH9RfIoOWtZ12YoDdJolgrz6Y4OpTC9aoeXga
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -590,6 +590,7 @@ CREATE TABLE public.notes (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     last_run jsonb,
     synced_folder_id uuid NOT NULL,
+    ingested_at timestamp without time zone,
     CONSTRAINT notes_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'queued'::character varying, 'processing'::character varying, 'ingested'::character varying, 'failed'::character varying])::text[])))
 );
 
@@ -606,7 +607,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-05 21:22:16.1626'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-06 00:20:02.193473'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -639,7 +640,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-05 21:22:16.1626'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-06 00:20:02.193473'::timestamp without time zone NOT NULL
 );
 
 
@@ -1770,5 +1771,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict N9kZG7v1OdGodeMK3Z4BBhxMHu1GKqFmXxrRBqjuEEYkR0bnzYI6nl0Cg6MqgBw
+\unrestrict XdHiHyItS1avmoKN2YJuJlb9xBoH9RfIoOWtZ12YoDdJolgrz6Y4OpTC9aoeXga
 

@@ -5,6 +5,11 @@ import { sql } from 'kysely'
 import { describe, expect } from 'vitest'
 import { halfvecLiteral } from '../../server/lib/agent/vector'
 import { runConsolidation } from '../../server/lib/consolidation/engine'
+import { runConsolidationSweep } from '../../server/lib/consolidation/job'
+import { ConsolidationLockConflictError } from '../../server/lib/consolidation/lock'
+import { executeConceptMerge, executeTopicMerge } from '../../server/lib/consolidation/merge'
+import { executePruneConcept, executePruneTopic } from '../../server/lib/consolidation/prune'
+import { pairId } from '../../server/lib/consolidation/shortlist'
 import { restoreSnapshot } from '../../server/lib/consolidation/snapshot'
 import { queryCypher } from '../../server/lib/graph/age'
 import { ensureNotesGraphCatalog } from './age-catalog'
@@ -845,5 +850,429 @@ describe('consolidation engine', () => {
 
     expect(changes).toHaveLength(1)
     expect(changes[0]!.action).toBe('merge-concept')
+  })
+
+  test('skips a hallucinated self-merge verdict without deleting the concept', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Alpha',
+        name_normalized: 'duplicate alpha',
+        description: 'alpha description',
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const b = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Beta',
+        name_normalized: 'duplicate beta',
+        description: 'beta description',
+        embedding: halfvecLiteral(unitVector(10)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: b.id },
+    ]).execute()
+
+    // Judge hallucinates a self-pair: survivor === loser would wipe the concept.
+    const judge: ConsolidationJudge = async () => ({
+      merges: [{
+        kind: 'concept',
+        pairId: `${a.id}::${a.id}`,
+        merge: true,
+        survivorId: a.id,
+        mergedDescription: null,
+        reason: 'hallucinated self-merge',
+      }],
+      prunes: [],
+    })
+
+    const result = await runConsolidation(trx, workspace.id, 'full', { judge })
+
+    expect(result.counts.merges).toBe(0)
+    expect(result.counts.skippedInvalidVerdicts).toBe(1)
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select('name')
+      .where('workspace_id', '=', workspace.id)
+      .orderBy('name')
+      .execute()
+
+    expect(concepts.map(c => c.name)).toEqual(['Duplicate Alpha', 'Duplicate Beta'])
+
+    const mentions = await trx
+      .selectFrom('mentions')
+      .select('concept_id')
+      .where('workspace_id', '=', workspace.id)
+      .execute()
+
+    expect(mentions).toHaveLength(2)
+  })
+
+  test('skips a verdict whose survivor is not a member of the judged pair', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Alpha',
+        name_normalized: 'duplicate alpha',
+        description: 'alpha description',
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const b = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Beta',
+        name_normalized: 'duplicate beta',
+        description: 'beta description',
+        embedding: halfvecLiteral(unitVector(10)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const outsider = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Outsider Concept',
+        name_normalized: 'outsider concept',
+        description: 'outsider',
+        embedding: halfvecLiteral(unitVector(90)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: b.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: outsider.id },
+    ]).execute()
+
+    // Judge returns the real pair but names an outsider as survivor — executing
+    // this would merge two unrelated concepts.
+    const judge: ConsolidationJudge = async ({ mergePairs }) => ({
+      merges: mergePairs.map(pair => ({
+        kind: pair.kind,
+        pairId: pair.pairId,
+        merge: true,
+        survivorId: outsider.id,
+        mergedDescription: null,
+        reason: 'hallucinated outsider survivor',
+      })),
+      prunes: [],
+    })
+
+    const result = await runConsolidation(trx, workspace.id, 'full', { judge })
+
+    expect(result.counts.merges).toBe(0)
+    expect(result.counts.skippedInvalidVerdicts).toBeGreaterThanOrEqual(1)
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select('name')
+      .where('workspace_id', '=', workspace.id)
+      .orderBy('name')
+      .execute()
+
+    expect(concepts.map(c => c.name)).toEqual(['Duplicate Alpha', 'Duplicate Beta', 'Outsider Concept'])
+  })
+
+  test('skips verdicts for pairIds that were never judged', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    const { chunk } = await seedGraph(trx, workspace.id)
+
+    const a = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Alpha',
+        name_normalized: 'duplicate alpha',
+        description: 'alpha description',
+        embedding: halfvecLiteral(unitVector(0)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const b = await trx
+      .insertInto('concepts')
+      .values({
+        workspace_id: workspace.id,
+        name: 'Duplicate Beta',
+        name_normalized: 'duplicate beta',
+        description: 'beta description',
+        embedding: halfvecLiteral(unitVector(10)),
+      })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    await trx.insertInto('mentions').values([
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: a.id },
+      { workspace_id: workspace.id, chunk_id: chunk.id, concept_id: b.id },
+    ]).execute()
+
+    const judge: ConsolidationJudge = async () => ({
+      merges: [{
+        kind: 'concept',
+        pairId: `${crypto.randomUUID()}::${crypto.randomUUID()}`,
+        merge: true,
+        survivorId: a.id,
+        mergedDescription: null,
+        reason: 'fabricated pairId that was never judged',
+      }],
+      prunes: [],
+    })
+
+    const result = await runConsolidation(trx, workspace.id, 'full', { judge })
+
+    expect(result.counts.merges).toBe(0)
+    expect(result.counts.skippedInvalidVerdicts).toBeGreaterThanOrEqual(1)
+
+    const concepts = await trx
+      .selectFrom('concepts')
+      .select('name')
+      .where('workspace_id', '=', workspace.id)
+      .orderBy('name')
+      .execute()
+
+    expect(concepts.map(c => c.name)).toEqual(['Duplicate Alpha', 'Duplicate Beta'])
+  })
+
+  test('caps singleton-topic dissolve judging at the remaining run budget', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    await seedGraph(trx, workspace.id)
+
+    const angles = [0, 90, 180, 270]
+    for (let i = 0; i < angles.length; i++) {
+      const concept = await trx
+        .insertInto('concepts')
+        .values({
+          workspace_id: workspace.id,
+          name: `Concept ${i}`,
+          name_normalized: `concept ${i}`,
+          description: `description ${i}`,
+          embedding: halfvecLiteral(unitVector(angles[i]!)),
+        })
+        .returning(['id'])
+        .executeTakeFirstOrThrow()
+
+      const topic = await trx
+        .insertInto('topics')
+        .values({
+          workspace_id: workspace.id,
+          name: `Singleton Topic ${i}`,
+          name_normalized: `singleton topic ${i}`,
+          description: `singleton ${i}`,
+          embedding: halfvecLiteral(unitVector(angles[i]! + 45)),
+        })
+        .returning(['id'])
+        .executeTakeFirstOrThrow()
+
+      await trx.insertInto('concept_topics').values({
+        workspace_id: workspace.id,
+        concept_id: concept.id,
+        topic_id: topic.id,
+      }).execute()
+    }
+
+    await sql`
+      INSERT INTO workspace_settings (workspace_id, key, value)
+      VALUES (${workspace.id}, 'consolidation.run_budget', ${JSON.stringify(2)}::jsonb)
+    `.execute(trx)
+
+    const judgedCandidateIds: string[] = []
+    const judge: ConsolidationJudge = async ({ pruneCandidates }) => {
+      judgedCandidateIds.push(...pruneCandidates.map(c => c.id))
+      return {
+        merges: [],
+        prunes: pruneCandidates.map(candidate => ({
+          kind: candidate.kind,
+          id: candidate.id,
+          prune: true,
+          reason: 'fake judge: dissolve all',
+        })),
+      }
+    }
+
+    const result = await runConsolidation(trx, workspace.id, 'full', { judge })
+
+    // Budget of 2 with no merges/prunes: only 2 of the 4 singleton topics may be judged.
+    expect(judgedCandidateIds).toHaveLength(2)
+    expect(result.counts.dissolves).toBe(2)
+
+    const topics = await trx
+      .selectFrom('topics')
+      .select('name')
+      .where('workspace_id', '=', workspace.id)
+      .execute()
+    expect(topics).toHaveLength(2)
+  })
+
+  test('refuses to merge or prune rows that belong to another workspace', async ({ trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    const other = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+
+    const foreignConceptA = await trx
+      .insertInto('concepts')
+      .values({ workspace_id: other.workspace.id, name: 'Foreign Concept A', name_normalized: 'foreign concept a', description: 'foreign a' })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const foreignConceptB = await trx
+      .insertInto('concepts')
+      .values({ workspace_id: other.workspace.id, name: 'Foreign Concept B', name_normalized: 'foreign concept b', description: 'foreign b' })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const foreignTopic = await trx
+      .insertInto('topics')
+      .values({ workspace_id: other.workspace.id, name: 'Foreign Topic', name_normalized: 'foreign topic', description: 'foreign topic' })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const foreignTopicB = await trx
+      .insertInto('topics')
+      .values({ workspace_id: other.workspace.id, name: 'Foreign Topic B', name_normalized: 'foreign topic b', description: 'foreign topic b' })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    const run = await trx
+      .insertInto('consolidation_runs')
+      .values({ workspace_id: workspace.id, mode: 'manual', status: 'running' })
+      .returning(['id'])
+      .executeTakeFirstOrThrow()
+
+    // Executing against `workspace` with verdicts referencing `other`'s rows
+    // must reject — never mutate across the workspace boundary.
+    await expect(executeConceptMerge(trx, workspace.id, {
+      kind: 'concept',
+      pairId: pairId(foreignConceptA.id, foreignConceptB.id),
+      merge: true,
+      survivorId: foreignConceptA.id,
+      mergedDescription: 'hijacked description',
+      reason: 'cross-workspace merge',
+    }, run.id)).rejects.toThrow()
+
+    await expect(executeTopicMerge(trx, workspace.id, {
+      kind: 'topic',
+      pairId: pairId(foreignTopic.id, foreignTopicB.id),
+      merge: true,
+      survivorId: foreignTopic.id,
+      mergedDescription: 'hijacked description',
+      reason: 'cross-workspace merge',
+    }, run.id)).rejects.toThrow()
+
+    await expect(executePruneConcept(trx, workspace.id, {
+      kind: 'concept',
+      id: foreignConceptA.id,
+      prune: true,
+      reason: 'cross-workspace prune',
+    }, run.id)).rejects.toThrow()
+
+    await expect(executePruneTopic(trx, workspace.id, {
+      kind: 'topic',
+      id: foreignTopic.id,
+      prune: true,
+      reason: 'cross-workspace prune',
+    }, run.id)).rejects.toThrow()
+
+    const foreignConcepts = await trx
+      .selectFrom('concepts')
+      .select(['name', 'description'])
+      .where('workspace_id', '=', other.workspace.id)
+      .orderBy('name')
+      .execute()
+    expect(foreignConcepts).toEqual([
+      { name: 'Foreign Concept A', description: 'foreign a' },
+      { name: 'Foreign Concept B', description: 'foreign b' },
+    ])
+
+    const foreignTopics = await trx
+      .selectFrom('topics')
+      .select('name')
+      .where('workspace_id', '=', other.workspace.id)
+      .execute()
+    expect(foreignTopics).toHaveLength(2)
+
+    const changes = await trx
+      .selectFrom('consolidation_run_changes')
+      .select('id')
+      .where('run_id', '=', run.id)
+      .execute()
+    expect(changes).toHaveLength(0)
+  })
+
+  test('rejects a concurrent run while another session holds the workspace consolidation lock', async ({ db, trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    await seedGraph(trx, workspace.id)
+
+    // Simulate an in-flight consolidation on another connection.
+    const other = await db.startTransaction().execute()
+    try {
+      await sql`SELECT pg_advisory_xact_lock(hashtext(${workspace.id}))`.execute(other)
+
+      await expect(
+        runConsolidation(trx, workspace.id, 'full', { judge: fakeJudgeThatKeepsAll() }),
+      ).rejects.toThrow(ConsolidationLockConflictError)
+
+      // The conflicting attempt must not leave a run row behind.
+      const runs = await trx
+        .selectFrom('consolidation_runs')
+        .select('id')
+        .where('workspace_id', '=', workspace.id)
+        .execute()
+      expect(runs).toHaveLength(0)
+    }
+    finally {
+      await other.rollback().execute()
+    }
+  })
+
+  test('skips a cron sweep quietly when the workspace lock is held', async ({ db, trx }) => {
+    const { workspace } = await givenVerifiedUser()
+    await ensureNotesGraphCatalog(trx)
+    await seedGraph(trx, workspace.id)
+
+    const other = await db.startTransaction().execute()
+    try {
+      await sql`SELECT pg_advisory_xact_lock(hashtext(${workspace.id}))`.execute(other)
+
+      const result = await runConsolidationSweep(trx, workspace.id, 'incremental', { judge: fakeJudgeThatKeepsAll() })
+      expect(result).toBe('skipped')
+
+      const runs = await trx
+        .selectFrom('consolidation_runs')
+        .select('id')
+        .where('workspace_id', '=', workspace.id)
+        .execute()
+      expect(runs).toHaveLength(0)
+    }
+    finally {
+      await other.rollback().execute()
+    }
   })
 })

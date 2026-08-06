@@ -1,4 +1,8 @@
+import type { DB } from '@monorepo/shared'
+import type { Kysely, Transaction } from 'kysely'
 import type { EmbeddingProvider } from '../ai/types'
+
+export type ConsolidationDb = Kysely<DB> | Transaction<DB>
 
 export interface RunConsolidationOptions {
   judge?: ConsolidationJudge
@@ -86,6 +90,7 @@ export interface ConsolidationCounts {
   dissolves: number
   refiles: number
   judgeCalls: number
+  skippedInvalidVerdicts: number
 }
 
 export const COSINE_THRESHOLD = 0.75
