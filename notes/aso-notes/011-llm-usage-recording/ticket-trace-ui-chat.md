@@ -1,6 +1,6 @@
 ---
 label: wayfinder:prototype
-blocked-by: [ticket-agent-chat-tracing]
+blocked-by: []
 ---
 
 # Ticket: Trace UI in /chat
