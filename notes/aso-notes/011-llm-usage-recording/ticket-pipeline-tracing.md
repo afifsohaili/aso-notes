@@ -1,7 +1,19 @@
 ---
 label: wayfinder:task
 blocked-by: []
+claimed-by: afif
+status: closed
 ---
+
+# Ticket: Pipeline tracing (ingestion + consolidation)
+
+## Resolution (2026-08-06)
+
+**extractionRecord → pointer model.** `notes.last_run` keeps the cheap operational metadata (status, error, pipeline, duration_ms, failed_stage, chunks, attempt, job_id) and **gains `trace_id`**. The heavy extraction payload (messages/response/usage) stops being duplicated — written only to `llm_generations`. Consumers (fact-checked): the retry badge and smoke test don't read the extraction payload (untouched); note-detail.vue's extraction section switches to reading via trace_id. Old last_run payloads stay readable as-is — no backfill, no data migration.
+
+**One Trace per Ingestion Run** (`kind='ingestion'`, `owner_type='notes'`): the extraction call = one Generation; each embedding call = a metadata-only Generation (`llm_use_case='embedding'`, prompt null per the seam decision). Tokens/cost recorded on every Generation.
+
+**One Trace per Consolidation Run** (`kind='consolidation'`, `owner_type='consolidation_runs'`): judge batches = Generations (`llm_use_case='consolidation'`). This closes the deferred Phase 8/9 usage-recording gap — `consolidation_runs.usage` is dropped as a write target; usage/cost shown in the UI becomes a **rollup computed on read** from the run's Generations (consistent with the cost-model ticket).
 
 # Ticket: Pipeline tracing (ingestion + consolidation)
 

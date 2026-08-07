@@ -24,11 +24,11 @@ Skills to consult: /grilling, /domain-modeling, /prototype (UI tickets).
 - **Instrumentation at the AI registry choke point** (`server/lib/ai/registry.ts`) — one seam covers all LLM Use Cases (production best practice).
 - **Cost computed at request time** — tokens × model rate at that moment, never backfilled (production best practice).
 
-## Decisions so far
-
-<!-- one line per closed ticket: gist + link -->
-
-- [Trace data model](ticket-trace-data-model.md) — 3 tables: `llm_traces` (polymorphic owner_type+owner_id, no FK), `llm_generations` (inline JSONB prompt/response, cost_usd numeric(12,6)), `llm_tool_calls` (own table, ~8KB truncated output); flat + seq, no nesting; nullable content + pruned_at retention hooks.
+- [Trace data model](ticket-trace-data-model.md) — 3 tables: `llm_traces` (polymorphic owner_type+owner_id storing exact table names, no FK), `llm_generations` (inline JSONB prompt/response, cost_usd numeric(12,6)), `llm_tool_calls` (own table, ~8KB truncated output); flat + seq, no nesting; nullable content + pruned_at retention hooks.
+- [Instrumentation seam](ticket-instrumentation-seam.md) — TracedProvider decorator at the registry choke point with explicit trace option (~4 call sites); fire-and-forget writes; embeddings metadata-only; streaming accumulates to one Generation; missing usage = null + flag.
+- [Agent chat tracing](ticket-agent-chat-tracing.md) — one Trace per Answer; `messages.trace_id` amendment; disconnect = partial record + aborted flag; Context re-derivable from Tool Call outputs.
+- [Cost model](ticket-cost-model.md) — cost = OpenRouter `usage.cost` passthrough at request time (returned on every response incl. streaming, no params needed); Ollama = 0; missing cost = null + flag, never estimated; no pricing table; rollups computed on read.
+- [Pipeline tracing](ticket-pipeline-tracing.md) — extractionRecord becomes pointer (last_run metadata + trace_id; payload only in llm_generations); one Trace per Ingestion Run (extraction + metadata-only embedding Generations) and per Consolidation Run (judge Generations; usage = rollup on read — closes the Phase 8/9 gap).
 - [Instrumentation seam](ticket-instrumentation-seam.md) — TracedProvider decorator at registry with explicit `trace` option (~4 call sites); fire-and-forget writes (try/catch-log); embeddings traced metadata-only; streaming accumulates → one record; missing usage = null + flag.
 - [Agent chat tracing](ticket-agent-chat-tracing.md) — one Trace per Answer (owner = conversation; per-answer cost/debug/retention trivial); `messages.trace_id` links answer → trace (data-model amendment); disconnect = partial record + aborted flag; Context re-derivable from Tool Calls, nothing extra stored.
 - [Cost model](ticket-cost-model.md) — OpenRouter `usage.cost` passthrough (verified: returned automatically in every response incl. streaming); Ollama = 0; custom providers missing cost = null + flag; no pricing table — pricing-drift fog dissolved.
