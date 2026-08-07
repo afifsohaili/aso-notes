@@ -18,7 +18,7 @@ status: closed
 
 **No pricing table, no fetching, no cache, no drift problem.** Currency: USD (OpenRouter credits are USD-denominated). Embeddings: read usage if the provider returns it, else null.
 
-# Ticket: Cost model
+**Rollups: computed on read** (SQL sum/group over `llm_generations`) — personal scale needs no pre-aggregation. UI splits: by LLM Use Case, by model, by day.
 
 ## Question
 
