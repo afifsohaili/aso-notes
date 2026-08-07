@@ -31,11 +31,11 @@ Skills to consult: /grilling, /domain-modeling, /prototype (UI tickets).
 - [Trace data model](ticket-trace-data-model.md) — 3 tables: `llm_traces` (polymorphic owner_type+owner_id, no FK), `llm_generations` (inline JSONB prompt/response, cost_usd numeric(12,6)), `llm_tool_calls` (own table, ~8KB truncated output); flat + seq, no nesting; nullable content + pruned_at retention hooks.
 - [Instrumentation seam](ticket-instrumentation-seam.md) — TracedProvider decorator at registry with explicit `trace` option (~4 call sites); fire-and-forget writes (try/catch-log); embeddings traced metadata-only; streaming accumulates → one record; missing usage = null + flag.
 - [Agent chat tracing](ticket-agent-chat-tracing.md) — one Trace per Answer (owner = conversation; per-answer cost/debug/retention trivial); `messages.trace_id` links answer → trace (data-model amendment); disconnect = partial record + aborted flag; Context re-derivable from Tool Calls, nothing extra stored.
+- [Cost model](ticket-cost-model.md) — OpenRouter `usage.cost` passthrough (verified: returned automatically in every response incl. streaming); Ollama = 0; custom providers missing cost = null + flag; no pricing table — pricing-drift fog dissolved.
 
 ## Not yet specified
 
 - **OTel export**: whether traces should ever be exportable to a standard backend (OTLP). Sharpens once the data model exists — if the model mirrors OTel GenAI attributes, export is cheap later.
-- **Pricing drift**: per-model rates change over time; how the pricing table stays current (manual config vs fetch). Sharpens with the cost-model ticket.
 - **Multi-user PII**: single-user app today; redaction/retention rules if that changes.
 
 ## Out of scope

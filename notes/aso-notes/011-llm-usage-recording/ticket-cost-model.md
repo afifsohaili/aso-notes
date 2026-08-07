@@ -1,7 +1,22 @@
 ---
 label: wayfinder:grilling
 blocked-by: []
+claimed-by: afif
+status: closed
 ---
+
+# Ticket: Cost model
+
+## Resolution (2026-08-06)
+
+**Cost source: `usage.cost` passthrough.** Verified fact: OpenRouter returns a full `usage` object — prompt/completion token counts (model-native tokenizer) AND `cost` in credits — automatically in every response, including the last SSE chunk when streaming (the `usage: {include: true}` param is deprecated; no params needed). TracedProvider reads `usage.cost` straight off the response and writes it to `llm_generations.cost_usd` at request time.
+
+**Per provider:**
+- OpenRouter (default): exact `usage.cost`, always present.
+- Ollama: local, cost = 0.
+- Custom base_url providers: may omit cost → `cost_usd = null` + flag, never estimated (consistent with the locked usage rule).
+
+**No pricing table, no fetching, no cache, no drift problem.** Currency: USD (OpenRouter credits are USD-denominated). Embeddings: read usage if the provider returns it, else null.
 
 # Ticket: Cost model
 
