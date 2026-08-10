@@ -19,6 +19,7 @@ describe('settings API', () => {
       expect(body.settings['extraction.vocabulary_strategy']).toEqual({ value: 'full', source: 'default' })
       expect(body.settings['extraction.blind_merge_threshold']).toEqual({ value: 0.85, source: 'default' })
       expect(body.settings['consolidation.run_budget']).toEqual({ value: 200, source: 'default' })
+      expect(body.settings['observability.content_retention_days']).toEqual({ value: 365, source: 'default' })
       expect(body.settings['llm.agent.provider']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.agent.model']).toEqual({ value: expect.any(String), source: 'default' })
       expect(body.settings['llm.agent.base_url']).toEqual({ value: expect.any(String), source: 'default' })
@@ -181,6 +182,37 @@ describe('settings API', () => {
       expect(body.settings['consolidation.run_budget']).toEqual({ value: 500, source: 'workspace' })
     })
 
+    test('persists observability.content_retention_days and GET reflects it with source workspace', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'observability.content_retention_days', value: 30 }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(200)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      expect(getRes.status).toBe(200)
+      const body = await getRes.json()
+      expect(body.settings['observability.content_retention_days']).toEqual({ value: 30, source: 'workspace' })
+    })
+
+    test('rejects an invalid observability.content_retention_days with 400 and does not persist', async ({ server }) => {
+      const { cookies } = await givenVerifiedUser()
+
+      const patchRes = await server('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'observability.content_retention_days', value: -5 }),
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      })
+      expect(patchRes.status).toBe(400)
+
+      const getRes = await server('/api/settings', { headers: { cookie: cookies } })
+      const body = await getRes.json()
+      expect(body.settings['observability.content_retention_days']).toEqual({ value: 365, source: 'default' })
+    })
+
     test('rejects an invalid consolidation.run_budget with 400 and does not persist', async ({ server }) => {
       const { cookies } = await givenVerifiedUser()
 
@@ -194,6 +226,7 @@ describe('settings API', () => {
       const getRes = await server('/api/settings', { headers: { cookie: cookies } })
       const body = await getRes.json()
       expect(body.settings['consolidation.run_budget']).toEqual({ value: 200, source: 'default' })
+      expect(body.settings['observability.content_retention_days']).toEqual({ value: 365, source: 'default' })
     })
 
     test('rejects an invalid llm provider with 400 and does not persist', async ({ server }) => {

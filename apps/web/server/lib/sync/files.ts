@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { sql } from 'kysely'
+import { purgeTraceContentForOwner } from '../observability/retention'
 import { contentHash } from './hash'
 import { ancestorFolderPaths, FOLDER_COVER_FILENAME, folderPathOf, isFolderCoverPath, titleFromPath, toNotePath } from './paths'
 import { decideUpsert } from './upsert-decision'
@@ -263,11 +264,20 @@ export async function handleFileUnlink(event: FileEvent): Promise<void> {
   const notePath = toNotePath(notesDir, absolutePath)
   if (isFolderCoverPath(notePath))
     return handleCoverUnlink(db, workspaceId, syncedFolderId, notePath)
-  await db
-    .deleteFrom('notes')
+  const note = await db
+    .selectFrom('notes')
+    .select('id')
     .where('synced_folder_id', '=', syncedFolderId)
     .where('path', '=', notePath)
-    .execute()
+    .executeTakeFirst()
+  if (note) {
+    await purgeTraceContentForOwner(db, 'notes', note.id)
+    await db
+      .deleteFrom('notes')
+      .where('synced_folder_id', '=', syncedFolderId)
+      .where('path', '=', notePath)
+      .execute()
+  }
 }
 
 /** Recursive *.md walk, skipping node_modules and dotfiles/dirs. */
@@ -317,11 +327,12 @@ export async function startupScan(args: {
   // the notes table alone is the reconcile target).
   const dbNotes = await db
     .selectFrom('notes')
-    .select('path')
+    .select(['path', 'id'])
     .where('synced_folder_id', '=', syncedFolderId)
     .execute()
   for (const row of dbNotes) {
     if (!notePaths.has(row.path)) {
+      await purgeTraceContentForOwner(db, 'notes', row.id)
       await db
         .deleteFrom('notes')
         .where('synced_folder_id', '=', syncedFolderId)

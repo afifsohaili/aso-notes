@@ -1,5 +1,6 @@
 import type { GraphDb } from '../graph/age'
 import { agLiteral, executeCypher } from '../graph/age'
+import { purgeTraceContentForOwner } from '../observability/retention'
 
 /**
  * Pure decision core for orphan GC after a synced folder's notes are removed.
@@ -157,6 +158,10 @@ export async function removeSyncedFolderAndCollectGarbage(
   ])
 
   if (noteIds.length > 0) {
+    for (const noteId of noteIds) {
+      await purgeTraceContentForOwner(db, 'notes', noteId)
+    }
+
     await db
       .deleteFrom('notes')
       .where('id', 'in', noteIds)

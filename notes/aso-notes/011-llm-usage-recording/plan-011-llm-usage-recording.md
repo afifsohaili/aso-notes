@@ -252,7 +252,63 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - Chat traces have large tool outputs (especially `read_note`) already truncated at write time, but generations still carry full prompts/answers. The retention job should treat `kind='chat'` the same as other kinds.
 - Consider a cleanup job for orphaned `llm_traces` whose owner rows no longer exist; the polymorphic owner has no FK, so there is no cascade delete.
 
-### Concerns for Phase 4 (agent chat tracing)
+## Phase 5 — Retention policy job (done)
+
+### Built
+
+- `apps/web/server/lib/observability/retention.ts` — retention core:
+  - `purgeTraceContentForOwner(db, ownerType, ownerId)` nulls `llm_generations.prompt`/`response` and `llm_tool_calls.output`, stamps `pruned_at`, and keeps metadata + rows forever.
+  - `purgeOldTraceContentForWorkspace(db, workspaceId, retentionDays, now)` time-bounds content pruning per workspace.
+  - `purgeOrphanTraceContent(db, now)` sweeps traces whose `owner_type`/`owner_id` no longer matches a note, conversation, or consolidation run.
+  - `runObservabilityRetentionSweep(db, now)` runs the age prune for every workspace, then the orphan sweep.
+- `apps/web/server/lib/observability/retention-worker-helpers.ts` — constants (`OBSERVABILITY_RETENTION_QUEUE_NAME`, `OBSERVABILITY_RETENTION_JOB_NAME`, `DAILY_RETENTION_CRON = '30 4 * * *'`) and `scheduleObservabilityRetentionRepeatableJobs`.
+- `apps/web/server/lib/observability/retention-job.ts` — `ObservabilityRetentionJob` BullMQ job class.
+- `apps/web/server/plugins/observability-retention-worker.ts` — Nitro plugin registering the worker/queue with the `NUXT_DISABLE_OBSERVABILITY_RETENTION` guard and the 04:30 daily cron (offset from consolidation's 03:00).
+- `apps/web/server/lib/settings.ts` — `observability.content_retention_days` exposed in `KNOWN_SETTING_KEYS`, resolved with default 365, validated, and returned by `resolveWorkspaceSettings`.
+- Owner delete call-site wiring:
+  - `apps/web/server/lib/sync/files.ts` — `handleFileUnlink` and `startupScan` purge note traces before DB deletion.
+  - `apps/web/server/lib/sync/gc.ts` — `removeSyncedFolderAndCollectGarbage` purges traces for every note it deletes.
+  - `apps/web/server/lib/onboarding/smoke-test.ts` — stale smoke-test note deletion purges its trace.
+  - `apps/web/server/lib/consolidation/engine.ts` — lock-conflict run cleanup and the failure path already finish the trace; the run deletion purges traces.
+  - `apps/web/server/lib/consolidation/snapshot.ts` — `pruneOldSnapshots` purges traces before deleting old consolidation runs.
+
+### Tests
+
+- `apps/web/test/e2e/observability-retention.spec.ts` (12 tests, e2e project):
+  - old generation/tool-call content is nulled while metadata/rows survive
+  - new content is left untouched
+  - per-workspace retention days and default fallback
+  - exact cutoff boundary (older than cutoff prunes, at/newer does not)
+  - empty tables report zero pruning
+  - idempotency of the daily sweep
+  - orphan sweep for `owner_type='notes'`, `'conversations'`, and `'consolidation_runs'`
+  - orphan sweep does not prune when the owner still exists
+  - synced-folder removal immediately purges trace content before the note row is deleted
+- `apps/web/test/unit/observability-retention.spec.ts` (4 tests, unit project) — scheduler duplicate-guard, constants, and cron.
+- Updated existing settings specs for the new key:
+  - `apps/web/test/e2e/settings-api.spec.ts` — GET default and PATCH validation for `observability.content_retention_days`.
+  - `apps/web/test/unit/settings.spec.ts` — `resolveContentRetentionDays`, `normalizeSettingValue`, and `resolveWorkspaceSettings` behavior.
+
+### Typecheck / lint
+
+- `pnpm lint` clean.
+- `pnpm --filter web vitest run --project e2e` passes: 342 tests in 46 files.
+- `pnpm --filter web vitest run --project unit` passes: 450 tests in 40 files.
+- `pnpm --filter web vitest run --project nuxt` passes: 126 tests in 28 files.
+- `pnpm --filter web exec nuxt typecheck` still fails with the pre-existing `vue@^3.5.28 conflicts with direct dependency` npm override error, unrelated to this phase.
+
+### Divergences from ticket resolutions
+
+- The previous code comment said "a null workspace value means 'never prune'", but the locked ticket resolution only specifies a default of 365 days and does not require a null/never option. The `workspace_settings.value` column is `jsonb NOT NULL` and the settings API treats `value: null` as a row deletion (used by `onboarding.completed_at` and LLM `base_url`), so a literal null value cannot be stored without a schema migration. We followed the `consolidation.run_budget` precedent instead: positive integer only, default 365, null rejected. The null/never option was left out.
+- No `DELETE /api/conversations/[id]` endpoint exists, so `purgeTraceContentForOwner` could not be wired at a conversation delete call site. The daily orphan sweep catches traces whose conversation owner has been deleted by any future code path.
+- The scheduler duplicate-guard checks repeatable jobs by `name: 'daily-retention'` while `queue.add` uses the job class name (`ObservabilityRetentionJob`) as the BullMQ name. This mirrors the existing consolidation scheduler convention and the unit fake; if production BullMQ returns the job name rather than the jobId suffix, the guard could be adjusted, but it is consistent with the established pattern.
+
+### Concerns for Phase 6 (chat trace UI)
+
+- Chat UI should render pruned generations/tool calls gracefully: `prompt`, `response`, and `output` may be `null` after retention. The UI should display metadata (model, provider, use case, token counts, cost, latency, status, timestamps) and a "content expired" placeholder instead of the missing payload.
+- `messages.trace_id` survives pruning, so conversation detail can still link to the trace timeline; the timeline just needs to handle null content columns.
+- When a conversation delete endpoint is added later, it should call `purgeTraceContentForOwner(db, 'conversations', conversationId)` before deleting the row. Until then, the nightly orphan sweep is the catch-all.
+
 
 - Agent loop and tool calls still need trace wiring; `appendToolCall` is implemented but unused.
 - Tool-call output truncation (~8KB) is still deferred.

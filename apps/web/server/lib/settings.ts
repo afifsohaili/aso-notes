@@ -21,6 +21,7 @@ export const KNOWN_SETTING_KEYS = [
   'extraction.blind_merge_threshold',
   'consolidation.run_budget',
   'consolidation.badge_seen_run_id',
+  'observability.content_retention_days',
   'llm.agent.provider',
   'llm.agent.model',
   'llm.agent.base_url',
@@ -45,6 +46,12 @@ export const DEFAULT_LLM_PROVIDER = 'openrouter'
  * shared across merge pairs + prune candidates, merges judged first.
  */
 export const DEFAULT_CONSOLIDATION_RUN_BUDGET = 200
+
+/**
+ * Default content retention window for LLM trace payloads (prompts,
+ * responses, tool outputs). Metadata is kept forever.
+ */
+export const DEFAULT_CONTENT_RETENTION_DAYS = 365
 
 export interface ResolvedSetting {
   value: Json
@@ -129,6 +136,24 @@ export async function resolveConsolidationRunBudget(db: PipelineDb, workspaceId:
   if (Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 1)
     return parsed
   return DEFAULT_CONSOLIDATION_RUN_BUDGET
+}
+
+/**
+ * Resolve the content retention window for LLM trace payloads in a workspace.
+ * Key: `observability.content_retention_days`. Falls back to the code default
+ * (365) when missing or malformed; only positive integers are accepted.
+ */
+export async function resolveContentRetentionDays(
+  db: PipelineDb,
+  workspaceId: string,
+): Promise<number> {
+  const raw = await getWorkspaceSetting<unknown>(db, workspaceId, 'observability.content_retention_days', null)
+  if (raw === null || raw === undefined)
+    return DEFAULT_CONTENT_RETENTION_DAYS
+  const parsed = typeof raw === 'number' ? raw : Number.parseInt(typeof raw === 'string' ? raw : '', 10)
+  if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed >= 1)
+    return parsed
+  return DEFAULT_CONTENT_RETENTION_DAYS
 }
 
 function llmRoleFromSettingKey(key: KnownSettingKey): 'agent' | 'extraction' | 'embedding' | 'consolidation' | null {
@@ -321,6 +346,10 @@ export async function resolveWorkspaceSettings(
       value: workspaceValues.get('consolidation.run_budget') ?? DEFAULT_CONSOLIDATION_RUN_BUDGET,
       source: workspaceValues.has('consolidation.run_budget') ? 'workspace' : 'default',
     },
+    'observability.content_retention_days': {
+      value: workspaceValues.get('observability.content_retention_days') ?? DEFAULT_CONTENT_RETENTION_DAYS,
+      source: workspaceValues.has('observability.content_retention_days') ? 'workspace' : 'default',
+    },
     'llm.agent.provider': agent.provider,
     'llm.agent.model': agent.model,
     'llm.agent.base_url': agent.base_url,
@@ -391,6 +420,13 @@ export function normalizeSettingValue(key: KnownSettingKey, value: unknown): Jso
     if (typeof value !== 'string' || value.trim().length === 0)
       throw new Error('badge_seen_run_id must be a valid run id or null')
     return value.trim()
+  }
+
+  if (key === 'observability.content_retention_days') {
+    const raw = typeof value === 'number' ? value : Number.parseInt(typeof value === 'string' ? value : '', 10)
+    if (Number.isNaN(raw) || !Number.isInteger(raw) || raw < 1)
+      throw new Error('content_retention_days must be a positive integer')
+    return raw
   }
 
   const field = llmSettingField(key)

@@ -2,6 +2,7 @@ import type { RemirrorCounts } from '../graph/remirror'
 import type { ConsolidationDb } from './types'
 import { sql } from 'kysely'
 import { remirrorGraph } from '../graph/remirror'
+import { purgeTraceContentForOwner } from '../observability/retention'
 import { acquireConsolidationLock } from './lock'
 
 export type SnapshotDb = ConsolidationDb
@@ -144,6 +145,7 @@ async function pruneOldSnapshots(db: SnapshotDb, workspaceId: string): Promise<v
     .execute()
 
   for (const run of runsToPrune) {
+    await purgeTraceContentForOwner(db, 'consolidation_runs', run.id)
     await db.deleteFrom('consolidation_runs').where('id', '=', run.id).execute()
   }
 }

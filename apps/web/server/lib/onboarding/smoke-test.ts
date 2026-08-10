@@ -5,6 +5,7 @@ import { access, constants, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { sql } from 'kysely'
+import { purgeTraceContentForOwner } from '../observability/retention'
 
 export const SMOKE_TEST_FILENAME = '__aso-smoke-test.md'
 export const SMOKE_TEST_CONTENT = [
@@ -89,11 +90,20 @@ export async function startSmokeTest(db: SyncDb, workspaceId: string): Promise<S
   // Clean up any stale smoke test file or row from a previous attempt so a
   // retry starts fresh.
   await deleteSmokeTestFile(filePath)
-  await db
-    .deleteFrom('notes')
+  const stale = await db
+    .selectFrom('notes')
+    .select('id')
     .where('synced_folder_id', '=', syncedFolder.id)
     .where('path', '=', `/${SMOKE_TEST_FILENAME}`)
-    .execute()
+    .executeTakeFirst()
+  if (stale) {
+    await purgeTraceContentForOwner(db, 'notes', stale.id)
+    await db
+      .deleteFrom('notes')
+      .where('synced_folder_id', '=', syncedFolder.id)
+      .where('path', '=', `/${SMOKE_TEST_FILENAME}`)
+      .execute()
+  }
 
   await writeFile(filePath, SMOKE_TEST_CONTENT, 'utf8')
 

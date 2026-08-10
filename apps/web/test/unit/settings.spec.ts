@@ -7,12 +7,14 @@ import {
   assertKnownSettingKey,
   DEFAULT_BLIND_MERGE_THRESHOLD,
   DEFAULT_CONSOLIDATION_RUN_BUDGET,
+  DEFAULT_CONTENT_RETENTION_DAYS,
   DEFAULT_LLM_PROVIDER,
   getWorkspaceSetting,
   normalizeSettingValue,
   resolveBlindMergeThreshold,
   resolveConsolidationProviderSettings,
   resolveConsolidationRunBudget,
+  resolveContentRetentionDays,
   resolveEmbeddingProviderSettings,
   resolveLLMProviderSettings,
   resolveVocabularyStrategy,
@@ -125,6 +127,7 @@ describe('resolveWorkspaceSettings', () => {
       'extraction.vocabulary_strategy': { value: 'full', source: 'default' },
       'extraction.blind_merge_threshold': { value: DEFAULT_BLIND_MERGE_THRESHOLD, source: 'default' },
       'consolidation.run_budget': { value: DEFAULT_CONSOLIDATION_RUN_BUDGET, source: 'default' },
+      'observability.content_retention_days': { value: DEFAULT_CONTENT_RETENTION_DAYS, source: 'default' },
       'llm.agent.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.agent.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
       'llm.agent.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
@@ -156,6 +159,7 @@ describe('resolveWorkspaceSettings', () => {
       'extraction.vocabulary_strategy': { value: 'blind-merge', source: 'workspace' },
       'extraction.blind_merge_threshold': { value: 0.92, source: 'workspace' },
       'consolidation.run_budget': { value: DEFAULT_CONSOLIDATION_RUN_BUDGET, source: 'default' },
+      'observability.content_retention_days': { value: DEFAULT_CONTENT_RETENTION_DAYS, source: 'default' },
       'llm.agent.provider': { value: 'ollama', source: 'workspace' },
       'llm.agent.model': { value: 'gemma3:4b', source: 'workspace' },
       'llm.agent.base_url': { value: OLLAMA_BASE_URL, source: 'default' },
@@ -240,6 +244,28 @@ describe('resolveWorkspaceSettings', () => {
   })
 })
 
+describe('resolveContentRetentionDays', () => {
+  it('returns the code default when unset', async () => {
+    const db = fakeDb([])
+    expect(await resolveContentRetentionDays(db, 'ws-1')).toBe(DEFAULT_CONTENT_RETENTION_DAYS)
+  })
+
+  it('returns the stored integer value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'observability.content_retention_days', value: 30 }])
+    expect(await resolveContentRetentionDays(db, 'ws-1')).toBe(30)
+  })
+
+  it('parses a numeric string value', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'observability.content_retention_days', value: '90' }])
+    expect(await resolveContentRetentionDays(db, 'ws-1')).toBe(90)
+  })
+
+  it('falls back to the code default for invalid stored values', async () => {
+    const db = fakeDb([{ workspace_id: 'ws-1', key: 'observability.content_retention_days', value: -5 }])
+    expect(await resolveContentRetentionDays(db, 'ws-1')).toBe(DEFAULT_CONTENT_RETENTION_DAYS)
+  })
+})
+
 describe('resolveConsolidationRunBudget', () => {
   it('returns the code default when unset', async () => {
     const db = fakeDb([])
@@ -273,6 +299,7 @@ describe('assertKnownSettingKey', () => {
     expect(assertKnownSettingKey('llm.embedding.model')).toBe('llm.embedding.model')
     expect(assertKnownSettingKey('llm.embedding.base_url')).toBe('llm.embedding.base_url')
     expect(assertKnownSettingKey('consolidation.run_budget')).toBe('consolidation.run_budget')
+    expect(assertKnownSettingKey('observability.content_retention_days')).toBe('observability.content_retention_days')
     expect(assertKnownSettingKey('llm.consolidation.provider')).toBe('llm.consolidation.provider')
     expect(assertKnownSettingKey('llm.consolidation.model')).toBe('llm.consolidation.model')
     expect(assertKnownSettingKey('llm.consolidation.base_url')).toBe('llm.consolidation.base_url')
@@ -325,6 +352,20 @@ describe('normalizeSettingValue', () => {
 
   it('rejects unknown keys', () => {
     expect(() => normalizeSettingValue('unknown.key' as KnownSettingKey, 'x')).toThrow('unknown setting key')
+  })
+
+  describe('observability.content_retention_days', () => {
+    it('accepts a positive integer', () => {
+      expect(normalizeSettingValue('observability.content_retention_days', 30)).toBe(30)
+      expect(normalizeSettingValue('observability.content_retention_days', '90')).toBe(90)
+    })
+
+    it('rejects zero, negative, fractional, or non-numeric values', () => {
+      expect(() => normalizeSettingValue('observability.content_retention_days', 0)).toThrow('content_retention_days must be a positive integer')
+      expect(() => normalizeSettingValue('observability.content_retention_days', -5)).toThrow('content_retention_days must be a positive integer')
+      expect(() => normalizeSettingValue('observability.content_retention_days', 1.5)).toThrow('content_retention_days must be a positive integer')
+      expect(() => normalizeSettingValue('observability.content_retention_days', 'many')).toThrow('content_retention_days must be a positive integer')
+    })
   })
 
   describe('consolidation keys', () => {
