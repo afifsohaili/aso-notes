@@ -1,3 +1,4 @@
+import type { BatchJudgeContext } from './shortlist'
 import type { ConsolidationCounts, ConsolidationDb, ConsolidationJudge, PruneVerdict } from './types'
 import { batchJudge, buildSingletonTopicCandidates } from './shortlist'
 
@@ -68,6 +69,7 @@ export async function cleanupTopics(
   judge: ConsolidationJudge,
   counts: ConsolidationCounts,
   judgeBudget: number,
+  traceContext?: BatchJudgeContext,
 ): Promise<{ dissolveCandidates: number }> {
   const emptyTopics = await db
     .selectFrom('topics')
@@ -103,7 +105,7 @@ export async function cleanupTopics(
   const singletonCandidates = await buildSingletonTopicCandidates(db, workspaceId)
   const dissolveCandidates = singletonCandidates.slice(0, Math.max(0, judgeBudget))
 
-  const { prunes: dissolveVerdicts, judgeCalls, skippedInvalidVerdicts } = await batchJudge(judge, [], dissolveCandidates)
+  const { prunes: dissolveVerdicts, judgeCalls, skippedInvalidVerdicts } = await batchJudge(judge, [], dissolveCandidates, [], traceContext)
   counts.judgeCalls += judgeCalls
   counts.skippedInvalidVerdicts += skippedInvalidVerdicts
 

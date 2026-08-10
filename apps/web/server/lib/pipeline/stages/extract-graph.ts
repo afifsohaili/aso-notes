@@ -58,7 +58,14 @@ export class ExtractGraphStage implements Stage {
         type: 'json_schema',
         jsonSchema: { name: EXTRACTION_SCHEMA_NAME, schema: EXTRACTION_SCHEMA, strict: true },
       },
-    })
+    }, ctx.traceId
+      ? {
+          traceId: ctx.traceId,
+          workspaceId: ctx.workspaceId,
+          useCase: 'extraction',
+          seq: ctx.nextSeq(),
+        }
+      : undefined)
 
     const content = result.message.content
     if (!content)
@@ -68,8 +75,7 @@ export class ExtractGraphStage implements Stage {
     ctx.extractionRecord = {
       strategy: strategy.id,
       model: result.model ?? 'unknown',
-      messages: messages.map(m => ({ role: m.role, content: m.content ?? '' })),
-      response: content,
+      trace_id: ctx.traceId ?? 'unknown',
       usage: result.usage
         ? { prompt_tokens: result.usage.promptTokens, completion_tokens: result.usage.completionTokens }
         : null,

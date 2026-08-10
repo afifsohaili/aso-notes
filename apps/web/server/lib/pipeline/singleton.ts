@@ -54,9 +54,11 @@ async function createWorkspaceStageRegistry(db?: PipelineDb): Promise<StageRegis
     if (workspaceId) {
       const llmSettings = await resolveLLMProviderSettings(db, workspaceId, 'extraction', process.env)
       const embeddingSettings = await resolveEmbeddingProviderSettings(db, workspaceId, process.env)
+      const resolvedLLM = resolveLLMProvider('extraction', process.env, llmSettings, {}, { db })
+      const resolvedEmbedding = resolveEmbeddingProvider(process.env, embeddingSettings, {}, { db })
       return createStageRegistry({
-        llmProvider: resolveLLMProvider('extraction', process.env, llmSettings).provider,
-        embeddingProvider: resolveEmbeddingProvider(process.env, embeddingSettings).provider,
+        llmProvider: resolvedLLM.provider,
+        embeddingProvider: resolvedEmbedding.provider,
       })
     }
   }

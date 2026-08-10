@@ -1,7 +1,8 @@
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
+import type { TraceOptions } from '../observability/traced-provider'
 import type { ConsolidationDb, ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate, RewriteCandidate } from './types'
 import process from 'node:process'
-import { createEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
+import { resolveLLMProvider } from '../ai/registry'
 import { resolveConsolidationProviderSettings, resolveEmbeddingProviderSettings } from '../settings'
 
 interface JudgeOptions {
@@ -59,7 +60,7 @@ const JUDGE_SCHEMA = {
 const JUDGE_SCHEMA_NAME = 'consolidation_judge'
 
 export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
-  return async (request: ConsolidationJudgeRequest): Promise<ConsolidationJudgeResponse> => {
+  return async (request: ConsolidationJudgeRequest, trace?: TraceOptions): Promise<ConsolidationJudgeResponse> => {
     if (request.mergePairs.length === 0 && request.pruneCandidates.length === 0 && (request.rewriteCandidates?.length ?? 0) === 0)
       return { merges: [], prunes: [], rewrites: [] }
 
@@ -71,7 +72,7 @@ export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
         type: 'json_schema',
         jsonSchema: { name: JUDGE_SCHEMA_NAME, schema: JUDGE_SCHEMA, strict: true },
       },
-    })
+    }, trace)
 
     const content = result.message.content
     if (!content)
@@ -113,10 +114,10 @@ export async function resolveJudgeProviders(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ llmProvider: LLMProvider, embeddingProvider?: EmbeddingProvider }> {
   const consolidationSettings = await resolveConsolidationProviderSettings(db, workspaceId, env)
-  const { provider: llmProvider } = resolveLLMProvider('consolidation', env, consolidationSettings)
+  const { provider: llmProvider } = resolveLLMProvider('consolidation', env, consolidationSettings, {}, { db })
 
   const embeddingSettings = await resolveEmbeddingProviderSettings(db, workspaceId, env)
-  const { provider: embeddingProvider } = createEmbeddingProvider(env, embeddingSettings)
+  const { provider: embeddingProvider } = resolveEmbeddingProvider(env, embeddingSettings, {}, { db })
 
   return { llmProvider, embeddingProvider }
 }

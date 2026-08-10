@@ -1,6 +1,7 @@
 import type { DB } from '@monorepo/shared'
 import type { Kysely, Transaction } from 'kysely'
 import type { EmbeddingProvider } from '../ai/types'
+import type { TraceOptions } from '../observability/traced-provider'
 
 export type ConsolidationDb = Kysely<DB> | Transaction<DB>
 
@@ -75,7 +76,7 @@ export interface ConsolidationJudgeResponse {
   rewrites?: RewriteVerdict[]
 }
 
-export type ConsolidationJudge = (request: ConsolidationJudgeRequest) => Promise<ConsolidationJudgeResponse>
+export type ConsolidationJudge = (request: ConsolidationJudgeRequest, trace?: TraceOptions) => Promise<ConsolidationJudgeResponse>
 
 export interface ConsolidationRunResult {
   runId: string

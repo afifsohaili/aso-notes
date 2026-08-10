@@ -149,12 +149,8 @@ describe('runPipeline executor', () => {
       strategy: 'test-loader',
       model: 'fake-extraction-model',
       usage: { prompt_tokens: 100, completion_tokens: 50 },
-      response: llmResponse,
       counts: { concepts: 1, relations: 0, mentions: 1, tags: 1 },
     })
-    expect(ctx.extractionRecord!.messages).toHaveLength(2)
-    expect(ctx.extractionRecord!.messages[0]!.role).toBe('system')
-    expect(ctx.extractionRecord!.messages[1]!.role).toBe('user')
-    expect(ctx.extractionRecord!.response).toBe(llmResponse)
+    expect(ctx.extractionRecord!.trace_id).toBeDefined()
   })
 })

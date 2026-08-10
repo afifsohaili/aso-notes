@@ -105,11 +105,7 @@ describe('extractGraphStage', () => {
       usage: { prompt_tokens: 10, completion_tokens: 5 },
       counts: { concepts: 1, relations: 1, mentions: 1, tags: 2 },
     })
-    expect(ctx.extractionRecord!.messages).toHaveLength(2)
-    expect(ctx.extractionRecord!.messages[0]!.role).toBe('system')
-    expect(ctx.extractionRecord!.messages[1]!.role).toBe('user')
-    expect(ctx.extractionRecord!.messages[1]!.content).toContain('Capture Me')
-    expect(ctx.extractionRecord!.response).toBe(payload)
+    expect(ctx.extractionRecord!.trace_id).toBeDefined()
   })
 
   it('parses the model payload into ctx.extraction, dropping refs beyond ctx.chunks', async () => {

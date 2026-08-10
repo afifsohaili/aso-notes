@@ -122,3 +122,82 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - The extraction stage currently records `extractionRecord` on the note; Phase 3 should decide whether to keep that denormalised copy or replace it with a trace lookup.
 - Streaming in the agent chat currently happens at the SSE level, not the LLM provider level. If true LLM streaming is introduced later, `completeStream` should be wired through the agent loop.
 - `appendToolCall` is implemented but unused; Phase 3/4 will need to call it from the agent tool-execution wrapper and decide on the 8KB output truncation policy.
+
+## Phase 3 — Pipeline tracing (ingestion + consolidation)
+
+### Built
+
+- Ingestion Run tracing (`apps/web/server/lib/sync/ingest.ts`):
+  - One `llm_traces` row per run (`kind='ingestion'`, `owner_type='notes'`, `owner_id=note.id`), created before the pipeline runs and finished with `completed`/`failed`.
+  - Trace creation/finish are wrapped in `safeTraceWrite` so tracing failures never break ingestion.
+  - `PipelineContext` gained `traceId` and a `nextSeq()` counter; stages pass trace options to provider calls.
+  - `ExtractGraphStage` records the extraction LLM call as a Generation with full prompt/response.
+  - `EmbedChunksStage` records each embedding batch as a metadata-only Generation (`llm_use_case='embedding'`, `prompt` null).
+  - `apps/web/server/lib/pipeline/singleton.ts` now resolves traced providers when a DB is available, so production ingestion emits generations.
+
+- Consolidation Run tracing (`apps/web/server/lib/consolidation/engine.ts`, `judge.ts`, `shortlist.ts`, `prune.ts`):
+  - One `llm_traces` row per run (`kind='consolidation'`, `owner_type='consolidation_runs'`, `owner_id=run.id`).
+  - Each judge batch call receives an incrementing `seq` and is recorded as a Generation (`llm_use_case='consolidation'`).
+  - `batchJudge` accepts an optional `BatchJudgeContext` and passes `TraceOptions` to every `ConsolidationJudge` invocation.
+  - `createDefaultJudge` forwards trace options to the LLM provider.
+  - `makeDefaultJudge` resolves traced providers (passes `{ db }` to `resolveLLMProvider`/`resolveEmbeddingProvider`).
+
+- `extractionRecord` pointer swap (`apps/web/server/lib/pipeline/last-run.ts`, `apps/web/server/api/notes/[...slug].ts`):
+  - `notes.last_run.extraction` now stores cheap metadata (`strategy`, `model`, `usage`, `counts`) plus `trace_id`.
+  - Heavy `messages`/`response` are written only to `llm_generations`.
+  - `LastRun` validator accepts both the new pointer shape and legacy inline payloads (no backfill).
+  - Note detail API hydrates `messages`/`response` from the linked generation; falls back to inline payload when `trace_id` is absent.
+  - Note list API continues to strip heavy fields through `toLastRunSummary`.
+
+- Consolidation usage rollup (`apps/web/server/lib/consolidation/engine.ts`, `apps/web/server/api/consolidation/runs/index.get.ts`, `apps/web/server/api/consolidation/runs/[id].get.ts`):
+  - Removed any write path to `consolidation_runs.usage`.
+  - `computeConsolidationUsage(runId)` reads `llm_generations` joined to the run's trace and returns `{ promptTokens, completionTokens, totalTokens }`.
+  - API response shape stays compatible with `settings/consolidation/run-detail.vue`.
+
+### Tests
+
+- `apps/web/test/e2e/llm-tracing-pipeline.spec.ts` (3 tests, e2e project):
+  - one trace per ingestion run, status completed
+  - extraction Generation has full prompt/response/tokens/cost
+  - embedding Generations are metadata-only (`prompt` null)
+  - `notes.last_run.extraction.trace_id` present, no `messages`/`response`
+  - failed ingestion marks trace failed
+  - failed store-graph still leaves trace + generations intact
+
+- `apps/web/test/e2e/llm-tracing-consolidation.spec.ts` (2 tests, e2e project):
+  - one trace per consolidation run (`owner_type='consolidation_runs'`)
+  - one Generation per judge batch with incrementing `seq`
+  - `GET /api/consolidation/runs/:id` returns usage in the same shape, summed from generations
+  - failing judge marks trace failed
+
+- `apps/web/test/e2e/llm-tracing-readers.spec.ts` (3 tests, e2e project):
+  - detail endpoint hydrates messages/response via `trace_id`
+  - list endpoint summary strips `trace_id` and never exposes messages/response
+  - detail endpoint falls back to inline payload for legacy `last_run` without `trace_id`
+
+- Updated existing specs for the `extractionRecord` shape change:
+  - `apps/web/test/e2e/ingest-graph.spec.ts`
+  - `apps/web/test/e2e/pipeline-runner.spec.ts`
+  - `apps/web/test/unit/extract-graph-stage.spec.ts`
+  - `apps/web/test/e2e/notes-api.spec.ts` (pointer hydration + legacy fallback)
+
+### Typecheck / lint
+
+- `pnpm lint` clean.
+- `pnpm --filter web vitest run --project e2e` passes: 325 tests in 44 files.
+- `pnpm --filter web vitest run --project unit` passes: 435 tests in 38 files.
+- `pnpm --filter web vitest run --project nuxt` passes: 126 tests in 28 files.
+- `pnpm --filter web exec nuxt typecheck` still fails with the pre-existing `vue@^3.5.28 conflicts with direct dependency` npm override error, unrelated to this phase.
+
+### Divergences from ticket resolutions
+
+- `consolidation_runs.usage` is not dropped from the schema; it is simply no longer written by the engine and is computed on read. Removing the column would require a migration and is unnecessary for the API contract.
+- `LastRun['extraction']` keeps optional legacy `messages`/`response` fields in the type so `parseLastRun` can support old rows without a data migration. New rows never populate them.
+- Ingestion `seq` starts at 0 for the first provider call in pipeline order. Because `embed-chunks` runs before `extract-graph`, embedding generations receive lower sequence numbers than the extraction generation. This satisfies the "starts at 0 and increments" rule literally while preserving pipeline ordering.
+- Trace writes during ingestion use `safeTraceWrite` but are awaited through it (same Phase 2 divergence) to keep tests deterministic against transaction rollback.
+
+### Concerns for Phase 4 (agent chat tracing)
+
+- Agent loop and tool calls still need trace wiring; `appendToolCall` is implemented but unused.
+- Tool-call output truncation (~8KB) is still deferred.
+- Streaming in the agent chat is at the SSE level; if true LLM streaming is introduced, `completeStream` must be wired through the loop with trace context.

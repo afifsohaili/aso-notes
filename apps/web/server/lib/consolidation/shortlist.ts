@@ -1,6 +1,22 @@
+import type { TraceOptions } from '../observability/traced-provider'
 import type { ConsolidationDb, ConsolidationJudge, MergeCandidate, MergeVerdict, PruneCandidate, PruneVerdict, RewriteCandidate, RewriteVerdict } from './types'
 import { sql } from 'kysely'
 import { COSINE_THRESHOLD, JUDGE_BATCH_SIZE, NEIGHBOR_TOP_K, PRUNE_GRACE_DAYS } from './types'
+
+export interface BatchJudgeContext {
+  traceId: string
+  workspaceId: string
+  nextSeq: () => number
+}
+
+function makeTraceOptions(ctx: BatchJudgeContext): TraceOptions {
+  return {
+    traceId: ctx.traceId,
+    workspaceId: ctx.workspaceId,
+    useCase: 'consolidation',
+    seq: ctx.nextSeq(),
+  }
+}
 
 interface ConceptRow {
   id: string
@@ -328,6 +344,7 @@ export async function batchJudge(
   pairs: MergeCandidate[],
   prunes: PruneCandidate[],
   rewrites: RewriteCandidate[] = [],
+  traceContext?: BatchJudgeContext,
 ): Promise<BatchJudgeResult> {
   const pairById = new Map(pairs.map(p => [p.pairId, p]))
   const pruneById = new Map(prunes.map(p => [p.id, p]))
@@ -343,7 +360,10 @@ export async function batchJudge(
 
   for (let i = 0; i < pairs.length; i += JUDGE_BATCH_SIZE) {
     const batch = pairs.slice(i, i + JUDGE_BATCH_SIZE)
-    const response = await judge({ mergePairs: batch, pruneCandidates: [], rewriteCandidates: [] })
+    const response = await judge(
+      { mergePairs: batch, pruneCandidates: [], rewriteCandidates: [] },
+      traceContext ? makeTraceOptions(traceContext) : undefined,
+    )
     judgeCalls++
     for (const verdict of response.merges) {
       if (!isValidMergeVerdict(verdict, pairById.get(verdict.pairId), seenPairIds)) {
@@ -357,7 +377,10 @@ export async function batchJudge(
 
   for (let i = 0; i < prunes.length; i += JUDGE_BATCH_SIZE) {
     const batch = prunes.slice(i, i + JUDGE_BATCH_SIZE)
-    const response = await judge({ mergePairs: [], pruneCandidates: batch, rewriteCandidates: [] })
+    const response = await judge(
+      { mergePairs: [], pruneCandidates: batch, rewriteCandidates: [] },
+      traceContext ? makeTraceOptions(traceContext) : undefined,
+    )
     judgeCalls++
     for (const verdict of response.prunes) {
       if (!isValidPruneVerdict(verdict, pruneById.get(verdict.id), seenPruneIds)) {
@@ -371,7 +394,10 @@ export async function batchJudge(
 
   for (let i = 0; i < rewrites.length; i += JUDGE_BATCH_SIZE) {
     const batch = rewrites.slice(i, i + JUDGE_BATCH_SIZE)
-    const response = await judge({ mergePairs: [], pruneCandidates: [], rewriteCandidates: batch })
+    const response = await judge(
+      { mergePairs: [], pruneCandidates: [], rewriteCandidates: batch },
+      traceContext ? makeTraceOptions(traceContext) : undefined,
+    )
     judgeCalls++
     for (const verdict of response.rewrites ?? []) {
       if (!isValidRewriteVerdict(verdict, rewriteById.get(verdict.id), seenRewriteIds)) {

@@ -152,8 +152,7 @@ function makeLastRun(overrides: Record<string, unknown> = {}): Record<string, un
     extraction: {
       strategy: 'top-k',
       model: 'openai/gpt-4o-mini',
-      messages: [{ role: 'system', content: 'extract' }, { role: 'user', content: 'note body' }],
-      response: '{"concepts":[]}',
+      trace_id: '11111111-1111-1111-1111-111111111111',
       usage: { prompt_tokens: 100, completion_tokens: 50 },
       counts: { concepts: 3, relations: 2, mentions: 5, tags: 1 },
     },
@@ -168,6 +167,39 @@ async function setNoteLastRun(trx: any, workspaceId: string, notePath: string, l
     .where('workspace_id', '=', workspaceId)
     .where('path', '=', notePath)
     .execute()
+}
+
+async function givenTrace(trx: any, workspaceId: string, traceId: string, ownerType: string, ownerId: string) {
+  await trx
+    .insertInto('llm_traces')
+    .values({
+      id: traceId,
+      workspace_id: workspaceId,
+      kind: 'ingestion',
+      owner_type: ownerType,
+      owner_id: ownerId,
+      status: 'completed',
+    })
+    .execute()
+}
+
+async function givenExtractionGeneration(trx: any, workspaceId: string, traceId: string) {
+  return trx
+    .insertInto('llm_generations')
+    .values({
+      workspace_id: workspaceId,
+      trace_id: traceId,
+      seq: 0,
+      llm_use_case: 'extraction',
+      provider: 'openrouter',
+      model: 'openai/gpt-4o-mini',
+      prompt: JSON.stringify([{ role: 'system', content: 'extract' }, { role: 'user', content: 'note body' }]),
+      response: JSON.stringify({ role: 'assistant', content: '{"concepts":[]}' }),
+      prompt_tokens: 100,
+      completion_tokens: 50,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow()
 }
 
 describe.sequential('notes API', () => {
@@ -560,9 +592,17 @@ describe.sequential('notes API', () => {
       expect(body.lastRun).toBeNull()
     })
 
-    test('detail endpoint returns full last_run with messages and response verbatim', async ({ server, trx }) => {
+    test('detail endpoint returns full last_run with messages and response hydrated from trace', async ({ server, trx }) => {
       const { workspace, cookies } = await givenVerifiedUser()
       await seedNotesDomain(trx, workspace.id)
+      const planNote = await trx
+        .selectFrom('notes')
+        .select('id')
+        .where('workspace_id', '=', workspace.id)
+        .where('path', '=', '/project-a/plan.md')
+        .executeTakeFirstOrThrow()
+      await givenTrace(trx, workspace.id, '11111111-1111-1111-1111-111111111111', 'notes', planNote.id)
+      await givenExtractionGeneration(trx, workspace.id, '11111111-1111-1111-1111-111111111111')
       await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', makeLastRun())
 
       const res = await server('/api/notes/project-a/plan.md', { headers: { cookie: cookies } })
@@ -576,6 +616,31 @@ describe.sequential('notes API', () => {
         { role: 'user', content: 'note body' },
       ])
       expect(lastRun.extraction.response).toBe('{"concepts":[]}')
+    })
+
+    test('detail endpoint falls back to inline payload for legacy last_run without trace_id', async ({ server, trx }) => {
+      const { workspace, cookies } = await givenVerifiedUser()
+      await seedNotesDomain(trx, workspace.id)
+      await setNoteLastRun(trx, workspace.id, '/project-a/plan.md', makeLastRun({
+        extraction: {
+          strategy: 'top-k',
+          model: 'openai/gpt-4o-mini',
+          messages: [{ role: 'system', content: 'legacy' }, { role: 'user', content: 'inline' }],
+          response: '{"concepts":[]}',
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+          counts: { concepts: 3, relations: 2, mentions: 5, tags: 1 },
+        },
+      }))
+
+      const res = await server('/api/notes/project-a/plan.md', { headers: { cookie: cookies } })
+      expect(res.status).toBe(200)
+
+      const body = await res.json()
+      expect(body.lastRun.extraction.messages).toEqual([
+        { role: 'system', content: 'legacy' },
+        { role: 'user', content: 'inline' },
+      ])
+      expect(body.lastRun.extraction.response).toBe('{"concepts":[]}')
     })
 
     test('malformed last_run on detail endpoint returns null without 500', async ({ server, trx }) => {

@@ -34,6 +34,14 @@ export class EmbedChunksStage implements Stage {
       const batch = chunks.slice(start, start + EMBED_BATCH_SIZE)
       const embeddings = await this.embeddingProvider.embed(
         batch.map(chunk => buildEmbeddingInput(ctx, chunk)),
+        ctx.traceId
+          ? {
+              traceId: ctx.traceId,
+              workspaceId: ctx.workspaceId,
+              useCase: 'embedding',
+              seq: ctx.nextSeq(),
+            }
+          : undefined,
       )
       if (embeddings.length !== batch.length) {
         throw new Error(

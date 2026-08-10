@@ -2,6 +2,7 @@ import type { RunPipelineOptions } from '../pipeline/run-pipeline'
 import type { SyncDb } from './sweeper'
 import { sql } from 'kysely'
 import { RateLimitError } from '../ai/resilient-fetch'
+import { createTrace, finishTrace, safeTraceWrite } from '../observability/trace-writer'
 import { PipelineContext } from '../pipeline/context'
 import { buildLastRun } from '../pipeline/last-run'
 import { runPipeline } from '../pipeline/run-pipeline'
@@ -19,6 +20,11 @@ import { runPipeline } from '../pipeline/run-pipeline'
  * runPipeline returns, outside the store-graph transaction, so a crash
  * between the status commit and the last_run update only loses the run
  * record, not the ingested state.
+ *
+ * Phase 3: each run also creates an `llm_traces` row (kind='ingestion',
+ * owner_type='notes', owner_id=note.id). Extraction and embedding calls are
+ * recorded as `llm_generations`. Trace writes are fire-and-forget so they
+ * never break the pipeline.
  */
 export async function ingestNote(args: {
   db: SyncDb
@@ -52,6 +58,20 @@ export async function ingestNote(args: {
 
   const ctx = new PipelineContext({ note, workspaceId: note.workspace_id, db })
 
+  // Create a trace for this ingestion run. If trace creation fails we still
+  // run the pipeline, just without tracing.
+  const traceId = await safeTraceWrite('createTrace', () => createTrace(db, {
+    workspaceId: note.workspace_id,
+    kind: 'ingestion',
+    ownerType: 'notes',
+    ownerId: note.id,
+    status: 'running',
+  }))
+
+  if (traceId) {
+    ctx.traceId = traceId
+  }
+
   try {
     await runPipeline(note.pipeline, ctx, options)
 
@@ -64,6 +84,10 @@ export async function ingestNote(args: {
       })
       .where('id', '=', note.id)
       .execute()
+
+    if (traceId) {
+      await safeTraceWrite('finishTrace', () => finishTrace(db, { traceId, status: 'completed' }))
+    }
   }
   catch (error) {
     const lastRun = buildLastRun(ctx, { status: 'failed', error, worker })
@@ -92,6 +116,14 @@ export async function ingestNote(args: {
         })
         .where('id', '=', note.id)
         .execute()
+    }
+
+    if (traceId) {
+      await safeTraceWrite('finishTrace', () => finishTrace(db, {
+        traceId,
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      }))
     }
 
     // Rethrow so the worker processor can map resilient errors to BullMQ

@@ -1,3 +1,5 @@
+import type { Database } from '@monorepo/shared'
+import type { Kysely } from 'kysely'
 import type { PipelineContext } from './context'
 
 /**
@@ -5,6 +7,10 @@ import type { PipelineContext } from './context'
  *
  * Kept as a plain TS interface plus a hand-rolled validator. The repo does not
  * currently depend on zod, so we avoid adding a dependency for a single schema.
+ *
+ * Phase 3: the extraction block stores a `trace_id` pointing at
+ * `llm_generations`; the heavy `messages`/`response` are no longer duplicated.
+ * Legacy rows that still inline `messages`/`response` remain readable.
  */
 
 export interface LastRun {
@@ -21,8 +27,9 @@ export interface LastRun {
   extraction: {
     strategy: string
     model: string
-    messages: { role: string, content: string }[]
-    response: string
+    trace_id?: string
+    messages?: { role: string, content: string }[]
+    response?: string
     usage: { prompt_tokens: number, completion_tokens: number } | null
     counts: { concepts: number, relations: number, mentions: number, tags: number }
   } | null
@@ -81,22 +88,31 @@ function isExtraction(value: unknown): value is NonNullable<LastRun['extraction'
   if (!isObject(value))
     return false
 
-  const messages = value.messages
-  if (!Array.isArray(messages) || !messages.every(isMessage))
-    return false
-
   const usage = value.usage
   if (usage !== null && !isUsage(usage))
     return false
 
-  return isString(value.strategy)
-    && isString(value.model)
-    && isString(value.response)
-    && isCounts(value.counts)
+  if (!isString(value.strategy)
+    || !isString(value.model)
+    || !isCounts(value.counts)) {
+    return false
+  }
+
+  // Phase 3 pointer model: trace_id references llm_generations.
+  if (isString(value.trace_id))
+    return true
+
+  // Legacy inline model: messages + response are stored in last_run.
+  const messages = value.messages
+  const response = value.response
+  if (Array.isArray(messages) && messages.every(isMessage) && isString(response))
+    return true
+
+  return false
 }
 
 export type LastRunSummary = Omit<LastRun, 'extraction'> & {
-  extraction: Omit<NonNullable<LastRun['extraction']>, 'messages' | 'response'> | null
+  extraction: Omit<NonNullable<LastRun['extraction']>, 'trace_id' | 'messages' | 'response'> | null
 }
 
 export interface BuildLastRunOptions {
@@ -105,7 +121,7 @@ export interface BuildLastRunOptions {
   worker?: { attemptsMade?: number, jobId?: string | null } | null
 }
 
-/** Strip large extraction fields for note list serialization. */
+/** Strip large extraction fields and internal trace pointer for note list serialization. */
 export function toLastRunSummary(lastRun: LastRun): LastRunSummary {
   const { extraction, ...rest } = lastRun
   return {
@@ -118,6 +134,85 @@ export function toLastRunSummary(lastRun: LastRun): LastRunSummary {
           counts: extraction.counts,
         }
       : null,
+  }
+}
+
+/**
+ * Detail view of a {@link LastRun} with heavy extraction fields hydrated from
+ * llm_generations.
+ *
+ * Phase 3: if `extraction.trace_id` is present, messages/response are read from
+ * the linked generation row. Otherwise the legacy inline payload is returned as-is.
+ */
+export interface LastRunDetail extends LastRun {
+  extraction: {
+    strategy: string
+    model: string
+    messages: { role: string, content: string }[]
+    response: string
+    usage: { prompt_tokens: number, completion_tokens: number } | null
+    counts: { concepts: number, relations: number, mentions: number, tags: number }
+  } | null
+}
+
+export async function hydrateLastRunDetail(
+  db: Kysely<Database>,
+  lastRun: LastRun,
+): Promise<LastRunDetail> {
+  const extraction = lastRun.extraction
+  if (!extraction)
+    return lastRun as LastRunDetail
+
+  // Legacy inline payload — return as-is.
+  if (!extraction.trace_id || extraction.trace_id === 'unknown') {
+    return {
+      ...lastRun,
+      extraction: {
+        strategy: extraction.strategy,
+        model: extraction.model,
+        messages: extraction.messages ?? [],
+        response: extraction.response ?? '',
+        usage: extraction.usage,
+        counts: extraction.counts,
+      },
+    }
+  }
+
+  const generation = await db
+    .selectFrom('llm_generations')
+    .select(['prompt', 'response'])
+    .where('trace_id', '=', extraction.trace_id)
+    .where('llm_use_case', '=', 'extraction')
+    .orderBy('seq', 'asc')
+    .executeTakeFirst()
+
+  if (!generation) {
+    return {
+      ...lastRun,
+      extraction: {
+        strategy: extraction.strategy,
+        model: extraction.model,
+        messages: [],
+        response: '',
+        usage: extraction.usage,
+        counts: extraction.counts,
+      },
+    }
+  }
+
+  const prompt = generation.prompt as { role: string, content: string }[] | null
+  const responseObj = generation.response as { role: string, content: string } | null
+
+  return {
+    ...lastRun,
+    extraction: {
+      strategy: extraction.strategy,
+      model: extraction.model,
+      messages: prompt ?? [],
+      response: responseObj?.content ?? '',
+      usage: extraction.usage,
+      counts: extraction.counts,
+    },
   }
 }
 

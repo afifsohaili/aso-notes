@@ -1,4 +1,5 @@
 import { useDatabase } from '~~/utils/db'
+import { computeConsolidationUsage } from '../../../lib/consolidation/engine'
 import { resolveWorkspaceId } from '../../../utils/workspace'
 
 export default defineEventHandler(async (event) => {
@@ -24,7 +25,6 @@ export default defineEventHandler(async (event) => {
       'started_at',
       'finished_at',
       'counts',
-      'usage',
       'metrics_before',
       'metrics_after',
       'flags',
@@ -36,8 +36,13 @@ export default defineEventHandler(async (event) => {
     .orderBy('created_at', 'desc')
     .execute()
 
+  const runsWithUsage = await Promise.all(runs.map(async (run) => {
+    const usage = await computeConsolidationUsage(db, run.id)
+    return { ...run, usage }
+  }))
+
   return {
-    runs: runs.map(run => ({
+    runs: runsWithUsage.map(run => ({
       ...run,
       startedAt: run.started_at?.toISOString() ?? null,
       finishedAt: run.finished_at?.toISOString() ?? null,

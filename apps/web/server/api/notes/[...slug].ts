@@ -3,7 +3,7 @@ import path from 'node:path'
 import { useDatabase } from '~~/utils/db'
 import { isTagDeleteRoute, isTagsRoute, NotePathError, parseNoteRouteSegments, parseTagDeleteRoute, parseTagsRoute } from '../../lib/notes/paths'
 import { addTagToNote, removeTagFromNote } from '../../lib/notes/tags'
-import { parseLastRun } from '../../lib/pipeline/last-run'
+import { hydrateLastRunDetail, parseLastRun } from '../../lib/pipeline/last-run'
 import { handleFileUpsert } from '../../lib/sync/files'
 
 async function resolveWorkspaceId(db: any, userId: string): Promise<string | null> {
@@ -188,10 +188,12 @@ export default defineEventHandler(async (event) => {
     }
 
     if (event.method === 'GET') {
-      const [tags, sources, folderPath] = await Promise.all([
+      const parsedLastRun = parseLastRun(note.last_run)
+      const [tags, sources, folderPath, lastRun] = await Promise.all([
         loadNoteTags(db, workspaceId, note.id),
         loadNoteSources(db, workspaceId, note.id),
         loadFolderPath(db, workspaceId, note.folder_id),
+        parsedLastRun ? hydrateLastRunDetail(db, parsedLastRun) : Promise.resolve(null),
       ])
 
       return {
@@ -203,7 +205,7 @@ export default defineEventHandler(async (event) => {
         folder: folderPath,
         tags,
         sources,
-        lastRun: parseLastRun(note.last_run),
+        lastRun,
         updatedAt: note.updated_at.toISOString(),
       }
     }

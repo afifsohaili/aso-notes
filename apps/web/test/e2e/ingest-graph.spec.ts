@@ -287,12 +287,9 @@ describe('m4 ingestion: extraction + store-graph + AGE mirror', () => {
       strategy: 'full',
       model: 'unknown',
       usage: null,
-      response: JSON.stringify(EXTRACTION),
       counts: { concepts: 2, relations: 1, mentions: 2, tags: 1 },
     })
-    expect(lastRun!.extraction!.messages).toHaveLength(2)
-    expect(lastRun!.extraction!.messages[0]!.role).toBe('system')
-    expect(lastRun!.extraction!.messages[1]!.role).toBe('user')
+    expect(lastRun!.extraction!.trace_id).toBeDefined()
   })
 
   test('records worker attempt and job id when provided', async ({ trx }) => {

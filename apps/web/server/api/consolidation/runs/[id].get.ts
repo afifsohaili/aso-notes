@@ -1,4 +1,5 @@
 import { useDatabase } from '~~/utils/db'
+import { computeConsolidationUsage } from '../../../lib/consolidation/engine'
 import { resolveWorkspaceId } from '../../../utils/workspace'
 
 export default defineEventHandler(async (event) => {
@@ -29,7 +30,6 @@ export default defineEventHandler(async (event) => {
       'started_at',
       'finished_at',
       'counts',
-      'usage',
       'metrics_before',
       'metrics_after',
       'flags',
@@ -45,23 +45,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Run not found' })
   }
 
-  const changes = await db
-    .selectFrom('consolidation_run_changes')
-    .select(['id', 'action', 'text', 'reason', 'created_at'])
-    .where('run_id', '=', id)
-    .orderBy('created_at', 'desc')
-    .execute()
-
-  const snapshot = await db
-    .selectFrom('consolidation_snapshots')
-    .select('id')
-    .where('run_id', '=', id)
-    .where('workspace_id', '=', workspaceId)
-    .executeTakeFirst()
+  const [usage, changes, snapshot] = await Promise.all([
+    computeConsolidationUsage(db, run.id),
+    db
+      .selectFrom('consolidation_run_changes')
+      .select(['id', 'action', 'text', 'reason', 'created_at'])
+      .where('run_id', '=', id)
+      .orderBy('created_at', 'desc')
+      .execute(),
+    db
+      .selectFrom('consolidation_snapshots')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('workspace_id', '=', workspaceId)
+      .executeTakeFirst(),
+  ])
 
   return {
     run: {
       ...run,
+      usage,
       startedAt: run.started_at?.toISOString() ?? null,
       finishedAt: run.finished_at?.toISOString() ?? null,
       createdAt: run.created_at.toISOString(),

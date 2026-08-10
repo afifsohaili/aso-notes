@@ -32,14 +32,22 @@ export class PipelineContext {
   currentStage: string | null = null
   /** Number of chunks produced by the chunk-markdown-aware stage. */
   chunksCount: number | null = null
-  /** Full extraction payload captured for last_run observability (plan-004). */
+  /** Lightweight extraction pointer captured for last_run observability (plan-004). */
   extractionRecord: LastRun['extraction'] | null = null
+  /** Trace ID for this ingestion run; set by ingestNote when tracing is active. */
+  traceId: string | null = null
+  /** Per-trace sequence counter for llm_generations. Starts at 0. */
+  private seqCounter = 0
 
   constructor(init: { note: PipelineNote, workspaceId: string, db: PipelineDb }) {
     this.note = init.note
     this.workspaceId = init.workspaceId
     this.db = init.db
     this.startedAt = new Date()
+  }
+
+  nextSeq(): number {
+    return this.seqCounter++
   }
 
   setOutput<T>(key: string, value: T): void {
