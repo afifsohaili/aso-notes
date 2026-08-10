@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict XdHiHyItS1avmoKN2YJuJlb9xBoH9RfIoOWtZ12YoDdJolgrz6Y4OpTC9aoeXga
+\restrict vLefh2TXsEdCNRHfne1MWPXFc7Wal9C2twfO7FFoAHbCbxYuO69vh9Ec1z6PSju
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -48,6 +48,11 @@ ALTER TABLE IF EXISTS ONLY public.mentions DROP CONSTRAINT IF EXISTS mentions_co
 ALTER TABLE IF EXISTS ONLY public.mentions DROP CONSTRAINT IF EXISTS mentions_chunk_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_user_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.llm_traces DROP CONSTRAINT IF EXISTS llm_traces_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.llm_tool_calls DROP CONSTRAINT IF EXISTS llm_tool_calls_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.llm_tool_calls DROP CONSTRAINT IF EXISTS llm_tool_calls_trace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.llm_generations DROP CONSTRAINT IF EXISTS llm_generations_workspace_id_fkey;
+ALTER TABLE IF EXISTS ONLY public.llm_generations DROP CONSTRAINT IF EXISTS llm_generations_trace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_workspace_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_to_note_id_fkey;
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_from_note_id_fkey;
@@ -73,6 +78,12 @@ DROP INDEX IF EXISTS public.sources_note_url_normalized_unique;
 DROP INDEX IF EXISTS public.notes_synced_folder_path_unique;
 DROP INDEX IF EXISTS public.mentions_chunk_concept_unique;
 DROP INDEX IF EXISTS public.memberships_user_workspace_unique;
+DROP INDEX IF EXISTS public.llm_traces_workspace_id_owner_lookup_idx;
+DROP INDEX IF EXISTS public.llm_traces_status_started_at_idx;
+DROP INDEX IF EXISTS public.llm_tool_calls_trace_id_seq_idx;
+DROP INDEX IF EXISTS public.llm_tool_calls_pruned_at_idx;
+DROP INDEX IF EXISTS public.llm_generations_trace_id_seq_idx;
+DROP INDEX IF EXISTS public.llm_generations_pruned_at_idx;
 DROP INDEX IF EXISTS public.idx_topics_embedding_hnsw;
 DROP INDEX IF EXISTS public.idx_todos_user_id;
 DROP INDEX IF EXISTS public.idx_todos_created_at;
@@ -84,6 +95,7 @@ DROP INDEX IF EXISTS public.idx_notifications_target;
 DROP INDEX IF EXISTS public.idx_notifications_created_at;
 DROP INDEX IF EXISTS public.idx_notifications_active;
 DROP INDEX IF EXISTS public.idx_notes_status_updated_at;
+DROP INDEX IF EXISTS public.idx_messages_trace_id;
 DROP INDEX IF EXISTS public.idx_messages_conversation_id;
 DROP INDEX IF EXISTS public.idx_mentions_concept_id;
 DROP INDEX IF EXISTS public.idx_links_to_note_id;
@@ -119,6 +131,9 @@ ALTER TABLE IF EXISTS ONLY public.note_tag_dismissals DROP CONSTRAINT IF EXISTS 
 ALTER TABLE IF EXISTS ONLY public.messages DROP CONSTRAINT IF EXISTS messages_pkey;
 ALTER TABLE IF EXISTS ONLY public.mentions DROP CONSTRAINT IF EXISTS mentions_pkey;
 ALTER TABLE IF EXISTS ONLY public.memberships DROP CONSTRAINT IF EXISTS memberships_pkey;
+ALTER TABLE IF EXISTS ONLY public.llm_traces DROP CONSTRAINT IF EXISTS llm_traces_pkey;
+ALTER TABLE IF EXISTS ONLY public.llm_tool_calls DROP CONSTRAINT IF EXISTS llm_tool_calls_pkey;
+ALTER TABLE IF EXISTS ONLY public.llm_generations DROP CONSTRAINT IF EXISTS llm_generations_pkey;
 ALTER TABLE IF EXISTS ONLY public.links DROP CONSTRAINT IF EXISTS links_pkey;
 ALTER TABLE IF EXISTS ONLY public.kysely_migration DROP CONSTRAINT IF EXISTS kysely_migration_pkey;
 ALTER TABLE IF EXISTS ONLY public.kysely_migration_lock DROP CONSTRAINT IF EXISTS kysely_migration_lock_pkey;
@@ -160,6 +175,9 @@ DROP TABLE IF EXISTS public.note_tag_dismissals;
 DROP TABLE IF EXISTS public.messages;
 DROP TABLE IF EXISTS public.mentions;
 DROP TABLE IF EXISTS public.memberships;
+DROP TABLE IF EXISTS public.llm_traces;
+DROP TABLE IF EXISTS public.llm_tool_calls;
+DROP TABLE IF EXISTS public.llm_generations;
 DROP TABLE IF EXISTS public.links;
 DROP TABLE IF EXISTS public.kysely_migration_lock;
 DROP TABLE IF EXISTS public.kysely_migration;
@@ -503,6 +521,69 @@ CREATE TABLE public.links (
 
 
 --
+-- Name: llm_generations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.llm_generations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    trace_id uuid NOT NULL,
+    seq integer NOT NULL,
+    llm_use_case character varying NOT NULL,
+    provider character varying NOT NULL,
+    model character varying NOT NULL,
+    prompt jsonb,
+    response jsonb,
+    prompt_tokens integer,
+    completion_tokens integer,
+    cost_usd numeric(12,6),
+    latency_ms integer,
+    finish_reason character varying,
+    error text,
+    pruned_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: llm_tool_calls; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.llm_tool_calls (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    trace_id uuid NOT NULL,
+    seq integer NOT NULL,
+    name character varying NOT NULL,
+    input jsonb NOT NULL,
+    output jsonb,
+    duration_ms integer,
+    status character varying NOT NULL,
+    pruned_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: llm_traces; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.llm_traces (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workspace_id uuid NOT NULL,
+    kind character varying NOT NULL,
+    owner_type character varying NOT NULL,
+    owner_id uuid NOT NULL,
+    status character varying DEFAULT 'running'::character varying NOT NULL,
+    started_at timestamp without time zone DEFAULT now() NOT NULL,
+    finished_at timestamp without time zone,
+    error text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: memberships; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -542,6 +623,7 @@ CREATE TABLE public.messages (
     tool_calls jsonb,
     tool_call_id character varying,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
+    trace_id uuid,
     CONSTRAINT messages_role_check CHECK (((role)::text = ANY ((ARRAY['user'::character varying, 'assistant'::character varying, 'tool'::character varying])::text[])))
 );
 
@@ -607,7 +689,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-06 00:20:02.193473'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-10 01:45:47.018725'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -640,7 +722,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-06 00:20:02.193473'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-10 01:45:47.018725'::timestamp without time zone NOT NULL
 );
 
 
@@ -993,6 +1075,30 @@ ALTER TABLE ONLY public.links
 
 
 --
+-- Name: llm_generations llm_generations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_generations
+    ADD CONSTRAINT llm_generations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: llm_tool_calls llm_tool_calls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_tool_calls
+    ADD CONSTRAINT llm_tool_calls_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: llm_traces llm_traces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_traces
+    ADD CONSTRAINT llm_traces_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: memberships memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1259,6 +1365,13 @@ CREATE INDEX idx_messages_conversation_id ON public.messages USING btree (conver
 
 
 --
+-- Name: idx_messages_trace_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_messages_trace_id ON public.messages USING btree (trace_id);
+
+
+--
 -- Name: idx_notes_status_updated_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1333,6 +1446,48 @@ CREATE INDEX idx_todos_user_id ON public.todos USING btree (user_id);
 --
 
 CREATE INDEX idx_topics_embedding_hnsw ON public.topics USING hnsw (embedding public.halfvec_cosine_ops);
+
+
+--
+-- Name: llm_generations_pruned_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_generations_pruned_at_idx ON public.llm_generations USING btree (pruned_at) WHERE (pruned_at IS NULL);
+
+
+--
+-- Name: llm_generations_trace_id_seq_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_generations_trace_id_seq_idx ON public.llm_generations USING btree (trace_id, seq);
+
+
+--
+-- Name: llm_tool_calls_pruned_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_tool_calls_pruned_at_idx ON public.llm_tool_calls USING btree (pruned_at) WHERE (pruned_at IS NULL);
+
+
+--
+-- Name: llm_tool_calls_trace_id_seq_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_tool_calls_trace_id_seq_idx ON public.llm_tool_calls USING btree (trace_id, seq);
+
+
+--
+-- Name: llm_traces_status_started_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_traces_status_started_at_idx ON public.llm_traces USING btree (status, started_at);
+
+
+--
+-- Name: llm_traces_workspace_id_owner_lookup_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX llm_traces_workspace_id_owner_lookup_idx ON public.llm_traces USING btree (workspace_id, owner_type, owner_id);
 
 
 --
@@ -1525,6 +1680,46 @@ ALTER TABLE ONLY public.links
 
 ALTER TABLE ONLY public.links
     ADD CONSTRAINT links_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: llm_generations llm_generations_trace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_generations
+    ADD CONSTRAINT llm_generations_trace_id_fkey FOREIGN KEY (trace_id) REFERENCES public.llm_traces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: llm_generations llm_generations_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_generations
+    ADD CONSTRAINT llm_generations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: llm_tool_calls llm_tool_calls_trace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_tool_calls
+    ADD CONSTRAINT llm_tool_calls_trace_id_fkey FOREIGN KEY (trace_id) REFERENCES public.llm_traces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: llm_tool_calls llm_tool_calls_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_tool_calls
+    ADD CONSTRAINT llm_tool_calls_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+
+--
+-- Name: llm_traces llm_traces_workspace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.llm_traces
+    ADD CONSTRAINT llm_traces_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
 
 
 --
@@ -1771,5 +1966,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict XdHiHyItS1avmoKN2YJuJlb9xBoH9RfIoOWtZ12YoDdJolgrz6Y4OpTC9aoeXga
+\unrestrict vLefh2TXsEdCNRHfne1MWPXFc7Wal9C2twfO7FFoAHbCbxYuO69vh9Ec1z6PSju
 

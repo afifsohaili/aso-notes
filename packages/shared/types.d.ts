@@ -147,6 +147,54 @@ export interface Links {
   workspace_id: string;
 }
 
+export interface LlmGenerations {
+  completion_tokens: number | null;
+  cost_usd: string | null;
+  created_at: Generated<Timestamp>;
+  error: string | null;
+  finish_reason: string | null;
+  id: Generated<string>;
+  latency_ms: number | null;
+  llm_use_case: string;
+  model: string;
+  pruned_at: Timestamp | null;
+  prompt: Json | null;
+  prompt_tokens: number | null;
+  provider: string;
+  response: Json | null;
+  seq: number;
+  trace_id: string;
+  workspace_id: string;
+}
+
+export interface LlmToolCalls {
+  created_at: Generated<Timestamp>;
+  duration_ms: number | null;
+  id: Generated<string>;
+  input: Json;
+  name: string;
+  output: Json | null;
+  pruned_at: Timestamp | null;
+  seq: number;
+  status: string;
+  trace_id: string;
+  workspace_id: string;
+}
+
+export interface LlmTraces {
+  created_at: Generated<Timestamp>;
+  error: string | null;
+  finished_at: Timestamp | null;
+  id: Generated<string>;
+  kind: string;
+  owner_id: string;
+  owner_type: string;
+  started_at: Generated<Timestamp>;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  workspace_id: string;
+}
+
 export interface Memberships {
   created_at: Generated<Timestamp>;
   deactivated_at: Timestamp | null;
@@ -172,6 +220,7 @@ export interface Messages {
   role: string;
   tool_call_id: string | null;
   tool_calls: Json | null;
+  trace_id: string | null;
   workspace_id: string;
 }
 
@@ -357,6 +406,9 @@ export interface DB {
   conversations: Conversations;
   folders: Folders;
   links: Links;
+  llm_generations: LlmGenerations;
+  llm_tool_calls: LlmToolCalls;
+  llm_traces: LlmTraces;
   memberships: Memberships;
   mentions: Mentions;
   messages: Messages;
