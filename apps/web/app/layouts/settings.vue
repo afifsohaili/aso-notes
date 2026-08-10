@@ -20,6 +20,7 @@ const items: NavItem[] = [
   { id: 'llm-providers', label: t('settings.nav.llmProviders'), path: '/settings/llm-providers' },
   { id: 'extraction', label: t('settings.nav.extraction'), path: '/settings/extraction' },
   { id: 'consolidation', label: t('settings.nav.consolidation'), path: '/settings/extraction/consolidation', indent: true },
+  { id: 'usage', label: t('settings.nav.usage'), path: '/settings/usage' },
 ]
 
 const activeItem = computed(() => {

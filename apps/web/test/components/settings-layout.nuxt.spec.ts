@@ -49,17 +49,18 @@ describe('settings layout', () => {
     expect(sidebar.text()).toContain('AI Models')
     expect(sidebar.text()).toContain('Extraction')
     expect(sidebar.text()).toContain('Consolidation')
+    expect(sidebar.text()).toContain('Usage')
   })
 
   it('highlights the active section based on the route', async () => {
-    useRouteMock.mockReturnValue(makeRoute('/settings/extraction'))
+    useRouteMock.mockReturnValue(makeRoute('/settings/usage'))
     mockBadge(false)
     const component = await mountSuspended(SettingsLayout, {
       slots: { default: '<div data-testid="page-content">Page content</div>' },
     })
 
     const sidebar = component.findAll('nav[aria-label="Settings sections"]').find(n => !n.classes().includes('md:hidden'))
-    const active = sidebar?.findAll('a').find(a => a.text() === 'Extraction')
+    const active = sidebar?.findAll('a').find(a => a.text() === 'Usage')
     expect(active?.classes()).toContain('bg-indigo-50')
     expect(active?.classes()).toContain('text-indigo-700')
   })
@@ -73,7 +74,7 @@ describe('settings layout', () => {
 
     const mobileNav = component.findAll('nav[aria-label="Settings sections"]').find(n => n.classes().includes('md:hidden'))
     expect(mobileNav?.exists()).toBe(true)
-    expect(mobileNav?.findAll('a').length).toBe(4)
+    expect(mobileNav?.findAll('a').length).toBe(5)
   })
 
   it('renders the page slot', async () => {

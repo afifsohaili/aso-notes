@@ -350,3 +350,53 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - A `DELETE /api/conversations/:id` endpoint is still missing; when added it should call `purgeTraceContentForOwner(db, 'conversations', id)` before deleting the row, otherwise the orphan sweep is the fallback.
 - Streaming chat answers could carry the new `trace_id` in the SSE `answer` event so the "View trace" link appears immediately without waiting for a detail refresh.
 
+## Phase 7 — Usage & cost UI (done)
+
+### Built
+
+- `GET /api/usage` endpoint (`apps/web/server/api/usage/index.get.ts`) — workspace-scoped, auth required. Returns:
+  - Time-window cards: `today` (since UTC midnight), `last7d`, `last30d` with `generations`, `tokens`, `costUsd`, and `usageMissingGenerations`.
+  - Breakdown table grouped by `llm_use_case` × `model` over the last 30 days, with per-row `generations`, `tokens`, `costUsd`, and `usageMissingGenerations`.
+  - A `total` footer row.
+  - All rollups are read-time SQL aggregates; no materialized tables or caches.
+- Settings page (`apps/web/app/pages/settings/usage.vue`) wired into the settings layout sidebar (`apps/web/app/layouts/settings.vue`) with a new "Usage" nav item.
+- Presentational component `apps/web/app/components/settings/usage/usage-summary.vue` renders horizontal summary cards (label + three metrics side-by-side) and the grouped table. i18n via explicit `import { useI18n } from 'vue-i18n'`; Tailwind-only styling; unplugin-icons not needed.
+- Shared `UsageSummary` type in `apps/web/app/types/usage-summary.ts` used by both endpoint consumer and component.
+- `usage_missing` handling: generations with `usage_missing = true` are counted in the generation totals and flagged per row (amber badge) and in the summary notice, but their `null` tokens/cost are excluded from token and cost sums.
+
+### Tests
+
+- `apps/web/test/e2e/usage-api.spec.ts` (4 tests, e2e project):
+  - 401 when unauthenticated.
+  - empty summary on a fresh workspace.
+  - correct time-window rollups and grouped table, including `usage_missing` rows counted but excluded from cost/tokens.
+  - cross-workspace isolation.
+- Component tests (`project 'nuxt'`):
+  - `apps/web/test/components/settings-usage-summary.nuxt.spec.ts` (4 tests): renders title, cards, table, and total footer; shows usage-missing notice; handles empty state; handles error state.
+  - `apps/web/test/components/settings-layout.nuxt.spec.ts` updated: expects the new "Usage" nav item and asserts it is active on `/settings/usage`.
+
+### Typecheck / lint
+
+- `pnpm lint` clean.
+- `pnpm --filter web vitest run --project e2e` passes: 349 tests in 48 files.
+- `pnpm --filter web vitest run --project nuxt` passes: 139 tests in 31 files.
+- `pnpm --filter web vitest run --project unit` passes: 450 tests in 40 files.
+- `pnpm --filter web exec nuxt typecheck` still fails with the pre-existing `vue@^3.5.28 conflicts with direct dependency` npm override error, unrelated to this phase.
+
+### Divergences from ticket / prototype
+
+- The cards are horizontal (label and three metrics side-by-side) as explicitly required, not the rejected vertical card stack from the prototype.
+- The table and the 30-day cards both cover the same rolling 30-day window; the ticket did not specify a table time range, so the window was aligned with the longest card range.
+- `today` is computed from UTC midnight rather than local midnight for deterministic server-side aggregation; this is a sensible default but may differ from a user's local expectation.
+- `usage_missing` generations are included in the generation count and surfaced with a badge/notice; their `null` tokens/cost are excluded from sums. The ticket only asked that they be "visible somehow".
+- The endpoint uses SQL `GROUP BY` plus raw `sum(...)` casts for the grouped table, and separate range queries for the cards. This is still a read-time rollup with no materialization.
+- No chart/dashboard or compact-list variants were kept; the locked decision was cards + table only.
+- A direct component test for the page route was not added because the page is only a thin `useFetch` wrapper around the `usage-summary` component; the route behavior is covered by the layout component test and the e2e endpoint tests.
+
+### Concerns for future observability work
+
+- The usage page is only as fresh as the `llm_generations` rows; real-time ingestion/chat spend may lag slightly while traces are written.
+- There is no cost budget/threshold alert yet; the consolidation budget card exists but a workspace-level LLM budget is a separate future decision.
+- No export/download of the usage table is provided; the user could screenshot or copy the table, but a CSV export would be a natural next step.
+
+
