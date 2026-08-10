@@ -99,8 +99,15 @@ export interface CompletionStreamChunk {
   }
 }
 
+export interface TraceOptions {
+  traceId: string
+  workspaceId: string
+  useCase: string
+  seq: number
+}
+
 export interface LLMProvider {
-  complete: (request: CompletionRequest) => Promise<CompletionResult>
+  complete: (request: CompletionRequest, trace?: TraceOptions) => Promise<CompletionResult>
   /** Streaming variant; callers and decorators that support it accumulate chunks. */
-  completeStream?: (request: CompletionRequest) => AsyncIterableIterator<CompletionStreamChunk>
+  completeStream?: (request: CompletionRequest, trace?: TraceOptions) => AsyncIterableIterator<CompletionStreamChunk>
 }

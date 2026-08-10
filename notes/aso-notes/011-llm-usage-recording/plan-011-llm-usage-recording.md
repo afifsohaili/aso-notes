@@ -196,6 +196,62 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - Ingestion `seq` starts at 0 for the first provider call in pipeline order. Because `embed-chunks` runs before `extract-graph`, embedding generations receive lower sequence numbers than the extraction generation. This satisfies the "starts at 0 and increments" rule literally while preserving pipeline ordering.
 - Trace writes during ingestion use `safeTraceWrite` but are awaited through it (same Phase 2 divergence) to keep tests deterministic against transaction rollback.
 
+## Phase 4 — Agent chat tracing
+
+### Built
+
+- `apps/web/server/lib/agent/run-agent.ts` now creates one `llm_traces` row per Answer (`kind='chat'`, `owner_type='conversations'`, `owner_id=conversation.id`). The trace is created after the user message is persisted and the conversation id is known.
+- `apps/web/server/lib/agent/loop.ts` passes a monotonic `seq` (shared with tool calls) to every LLM `complete` call via the `TraceOptions` parameter.
+- `apps/web/server/lib/ai/types.ts` adds `TraceOptions` to the `LLMProvider` interface so the loop can pass tracing context without knowing whether the provider is wrapped.
+- `apps/web/server/lib/agent/run-agent.ts` wraps the agent's LLM provider in `TracedLLMProvider` per Answer and wraps every tool to record `llm_tool_calls` rows via `appendToolCall`.
+- `apps/web/server/lib/observability/trace-writer.ts` now truncates tool output to ~8KB with `truncateJsonOutput`: oversized JSON is wrapped as `{ __truncated: true, __originalBytes: N, head: "..." }`. Small values and `null`/`undefined` pass through unchanged.
+- The final assistant Answer message is linked to the trace: `messages.trace_id` is set on the last assistant message without `tool_calls` when `persistLoopMessages` runs.
+- `apps/web/server/api/conversations/index.post.ts` listens for the Node.js request `close` event and aborts a dedicated `AbortController`, which is passed to `runAgent`. On abort the trace finishes with `status='aborted'` and any partial generations/tool calls are retained.
+- Tracing failures never break chat: `createTrace` failures are caught by `safeTraceWrite` and the Answer continues without a trace.
+- `apps/web/server/lib/agent/providers.ts` now returns `llmProviderInfo` (provider kind + model) so `runAgent` can build the `TracedLLMProvider` with the correct provider/model metadata.
+- `setAgentTestProviders` accepts an optional `llmProviderInfo` override and defaults to `{ kind: 'openrouter', model: 'test-model' }`.
+
+### Tests
+
+- `apps/web/test/e2e/llm-tracing-chat.spec.ts` (3 tests, e2e project):
+  - one trace per Answer, kind `chat`, owner `conversations`, status `completed`
+  - one Generation per LLM call with monotonic `seq` and usage/cost recorded
+  - one Tool Call row per tool invocation, with tool output truncated at ~8KB for a large `read_note` result
+  - the assistant Answer message has `messages.trace_id` equal to the trace id
+- `apps/web/test/e2e/llm-tracing-chat.spec.ts` abort case:
+  - passing an aborted `AbortSignal` to `runAgent` leaves the trace as `aborted` while retaining any generations/tool calls already recorded
+- `apps/web/test/e2e/llm-tracing-chat.spec.ts` resilience case:
+  - mocking `createTrace` to throw still yields a successful chat response and leaves no `llm_traces` row
+- `apps/web/test/unit/trace-writer.spec.ts` (6 tests, unit project):
+  - `truncateJsonOutput` preserves small values
+  - truncates oversized JSON to roughly the byte limit
+  - counts UTF-8 bytes, not string length
+  - passes through `null`/`undefined`
+  - `createSeqCounter` allocates monotonic integers starting at 0 (or a custom offset)
+- Existing agent/conversation specs updated and passing.
+
+### Typecheck / lint
+
+- `pnpm lint` clean.
+- `pnpm --filter web vitest run --project e2e` passes: 328 tests in 45 files.
+- `pnpm --filter web vitest run --project unit` passes: 441 tests in 39 files.
+- `pnpm --filter web vitest run --project nuxt` passes: 126 tests in 28 files.
+- `pnpm --filter web exec nuxt typecheck` still fails with the pre-existing `vue@^3.5.28 conflicts with direct dependency` npm override error, unrelated to this phase.
+
+### Divergences from ticket resolutions
+
+- The `TraceOptions` interface was moved from `traced-provider.ts` to `ai/types.ts` and re-exported from the observability module, so the `LLMProvider` interface can accept an optional trace context without a circular dependency. This is a structural change but preserves the same shape.
+- `llmProviderInfo` (kind + model) is returned by `getAgentProviders` and passed through `AgentContext` because the trace is created per Answer inside `runAgent`, not at provider resolution time. This lets the same resolved providers serve multiple Answers without re-instantiation.
+- Disconnect detection is best-effort via the Node.js request `close` event. The in-process test harness does not exercise the real HTTP close path, so the abort case is tested by calling `runAgent` directly with an aborted `AbortSignal`. Production uses the same `AbortSignal` path.
+- Tool-call trace writes are fire-and-forget (matching the existing generation write pattern) rather than awaited in the loop. Test determinism relies on the writes completing before the test transaction rolls back, which they do in practice because the loop is synchronous and the inserts are fast. The same caveat applies to Phase 2/3 generation writes.
+- The truncation `head` string is not guaranteed to be valid JSON on its own; it is embedded inside a valid JSON wrapper object. The wrapper makes the truncation obvious and preserves the original byte count for debugging.
+
+### Concerns for Phase 5 (retention job)
+
+- The retention job must NULL `llm_generations.prompt`/`response` and `llm_tool_calls.output` while leaving metadata (tokens, cost, model, latency, status) intact. It should also stamp `pruned_at`.
+- Chat traces have large tool outputs (especially `read_note`) already truncated at write time, but generations still carry full prompts/answers. The retention job should treat `kind='chat'` the same as other kinds.
+- Consider a cleanup job for orphaned `llm_traces` whose owner rows no longer exist; the polymorphic owner has no FK, so there is no cascade delete.
+
 ### Concerns for Phase 4 (agent chat tracing)
 
 - Agent loop and tool calls still need trace wiring; `appendToolCall` is implemented but unused.

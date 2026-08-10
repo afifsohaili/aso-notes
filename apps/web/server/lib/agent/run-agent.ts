@@ -1,5 +1,8 @@
 import type { ChatMessage, ChatRole } from '../ai/types'
-import type { AgentContext, AgentRunResult, AgentSseEvent, AgentTool } from './types'
+import type { TraceStatus } from '../observability/trace-writer'
+import type { AgentContext, AgentLoopTraceOptions, AgentRunResult, AgentSseEvent, AgentTool, AgentToolResult } from './types'
+import { appendToolCall, createSeqCounter, createTrace, finishTrace, safeTraceWrite } from '../observability/trace-writer'
+import { TracedLLMProvider } from '../observability/traced-provider'
 import { runAgentLoop } from './loop'
 
 interface MessageRow {
@@ -123,17 +126,28 @@ async function persistLoopMessages(
   ctx: AgentContext,
   conversationId: string,
   messages: ChatMessage[],
+  traceId?: string,
 ): Promise<void> {
   if (messages.length === 0)
     return
 
-  const values = messages.map(message => ({
+  // The final assistant answer is the last assistant message without tool calls.
+  let answerIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === 'assistant' && !messages[i]!.toolCalls) {
+      answerIndex = i
+      break
+    }
+  }
+
+  const values = messages.map((message, index) => ({
     workspace_id: ctx.workspaceId,
     conversation_id: conversationId,
     role: message.role,
     content: message.content,
     tool_calls: message.toolCalls ? JSON.stringify(message.toolCalls) : null,
     tool_call_id: message.toolCallId ?? null,
+    trace_id: traceId && index === answerIndex ? traceId : null,
   }))
 
   await ctx.db.insertInto('messages').values(values).execute()
@@ -143,6 +157,47 @@ export interface RunAgentOptions {
   conversationId?: string
   editFromMessageId?: string
   query: string
+  signal?: AbortSignal
+}
+
+function buildTracedContext(ctx: AgentContext): AgentContext {
+  const provider = ctx.llmProviderInfo?.kind ?? 'openrouter'
+  const model = ctx.llmProviderInfo?.model ?? 'unknown'
+  return {
+    ...ctx,
+    llm: new TracedLLMProvider(ctx.llm, { db: ctx.db, provider, model, llmUseCase: 'agent' }),
+  }
+}
+
+function wrapTool(tool: AgentTool, trace: AgentLoopTraceOptions): AgentTool {
+  return {
+    ...tool,
+    async execute(args, ctx) {
+      const start = Date.now()
+      let result: AgentToolResult
+      let status = 'completed'
+      try {
+        result = await tool.execute(args, ctx)
+      }
+      catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        result = { result: { error: message }, notes: [] }
+        status = 'failed'
+      }
+      const duration = Date.now() - start
+      safeTraceWrite('appendToolCall', () => appendToolCall(ctx.db, {
+        workspaceId: trace.workspaceId,
+        traceId: trace.traceId,
+        seq: trace.nextSeq(),
+        name: tool.name,
+        input: args,
+        output: result.result,
+        durationMs: duration,
+        status,
+      }))
+      return result
+    },
+  }
 }
 
 export async function runAgent(
@@ -171,12 +226,68 @@ export async function runAgent(
     return event
   }
 
-  const { answer, notes, newMessages } = await runAgentLoop(inputMessages, tools, ctx, e => onEvent(wrapEvent(e)))
-  await persistLoopMessages(ctx, conversation.id, newMessages)
+  let traceId: string | undefined
+  let trace: AgentLoopTraceOptions | undefined
+  let finishStatus: TraceStatus = 'completed'
+  let finishError: string | null = null
 
-  return {
-    answer,
-    notes,
-    conversationId: conversation.id,
+  try {
+    traceId = await safeTraceWrite('createTrace', () => createTrace(ctx.db, {
+      workspaceId: ctx.workspaceId,
+      kind: 'chat',
+      ownerType: 'conversations',
+      ownerId: conversation.id,
+    }))
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[runAgent] createTrace failed: ${message}`)
+  }
+
+  let loopCtx = ctx
+  let loopTools = tools
+  if (traceId) {
+    const nextSeq = createSeqCounter()
+    trace = {
+      traceId,
+      workspaceId: ctx.workspaceId,
+      useCase: 'agent',
+      nextSeq,
+    }
+    loopCtx = buildTracedContext(ctx)
+    loopTools = tools.map(t => wrapTool(t, trace))
+  }
+
+  try {
+    const { answer, notes, newMessages } = await runAgentLoop(
+      inputMessages,
+      loopTools,
+      loopCtx,
+      e => onEvent(wrapEvent(e)),
+      trace,
+      options.signal,
+    )
+    await persistLoopMessages(ctx, conversation.id, newMessages, traceId)
+
+    if (options.signal?.aborted) {
+      finishStatus = 'aborted'
+      finishError = null
+    }
+
+    return {
+      answer,
+      notes,
+      conversationId: conversation.id,
+    }
+  }
+  catch (error) {
+    finishStatus = 'failed'
+    finishError = error instanceof Error ? error.message : String(error)
+    throw error
+  }
+  finally {
+    if (traceId) {
+      await safeTraceWrite('finishTrace', () => finishTrace(ctx.db, { traceId, status: finishStatus, error: finishError }))
+    }
   }
 }

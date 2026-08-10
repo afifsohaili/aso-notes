@@ -1,5 +1,5 @@
 import type { ChatMessage, CompletionRequest, ToolDefinition } from '../ai/types'
-import type { AgentContext, AgentEventEmitter, AgentSseEvent, AgentTool } from './types'
+import type { AgentContext, AgentEventEmitter, AgentLoopTraceOptions, AgentSseEvent, AgentTool } from './types'
 
 export const MAX_AGENT_ITERATIONS = 10
 
@@ -44,6 +44,8 @@ export async function runAgentLoop(
   tools: AgentTool[],
   ctx: AgentContext,
   onEvent: AgentEventEmitter,
+  trace?: AgentLoopTraceOptions,
+  signal?: AbortSignal,
 ): Promise<{ answer: string, notes: string[], newMessages: ChatMessage[] }> {
   const toolByName = new Map(tools.map(t => [t.name, t]))
   const toolDefinitions = tools.map(toToolDefinition)
@@ -54,14 +56,30 @@ export async function runAgentLoop(
   const loopMessages: ChatMessage[] = []
   const citedNotes = new Set<string>()
 
+  function nextTraceOptions(): TraceOptions | undefined {
+    if (!trace)
+      return undefined
+    return {
+      traceId: trace.traceId,
+      workspaceId: trace.workspaceId,
+      useCase: trace.useCase,
+      seq: trace.nextSeq(),
+    }
+  }
+
   for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
+    if (signal?.aborted) {
+      emit({ type: 'error', message: 'Aborted' }, onEvent)
+      return { answer: '', notes: [], newMessages: loopMessages }
+    }
+
     let result
     try {
       result = await ctx.llm.complete({
         messages: workingMessages,
         tools: toolDefinitions,
         toolChoice: 'auto',
-      } as CompletionRequest)
+      } as CompletionRequest, nextTraceOptions())
     }
     catch (error) {
       const message = error instanceof Error ? error.message : 'LLM request failed'
@@ -81,6 +99,11 @@ export async function runAgentLoop(
     }
 
     for (const toolCall of assistantMessage.toolCalls) {
+      if (signal?.aborted) {
+        emit({ type: 'error', message: 'Aborted' }, onEvent)
+        return { answer: '', notes: [], newMessages: loopMessages }
+      }
+
       let args: Record<string, unknown>
       try {
         args = JSON.parse(toolCall.arguments) as Record<string, unknown>
@@ -125,7 +148,7 @@ export async function runAgentLoop(
   // Iteration cap reached: force a final no-tools completion.
   workingMessages.push({ role: 'system', content: WRAP_UP_PROMPT })
   try {
-    const final = await ctx.llm.complete({ messages: workingMessages, toolChoice: 'none' })
+    const final = await ctx.llm.complete({ messages: workingMessages, toolChoice: 'none' }, nextTraceOptions())
     const answer = final.message.content ?? ''
     const finalMessage: ChatMessage = { role: 'assistant', content: answer }
     loopMessages.push(finalMessage)

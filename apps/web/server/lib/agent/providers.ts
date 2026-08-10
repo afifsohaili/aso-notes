@@ -1,5 +1,5 @@
-import type { EmbeddingProvider, LLMProvider } from '../ai'
-import type { EnvMap } from '../ai/registry'
+import type { EnvMap, ProviderKind } from '../ai/registry'
+import type { EmbeddingProvider, LLMProvider } from '../ai/types'
 import type { SyncDb } from '../sync/sweeper'
 import process from 'node:process'
 import { createEmbeddingProvider, createLLMProvider, resolveEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
@@ -9,13 +9,24 @@ import { resolveSyncWorkspace } from '../sync/workspace'
 interface AgentProviders {
   llm: LLMProvider
   embedding: EmbeddingProvider
+  llmProviderInfo: {
+    kind: ProviderKind
+    model: string
+  }
 }
 
 let testProviders: AgentProviders | undefined
 let agentSingleton: AgentProviders | null = null
 
-export function setAgentTestProviders(providers: AgentProviders): void {
-  testProviders = providers
+export function setAgentTestProviders(providers: Partial<AgentProviders> & { llm: LLMProvider, embedding: EmbeddingProvider }): void {
+  testProviders = {
+    ...providers,
+    llmProviderInfo: {
+      kind: 'openrouter',
+      model: 'test-model',
+      ...providers.llmProviderInfo,
+    },
+  }
 }
 
 export function clearAgentTestProviders(): void {
@@ -38,9 +49,11 @@ async function createWorkspaceAgentProviders(db: SyncDb, workspaceId?: string, e
 
   const llmSettings = await resolveLLMProviderSettings(db, resolvedWorkspaceId, 'agent', env)
   const embeddingSettings = await resolveEmbeddingProviderSettings(db, resolvedWorkspaceId, env)
+  const llmResolved = resolveLLMProvider('agent', env, llmSettings)
   return {
-    llm: resolveLLMProvider('agent', env, llmSettings).provider,
+    llm: llmResolved.provider,
     embedding: resolveEmbeddingProvider(env, embeddingSettings).provider,
+    llmProviderInfo: { kind: llmResolved.kind, model: llmResolved.model },
   }
 }
 
@@ -63,8 +76,10 @@ export function createAgentProviders(env: EnvMap = process.env): AgentProviders 
   if (testProviders)
     return testProviders
 
+  const llmResolved = createLLMProvider('agent', env)
   return {
-    llm: createLLMProvider('agent', env).provider,
+    llm: llmResolved.provider,
     embedding: createEmbeddingProvider(env).provider,
+    llmProviderInfo: { kind: llmResolved.kind, model: llmResolved.model },
   }
 }

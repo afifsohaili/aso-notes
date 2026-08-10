@@ -49,6 +49,42 @@ export interface FinishTraceInput {
   error?: string | null
 }
 
+export function createSeqCounter(start = 0): () => number {
+  let seq = start
+  return () => seq++
+}
+
+/**
+ * Truncate a JSON-serializable value to roughly `byteLimit` bytes.
+ *
+ * Values that fit are returned unchanged. Oversized values are wrapped in a
+ * debugging object that preserves the first ~limit bytes of the JSON text,
+ * the original byte count, and a truncation flag. The `head` string is
+ * stripped of trailing partial escape sequences so it is valid-ish for human
+ * inspection, but callers should treat it as a plain preview.
+ */
+export function truncateJsonOutput(value: unknown, byteLimit: number = 8192): unknown {
+  if (value === undefined || value === null)
+    return value
+
+  const json = JSON.stringify(value)
+  const bytes = new TextEncoder().encode(json)
+  if (bytes.length <= byteLimit)
+    return value
+
+  const headBytes = bytes.slice(0, byteLimit)
+  let head = new TextDecoder().decode(headBytes)
+  // Remove trailing backslashes and partial \uXXXX escapes so the preview
+  // does not contain visibly broken JSON.
+  head = head.replace(/\\+$/, '').replace(/\\u[0-9a-fA-F]{0,3}$/, '')
+
+  return {
+    __truncated: true,
+    __originalBytes: bytes.length,
+    head,
+  }
+}
+
 function jsonb(value: unknown): string | null {
   return value === undefined || value === null ? null : JSON.stringify(value)
 }
@@ -113,7 +149,7 @@ export async function appendToolCall(
       seq: input.seq,
       name: input.name,
       input: jsonb(input.input),
-      output: jsonb(input.output),
+      output: jsonb(truncateJsonOutput(input.output)),
       duration_ms: input.durationMs ?? null,
       status: input.status,
     })

@@ -29,11 +29,14 @@ export default defineEventHandler(async (event) => {
 
   const workspaceId = membership.workspace_id
 
-  const { llm, embedding } = await getAgentProviders(db, workspaceId)
+  const { llm, embedding, llmProviderInfo } = await getAgentProviders(db, workspaceId)
 
   setResponseHeader(event, 'content-type', 'text/event-stream')
   setResponseHeader(event, 'cache-control', 'no-cache, no-transform')
   setResponseHeader(event, 'connection', 'keep-alive')
+
+  const abortController = new AbortController()
+  event.node.req.on('close', () => abortController.abort())
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -48,8 +51,9 @@ export default defineEventHandler(async (event) => {
             query,
             conversationId: body?.conversationId,
             editFromMessageId: typeof body?.editFromMessageId === 'string' ? body.editFromMessageId : undefined,
+            signal: abortController.signal,
           },
-          { workspaceId, db, llm, embedding },
+          { workspaceId, db, llm, embedding, llmProviderInfo },
           AGENT_TOOLS,
           onEvent,
         )

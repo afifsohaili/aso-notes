@@ -1,5 +1,6 @@
 import type { DB } from '@monorepo/shared'
 import type { Kysely, Transaction } from 'kysely'
+import type { ProviderKind } from '../ai/registry'
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
 
 /** Database handle used by agent tools. */
@@ -11,6 +12,18 @@ export interface AgentContext {
   db: AgentDb
   llm: LLMProvider
   embedding: EmbeddingProvider
+  llmProviderInfo?: {
+    kind: ProviderKind
+    model: string
+  }
+}
+
+/** Options passed into the agent loop to enable tracing. */
+export interface AgentLoopTraceOptions {
+  traceId: string
+  workspaceId: string
+  useCase: string
+  nextSeq: () => number
 }
 
 /** A tool the agent can call to retrieve Context. */

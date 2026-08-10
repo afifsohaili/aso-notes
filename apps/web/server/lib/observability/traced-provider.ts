@@ -8,16 +8,11 @@ import type {
   EmbeddingResult,
   LLMProvider,
   ProviderKind,
+  TraceOptions,
 } from '../ai/types'
 import { appendGeneration, safeTraceWrite } from './trace-writer'
 
-export interface TraceOptions {
-  traceId: string
-  workspaceId: string
-  useCase: string
-  seq: number
-}
-
+export type { TraceOptions } from '../ai/types'
 export interface TracedProviderDependencies {
   db: Kysely<Database>
   provider: ProviderKind

@@ -6,6 +6,7 @@ import type {
   EmbeddingProvider,
   LLMProvider,
   ResponseFormat,
+  TraceOptions,
 } from './types'
 import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 import { EMBEDDING_DIMENSIONS } from './types'
@@ -86,7 +87,7 @@ export class OllamaLLMProvider implements LLMProvider {
     }
   }
 
-  async complete(request: CompletionRequest): Promise<CompletionResult> {
+  async complete(request: CompletionRequest, _trace?: TraceOptions): Promise<CompletionResult> {
     const body: Record<string, unknown> = {
       model: this.model,
       messages: request.messages.map(toWireMessage),
