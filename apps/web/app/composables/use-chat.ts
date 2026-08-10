@@ -9,6 +9,7 @@ export interface ChatMessage {
   isError?: boolean
   /** True when id is a real DB id (loaded from the server) — editable */
   persisted?: boolean
+  traceId?: string
 }
 
 export interface ChatActivity {
@@ -25,6 +26,7 @@ export interface ConversationHistoryMessage {
   content: string | null
   tool_calls: unknown
   tool_call_id: string | null
+  trace_id: string | null
 }
 
 interface PersistedToolCall {
@@ -123,6 +125,7 @@ export function useChat() {
         content: m.content as string,
         notes: notesByContent.get(m.content as string),
         persisted: true,
+        traceId: m.trace_id ?? undefined,
       }))
   }
 

@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
 
   const messages = await db
     .selectFrom('messages')
-    .select(['id', 'role', 'content', 'tool_calls', 'tool_call_id', 'created_at'])
+    .select(['id', 'role', 'content', 'tool_calls', 'tool_call_id', 'trace_id', 'created_at'])
     .where('conversation_id', '=', id)
     .where('workspace_id', '=', membership.workspace_id)
     .orderBy('created_at', 'asc')

@@ -303,13 +303,50 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - No `DELETE /api/conversations/[id]` endpoint exists, so `purgeTraceContentForOwner` could not be wired at a conversation delete call site. The daily orphan sweep catches traces whose conversation owner has been deleted by any future code path.
 - The scheduler duplicate-guard checks repeatable jobs by `name: 'daily-retention'` while `queue.add` uses the job class name (`ObservabilityRetentionJob`) as the BullMQ name. This mirrors the existing consolidation scheduler convention and the unit fake; if production BullMQ returns the job name rather than the jobId suffix, the guard could be adjusted, but it is consistent with the established pattern.
 
-### Concerns for Phase 6 (chat trace UI)
+## Phase 6 — Chat trace UI (done)
 
-- Chat UI should render pruned generations/tool calls gracefully: `prompt`, `response`, and `output` may be `null` after retention. The UI should display metadata (model, provider, use case, token counts, cost, latency, status, timestamps) and a "content expired" placeholder instead of the missing payload.
-- `messages.trace_id` survives pruning, so conversation detail can still link to the trace timeline; the timeline just needs to handle null content columns.
-- When a conversation delete endpoint is added later, it should call `purgeTraceContentForOwner(db, 'conversations', conversationId)` before deleting the row. Until then, the nightly orphan sweep is the catch-all.
+### Built
 
+- `GET /api/traces/[id]` endpoint (`apps/web/server/api/traces/[id].get.ts`) — workspace-scoped, auth required. Returns the trace, its generations and tool calls sorted by `seq`, plus computed totals (`totalTokens`, `totalCost`, `durationMs`). Pruned content (`prompt`/`response`/`output` null) is returned as-is; the UI renders a placeholder.
+- Chat trace view presentational component (`apps/web/app/components/chat/chat-trace-view.vue`) and timeline component (`apps/web/app/components/observability/trace-timeline.vue`):
+  - Plain cards, no timeline rail or dots (per locked ticket decision).
+  - All steps expanded by default, still individually collapsible.
+  - Indigo accent for generations, amber for tool calls.
+  - Each step shows icon + name, one-line summary (tokens/cost/latency/finish reason or duration/status), and expandable prompt/response or input/output sections.
+  - Expired/pruned content renders an i18n "Content expired" placeholder while metadata stays visible.
+- Full-page route `app/pages/chat/[id]/trace/[traceId].vue` — auth/onboarding middleware, back link to the chat, header with status/totals/duration, uses `chat-trace-view`.
+- Subtle per-Answer "View trace" link in `chat-thread.vue` whenever `message.trace_id` is present; conversation detail API now exposes `trace_id`, and `useChat.loadMessages` carries it into messages.
+- i18n for every user-facing string (`apps/web/locales/en.json`), explicit `vue-i18n` imports, Tailwind-only styling, unplugin-icons.
 
-- Agent loop and tool calls still need trace wiring; `appendToolCall` is implemented but unused.
-- Tool-call output truncation (~8KB) is still deferred.
-- Streaming in the agent chat is at the SSE level; if true LLM streaming is introduced, `completeStream` must be wired through the loop with trace context.
+### Tests
+
+- `apps/web/test/e2e/llm-tracing-trace-read.spec.ts` (3 tests, e2e project):
+  - 401 when unauthenticated.
+  - 404 when the trace belongs to another workspace.
+  - response shape: trace + generations + tool calls sorted by `seq`, totals computed, pruned content returned as `null` with `pruned_at` set.
+- Component tests (`project 'nuxt'`):
+  - `apps/web/test/components/chat-trace-view.nuxt.spec.ts` (4 tests): header/totals/steps expanded, generation vs tool-call styling, pruned-content placeholder, missing trace state.
+  - `apps/web/test/components/trace-timeline.nuxt.spec.ts` (4 tests): steps expanded, styling, expired placeholder, collapse/expand toggle.
+  - `apps/web/test/components/chat-thread.nuxt.spec.ts` updated (1 new test): trace link appears only when both `traceId` and `conversationId` are present.
+
+### Typecheck / lint
+
+- `pnpm lint` clean.
+- `pnpm --filter web vitest run --project e2e` passes: 345 tests in 47 files.
+- `pnpm --filter web vitest run --project nuxt` passes: 135 tests in 30 files.
+- `pnpm --filter web exec nuxt typecheck` still fails with the pre-existing `vue@^3.5.28 conflicts with direct dependency` npm override error, unrelated to this phase.
+
+### Divergences from ticket / prototype
+
+- The full-page view is implemented as a thin route wrapper around a presentational `chat-trace-view` component rather than putting all markup in the page file. This keeps the page focused on data fetching and makes the UI unit-testable without mocking `useFetch`/`useRoute`.
+- The per-Answer link is intentionally minimal: "View trace" only, without cost/tokens. The full cost and token totals are available on the trace page, and the locked decision favored a subtle affordance.
+- A direct component test for the route page was not added: `mountSuspended` of a page with dynamic route params and `useFetch` hits a nuxt-seo-utils route initialization issue in the test harness. The page behavior is covered by the view component tests and the e2e endpoint tests; the page wrapper is only a thin `useFetch` + back link.
+- `messages.trace_id` is only available on assistant messages after the detail API refreshes; streamed answers do not yet receive the trace id via SSE. The link therefore appears on the next detail load.
+
+### Concerns for Phase 7 (future observability work)
+
+- No list endpoint exists for traces (`/api/traces` or per-owner). A workspace-level trace list would be needed before exposing ingestion or consolidation trace timelines in the UI.
+- The generic `GET /api/traces/:id` endpoint can already serve ingestion/consolidation traces, but there is no navigation to them yet. A future phase should decide whether to reuse the chat trace view or build a dedicated trace inspector.
+- A `DELETE /api/conversations/:id` endpoint is still missing; when added it should call `purgeTraceContentForOwner(db, 'conversations', id)` before deleting the row, otherwise the orphan sweep is the fallback.
+- Streaming chat answers could carry the new `trace_id` in the SSE `answer` event so the "View trace" link appears immediately without waiting for a detail refresh.
+

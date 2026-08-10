@@ -245,7 +245,7 @@ async function setArchived(id: string, archived: boolean) {
           </button>
         </div>
 
-        <chat-thread v-if="messages.length > 0" :messages="messages" @edit="startEdit" />
+        <chat-thread v-if="messages.length > 0" :messages="messages" :conversation-id="conversationId" @edit="startEdit" />
         <div v-else class="flex-1 flex flex-col items-center justify-center overflow-y-auto p-6 text-center">
           <div class="max-w-md">
             <h2 class="text-2xl font-semibold text-gray-900 mb-2">

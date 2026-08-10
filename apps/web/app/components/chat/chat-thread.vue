@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { ChatMessage } from '~/composables/use-chat'
 import { useI18n } from 'vue-i18n'
+import CommandLineIcon from '~icons/heroicons/command-line'
 import PencilIcon from '~icons/heroicons/pencil-square'
 import MarkdownRenderer from '~/components/notes/markdown-renderer.vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
+  conversationId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -70,6 +72,15 @@ function noteHref(path: string): string {
             </li>
           </ul>
         </div>
+
+        <NuxtLink
+          v-if="message.role === 'assistant' && message.traceId && props.conversationId"
+          :to="`/chat/${props.conversationId}/trace/${message.traceId}`"
+          class="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+        >
+          <CommandLineIcon class="h-3.5 w-3.5" />
+          {{ t('chat.viewTrace') }}
+        </NuxtLink>
       </div>
     </div>
   </div>

@@ -50,4 +50,24 @@ describe('chat-thread', () => {
     expect(component.emitted('edit')).toHaveLength(1)
     expect(component.emitted('edit')![0]![0]).toMatchObject({ id: 'db-1' })
   })
+
+  it('shows a trace link for assistant answers with a traceId and conversationId', async () => {
+    const component = await mountSuspended(ChatThread, {
+      props: {
+        conversationId: 'conv-1',
+        messages: [
+          { id: 'm4', role: 'assistant', content: 'Answer with trace.', traceId: 'trace-1' },
+          { id: 'm5', role: 'assistant', content: 'Answer without trace.' },
+        ],
+      },
+    })
+
+    const links = component.findAll('a')
+    const traceLink = links.find(a => a.attributes('href') === '/chat/conv-1/trace/trace-1')
+    expect(traceLink).toBeDefined()
+    expect(traceLink!.text()).toContain('View trace')
+
+    const withoutTraceLink = links.find(a => a.attributes('href') === '/chat/conv-1/trace/')
+    expect(withoutTraceLink).toBeUndefined()
+  })
 })
