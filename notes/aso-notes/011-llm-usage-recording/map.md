@@ -40,11 +40,11 @@ Skills to consult: /grilling, /domain-modeling, /prototype (UI tickets).
 
 ## Not yet specified
 
-- **OTel export**: whether traces should ever be exportable to a standard backend (OTLP). Sharpens once the data model exists — if the model mirrors OTel GenAI attributes, export is cheap later.
 - **Multi-user PII**: single-user app today; redaction/retention rules if that changes.
 
 ## Out of scope
 
+- OTel/OTLP export — ruled out 2026-08-06. Schema keeps OTel-aligned naming, so a later exporter is a mapper, not rework.
 - Eval harness / scored test sets — rejected in grilling (manual inspection via traces only).
 - Automated anomaly signals (token spikes, tool-call loops) — rejected in grilling.
 - Self-hosted Langfuse / Helicone / LangSmith adoption — rejected; build in-repo.
