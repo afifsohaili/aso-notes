@@ -1,5 +1,8 @@
+import type { Database } from '@monorepo/shared'
+import type { Kysely } from 'kysely'
 import type { ResilientFetchOptions } from './resilient-fetch'
 import type { EmbeddingProvider, LLMProvider } from './types'
+import { TracedEmbeddingProvider, TracedLLMProvider } from '../observability/traced-provider'
 import { OLLAMA_BASE_URL, OllamaEmbeddingProvider, OllamaLLMProvider } from './ollama'
 import { DEFAULT_EMBEDDING_MODEL, OPENROUTER_BASE_URL, OpenRouterEmbeddingProvider } from './openrouter-embedding'
 import { DEFAULT_CHAT_MODEL, OpenRouterLLMProvider } from './openrouter-llm'
@@ -100,6 +103,14 @@ export const KEYS: Record<'agent' | 'extraction' | 'embedding' | 'consolidation'
 export interface ResolveOptions {
   timeoutMs?: number
   maxAttempts?: number
+  /** Injectable for tests — no live API calls in the test suite. */
+  fetchFn?: typeof fetch
+  /** Injectable for tests — no real sleeps in the test suite. */
+  sleepFn?: (ms: number) => Promise<void>
+}
+
+export interface TraceResolveOptions {
+  db: Kysely<Database>
 }
 
 function providerKind(value: string | undefined): ProviderKind {
@@ -144,46 +155,54 @@ function resolveResilienceOptions(
   }
 }
 
-export function resolveLLMProvider(role: LlmRole, env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions): ResolvedLLM {
+export function resolveLLMProvider(role: LlmRole, env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions, trace?: TraceResolveOptions): ResolvedLLM {
   const keys = KEYS[role]
   const kind = providerKind(settings.provider || env[keys.provider])
   const model = settings.model || env[keys.model] || resolveLLMModelDefault(kind, role)
   const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
   const resilience = resolveResilienceOptions(env, keys, options)
+  const providerOptions = { ...resilience, fetchFn: options?.fetchFn, sleepFn: options?.sleepFn }
 
+  let provider: LLMProvider
   if (kind === 'ollama') {
-    return { kind, model, baseUrl, provider: new OllamaLLMProvider({ model, baseUrl, ...resilience }) }
+    provider = new OllamaLLMProvider({ model, baseUrl, ...providerOptions })
+  }
+  else {
+    provider = new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })
   }
 
-  return {
-    kind,
-    model,
-    baseUrl,
-    provider: new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...resilience }),
+  if (trace) {
+    provider = new TracedLLMProvider(provider, { db: trace.db, provider: kind, model, llmUseCase: role })
   }
+
+  return { kind, model, baseUrl, provider }
 }
 
 export function createLLMProvider(role: LlmRole, env: EnvMap): ResolvedLLM {
   return resolveLLMProvider(role, env)
 }
 
-export function resolveEmbeddingProvider(env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions): ResolvedEmbedding {
+export function resolveEmbeddingProvider(env: EnvMap, settings: ResolvedProviderSettings = {}, options?: ResolveOptions, trace?: TraceResolveOptions): ResolvedEmbedding {
   const keys = KEYS.embedding
   const kind = providerKind(settings.provider || env[keys.provider])
   const model = settings.model || env[keys.model] || resolveEmbeddingModelDefault(kind)
   const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
   const resilience = resolveResilienceOptions(env, keys, options)
+  const providerOptions = { ...resilience, fetchFn: options?.fetchFn, sleepFn: options?.sleepFn }
 
+  let provider: EmbeddingProvider
   if (kind === 'ollama') {
-    return { kind, model, baseUrl, provider: new OllamaEmbeddingProvider({ model, baseUrl, ...resilience }) }
+    provider = new OllamaEmbeddingProvider({ model, baseUrl, ...providerOptions })
+  }
+  else {
+    provider = new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })
   }
 
-  return {
-    kind,
-    model,
-    baseUrl,
-    provider: new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...resilience }),
+  if (trace) {
+    provider = new TracedEmbeddingProvider(provider, { db: trace.db, provider: kind, model, llmUseCase: 'embedding' })
   }
+
+  return { kind, model, baseUrl, provider }
 }
 
 export function createEmbeddingProvider(env: EnvMap): ResolvedEmbedding {

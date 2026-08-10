@@ -61,8 +61,9 @@ interface ChatCompletionsResponse {
       content: string | null
       tool_calls?: { id: string, function: { name: string, arguments: string } }[]
     }
+    finish_reason?: string
   }[]
-  usage?: { prompt_tokens: number, completion_tokens: number }
+  usage?: { prompt_tokens: number, completion_tokens: number, cost?: number }
 }
 
 export class OpenRouterLLMProvider implements LLMProvider {
@@ -144,9 +145,11 @@ export class OpenRouterLLMProvider implements LLMProvider {
             usage: {
               promptTokens: payload.usage.prompt_tokens,
               completionTokens: payload.usage.completion_tokens,
+              ...(payload.usage.cost !== undefined ? { cost: payload.usage.cost } : {}),
             },
           }
         : {}),
+      finishReason: payload.choices[0]?.finish_reason,
     }
   }
 }

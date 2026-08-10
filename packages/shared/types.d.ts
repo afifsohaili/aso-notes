@@ -164,6 +164,7 @@ export interface LlmGenerations {
   response: Json | null;
   seq: number;
   trace_id: string;
+  usage_missing: boolean | null;
   workspace_id: string;
 }
 

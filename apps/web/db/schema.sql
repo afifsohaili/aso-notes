@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict vLefh2TXsEdCNRHfne1MWPXFc7Wal9C2twfO7FFoAHbCbxYuO69vh9Ec1z6PSju
+\restrict CDlJCtrZmaA9qB6KPmf0pXvI36iPeqd7PxuGcxFjlG2cLgdX0mPCtDIo6jr0Ovo
 
 -- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
 -- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
@@ -541,7 +541,8 @@ CREATE TABLE public.llm_generations (
     finish_reason character varying,
     error text,
     pruned_at timestamp without time zone,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    usage_missing boolean
 );
 
 
@@ -689,7 +690,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-10 01:45:47.018725'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-10 02:11:23.137067'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -722,7 +723,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-10 01:45:47.018725'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-10 02:11:23.137067'::timestamp without time zone NOT NULL
 );
 
 
@@ -1966,5 +1967,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict vLefh2TXsEdCNRHfne1MWPXFc7Wal9C2twfO7FFoAHbCbxYuO69vh9Ec1z6PSju
+\unrestrict CDlJCtrZmaA9qB6KPmf0pXvI36iPeqd7PxuGcxFjlG2cLgdX0mPCtDIo6jr0Ovo
 

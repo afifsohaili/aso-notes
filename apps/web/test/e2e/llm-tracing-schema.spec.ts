@@ -118,6 +118,7 @@ describe('llm tracing schema (Phase 1)', () => {
       'error',
       'pruned_at',
       'created_at',
+      'usage_missing',
     ])
     expect(columnsByTable.llm_tool_calls).toEqual([
       'id',

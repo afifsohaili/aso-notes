@@ -1,5 +1,5 @@
 import type { ResilientFetchOptions } from './resilient-fetch'
-import type { EmbeddingProvider } from './types'
+import type { EmbeddingProvider, EmbeddingResult } from './types'
 import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 import { EMBEDDING_DIMENSIONS } from './types'
 
@@ -26,6 +26,26 @@ export interface OpenRouterEmbeddingOptions {
 
 interface EmbeddingsResponse {
   data: { index: number, embedding: number[] }[]
+  usage?: { prompt_tokens: number, total_tokens: number, cost?: number }
+}
+
+function toEmbeddingResult(payload: EmbeddingsResponse): EmbeddingResult {
+  const embeddings = payload.data
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map(entry => entry.embedding)
+  return {
+    embeddings,
+    ...(payload.usage
+      ? {
+          usage: {
+            promptTokens: payload.usage.prompt_tokens,
+            totalTokens: payload.usage.total_tokens,
+            ...(payload.usage.cost !== undefined ? { cost: payload.usage.cost } : {}),
+          },
+        }
+      : {}),
+  }
 }
 
 export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
@@ -50,6 +70,11 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
+    const result = await this.embedWithUsage(texts)
+    return result.embeddings
+  }
+
+  async embedWithUsage(texts: string[]): Promise<EmbeddingResult> {
     const response = await resilientFetch(`${this.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
@@ -63,9 +88,6 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
       sleepFn: this.sleepFn,
     })
     const payload = await response.json() as EmbeddingsResponse
-    return payload.data
-      .slice()
-      .sort((a, b) => a.index - b.index)
-      .map(entry => entry.embedding)
+    return toEmbeddingResult(payload)
   }
 }

@@ -10,12 +10,26 @@
  */
 export const EMBEDDING_DIMENSIONS = 2048
 
+export interface EmbeddingResult {
+  embeddings: number[][]
+  usage?: {
+    promptTokens: number
+    totalTokens: number
+    cost?: number
+  }
+}
+
 export interface EmbeddingProvider {
   /**
    * Embed a batch of texts. Returns one embedding per input, in input
    * order. Callers validate dimensionality (2048 for the locked model).
    */
   embed: (texts: string[]) => Promise<number[][]>
+  /**
+   * Embed with usage metadata when the provider reports it. Tracing uses this
+   * so the standard `embed` contract stays unchanged for existing callers.
+   */
+  embedWithUsage?: (texts: string[]) => Promise<EmbeddingResult>
 }
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -63,12 +77,30 @@ export interface CompletionResult {
   message: ChatMessage
   /** Model that produced this completion, when known by the provider. */
   model?: string
+  /** Reason the model stopped, when reported by the provider. */
+  finishReason?: string
   usage?: {
     promptTokens: number
     completionTokens: number
+    /** Cost in USD credits, when reported by the provider (OpenRouter). */
+    cost?: number
+  }
+}
+
+export interface CompletionStreamChunk {
+  /** Text delta for the assistant message. */
+  delta: string
+  /** Present on the last chunk when the model stops or is interrupted. */
+  finishReason?: string
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    cost?: number
   }
 }
 
 export interface LLMProvider {
   complete: (request: CompletionRequest) => Promise<CompletionResult>
+  /** Streaming variant; callers and decorators that support it accumulate chunks. */
+  completeStream?: (request: CompletionRequest) => AsyncIterableIterator<CompletionStreamChunk>
 }
