@@ -343,6 +343,7 @@
   "settings.usage.table.total": "Total",
   "settings.usage.usageMissing": "Some usage data is missing. {count} generations are counted but their tokens and cost are excluded from totals.",
   "settings.usage.usageMissingBadge": "missing",
+  "settings.usage.loading": "Loading usage…",
   "settings.usage.empty": "No LLM usage recorded in the last 30 days.",
   "settings.usage.error": "Could not load usage data."
 }

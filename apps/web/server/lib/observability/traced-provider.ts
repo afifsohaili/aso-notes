@@ -1,5 +1,6 @@
 import type { Database } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
+import type { ProviderKind } from '../ai/registry'
 import type {
   CompletionRequest,
   CompletionResult,
@@ -7,7 +8,6 @@ import type {
   EmbeddingProvider,
   EmbeddingResult,
   LLMProvider,
-  ProviderKind,
   TraceOptions,
 } from '../ai/types'
 import { appendGeneration, safeTraceWrite } from './trace-writer'
@@ -26,6 +26,14 @@ function formatCost(kind: ProviderKind, usage?: { cost?: number }): string | nul
   if (usage?.cost !== undefined)
     return String(usage.cost)
   return null
+}
+
+function isUsageMissing(kind: ProviderKind, usage?: { cost?: number }): boolean {
+  if (usage === undefined)
+    return true
+  if (kind === 'ollama')
+    return false
+  return usage.cost === undefined
 }
 
 function traceFields(trace: TraceOptions, deps: TracedProviderDependencies) {
@@ -76,7 +84,7 @@ export class TracedLLMProvider implements LLMProvider {
         costUsd: formatCost(this.deps.provider, result.usage),
         latencyMs,
         finishReason: result.finishReason ?? null,
-        usageMissing: result.usage === undefined,
+        usageMissing: isUsageMissing(this.deps.provider, result.usage),
       }))
     }
 
@@ -118,7 +126,7 @@ export class TracedLLMProvider implements LLMProvider {
           costUsd: formatCost(this.deps.provider, usage),
           latencyMs,
           finishReason: lastChunk?.finishReason ?? null,
-          usageMissing: usage === undefined,
+          usageMissing: isUsageMissing(this.deps.provider, usage),
           error: streamError instanceof Error
             ? streamError.message
             : streamError
@@ -166,7 +174,7 @@ export class TracedEmbeddingProvider implements EmbeddingProvider {
         promptTokens: result.usage?.promptTokens ?? null,
         completionTokens: result.usage?.totalTokens ?? null,
         costUsd: formatCost(this.deps.provider, result.usage),
-        usageMissing: result.usage === undefined,
+        usageMissing: isUsageMissing(this.deps.provider, result.usage),
       }))
     }
 

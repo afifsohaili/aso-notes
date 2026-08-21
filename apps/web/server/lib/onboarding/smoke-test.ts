@@ -97,7 +97,7 @@ export async function startSmokeTest(db: SyncDb, workspaceId: string): Promise<S
     .where('path', '=', `/${SMOKE_TEST_FILENAME}`)
     .executeTakeFirst()
   if (stale) {
-    await purgeTraceContentForOwner(db, 'notes', stale.id)
+    await purgeTraceContentForOwner(db, workspaceId, 'notes', stale.id)
     await db
       .deleteFrom('notes')
       .where('synced_folder_id', '=', syncedFolder.id)

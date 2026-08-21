@@ -118,6 +118,27 @@ describe('tracedLLMProvider', () => {
     expect(call.usageMissing).toBe(true)
   })
 
+  it('flags usage missing when tokens are present but cost is absent for a paid provider', async () => {
+    const fake: LLMProvider = {
+      async complete() {
+        return {
+          message: { role: 'assistant', content: 'ok' },
+          usage: { promptTokens: 5, completionTokens: 2 },
+        }
+      },
+    }
+    const traced = new TracedLLMProvider(fake, { db: createMockDb(), provider: 'openrouter', model: 'm', llmUseCase: 'agent' })
+
+    await traced.complete({ messages: [{ role: 'user', content: 'hi' }] }, createTraceOptions())
+    await drainWrites()
+
+    const call = mockedAppendGeneration.mock.calls[0]![1]
+    expect(call.promptTokens).toBe(5)
+    expect(call.completionTokens).toBe(2)
+    expect(call.costUsd).toBeNull()
+    expect(call.usageMissing).toBe(true)
+  })
+
   it('records the error and still throws when the provider fails', async () => {
     const fake: LLMProvider = {
       async complete() {

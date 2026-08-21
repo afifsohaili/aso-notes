@@ -3,7 +3,7 @@ import type { ConsolidationCounts, ConsolidationDb, ConsolidationFlags, Consolid
 import { sql } from 'kysely'
 import { remirrorGraph } from '../graph/remirror'
 import { purgeTraceContentForOwner } from '../observability/retention'
-import { createTrace, finishTrace, safeTraceWrite } from '../observability/trace-writer'
+import { createSeqCounter, createTrace, finishTrace, safeTraceWrite } from '../observability/trace-writer'
 import { resolveConsolidationRunBudget } from '../settings'
 import { makeDefaultJudge } from './judge'
 import { acquireConsolidationLock, ConsolidationLockConflictError } from './lock'
@@ -63,7 +63,7 @@ export async function runConsolidation(
   catch (error) {
     if (error instanceof ConsolidationLockConflictError) {
       // The run never started — don't leave a phantom 'running' row behind.
-      await purgeTraceContentForOwner(db, 'consolidation_runs', run.id)
+      await purgeTraceContentForOwner(db, workspaceId, 'consolidation_runs', run.id)
       await db.deleteFrom('consolidation_runs').where('id', '=', run.id).execute()
     }
     else {
@@ -90,9 +90,9 @@ async function runConsolidationBody(
     status: 'running',
   }))
 
-  let seq = 0
+  const nextSeq = createSeqCounter()
   const traceContext = traceId
-    ? { traceId, workspaceId, nextSeq: () => seq++ }
+    ? { traceId, workspaceId, nextSeq }
     : undefined
 
   try {

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import ChevronDownIcon from '~icons/heroicons/chevron-down'
 import CpuChipIcon from '~icons/heroicons/cpu-chip'
 import WrenchScrewdriverIcon from '~icons/heroicons/wrench-screwdriver'
+import { formatCost, formatMs, formatTokens } from '~/utils/format-observability'
 
 export interface TraceGeneration {
   id: string
@@ -72,22 +73,6 @@ function toggle(seq: number) {
   else
     next.add(seq)
   expanded.value = next
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
-}
-
-function formatCost(costUsd: string | null): string {
-  if (!costUsd)
-    return '—'
-  return `$${Number.parseFloat(costUsd).toFixed(4)}`
-}
-
-function formatMs(ms: number | null): string {
-  if (ms === null)
-    return '—'
-  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
 
 function generationSummary(gen: TraceGeneration): string {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
-import { purgeOrphanTraceContent, runObservabilityRetentionSweep } from '../../server/lib/observability/retention'
+import { purgeOrphanTraceContent, purgeTraceContentForOwner, runObservabilityRetentionSweep } from '../../server/lib/observability/retention'
 import { removeSyncedFolderAndCollectGarbage } from '../../server/lib/sync/gc'
 import { ensureNotesGraphCatalog } from './age-catalog'
 
@@ -268,6 +268,37 @@ describe('observability retention', () => {
     expect(second.prunedOrphans).toBe(0)
   })
 
+  test('running traces survive age-based and orphan purges', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'retention-running')
+    await setRetentionDays(trx, workspaceId, 1)
+
+    const missingNoteId = randomUUID()
+    const runningTraceId = await givenTrace(trx, workspaceId, 'notes', missingNoteId, 'chat')
+    // Override the trace to running so we can test it is skipped.
+    await trx
+      .updateTable('llm_traces')
+      .set({ status: 'running' })
+      .where('id', '=', runningTraceId)
+      .execute()
+
+    const runningGen = await givenGeneration(trx, runningTraceId, workspaceId, 0, {
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+      prompt: { text: 'running prompt' },
+      response: { text: 'running response' },
+    })
+
+    const result = await runObservabilityRetentionSweep(trx, new Date('2021-01-02T00:00:00Z'))
+
+    // The owner is missing, but the trace is running so neither sweep should prune it.
+    expect(result.prunedByAge).toBe(0)
+    expect(result.prunedOrphans).toBe(0)
+
+    const gen = await selectGeneration(trx, runningGen)
+    expect(gen.prompt).toEqual({ text: 'running prompt' })
+    expect(gen.response).toEqual({ text: 'running response' })
+    expect(gen.pruned_at).toBeNull()
+  })
+
   test('orphan sweep purges content for missing note owners', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'retention-orphan-note')
     const missingNoteId = randomUUID()
@@ -334,5 +365,32 @@ describe('observability retention', () => {
 
     const remainingNotes = await trx.selectFrom('notes').select('id').where('id', '=', noteId).execute()
     expect(remainingNotes).toHaveLength(0)
+  })
+
+  test('purgeTraceContentForOwner is scoped to the supplied workspace', async ({ trx }) => {
+    const wsA = await givenWorkspace(trx, 'owner-purge-a')
+    const wsB = await givenWorkspace(trx, 'owner-purge-b')
+
+    const syncedFolderA = await givenSyncedFolder(trx, wsA, '/tmp/owner-purge-a')
+    const syncedFolderB = await givenSyncedFolder(trx, wsB, '/tmp/owner-purge-b')
+
+    const sharedOwnerId = randomUUID()
+    const noteA = await givenNote(trx, wsA, '/shared.md', syncedFolderA)
+    const noteB = await givenNote(trx, wsB, '/shared.md', syncedFolderB)
+
+    // Use the same owner_id for both workspaces to prove workspace scoping.
+    const traceA = await givenTrace(trx, wsA, 'notes', sharedOwnerId, 'ingestion')
+    const traceB = await givenTrace(trx, wsB, 'notes', sharedOwnerId, 'ingestion')
+
+    const genA = await givenGeneration(trx, traceA, wsA, 0, { prompt: { secret: 'a' }, response: { ok: true } })
+    const genB = await givenGeneration(trx, traceB, wsB, 0, { prompt: { secret: 'b' }, response: { ok: true } })
+
+    await purgeTraceContentForOwner(trx, wsA, 'notes', sharedOwnerId)
+
+    expect((await selectGeneration(trx, genA)).prompt).toBeNull()
+    expect((await selectGeneration(trx, genB)).prompt).not.toBeNull()
+
+    // Clean up the second note so the transaction rollback is tidy.
+    await trx.deleteFrom('notes').where('id', 'in', [noteA, noteB]).execute()
   })
 })

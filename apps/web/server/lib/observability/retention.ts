@@ -14,12 +14,14 @@ interface TraceRef {
 
 async function findTracesByOwner(
   db: Kysely<Database>,
+  workspaceId: string,
   ownerType: string,
   ownerId: string,
 ): Promise<TraceRef[]> {
   return db
     .selectFrom('llm_traces')
     .select(['id', 'workspace_id'])
+    .where('workspace_id', '=', workspaceId)
     .where('owner_type', '=', ownerType)
     .where('owner_id', '=', ownerId)
     .execute()
@@ -33,17 +35,29 @@ async function pruneContentForTraceIds(
   if (traceIds.length === 0)
     return 0
 
+  // Skip in-flight (running) traces: pruning their content mid-flight could
+  // race with generations/tool calls still being written by the pipeline.
+  const settledTraceIds = await db
+    .selectFrom('llm_traces')
+    .select('id')
+    .where('id', 'in', traceIds)
+    .where('status', '!=', 'running')
+    .execute()
+  if (settledTraceIds.length === 0)
+    return 0
+  const ids = settledTraceIds.map(t => t.id)
+
   const [genResult, toolResult] = await Promise.all([
     db
       .updateTable('llm_generations')
       .set({ prompt: null, response: null, pruned_at: prunedAt })
-      .where('trace_id', 'in', traceIds)
+      .where('trace_id', 'in', ids)
       .where('pruned_at', 'is', null)
       .executeTakeFirstOrThrow(),
     db
       .updateTable('llm_tool_calls')
       .set({ output: null, pruned_at: prunedAt })
-      .where('trace_id', 'in', traceIds)
+      .where('trace_id', 'in', ids)
       .where('pruned_at', 'is', null)
       .executeTakeFirstOrThrow(),
   ])
@@ -55,14 +69,16 @@ async function pruneContentForTraceIds(
  * Immediately purge content columns for every trace belonging to a deleted
  * owner. Metadata (tokens, cost, model, latency, status) is kept forever. Rows
  * are never deleted. Safe to call before or after the owner row is removed
- * because the polymorphic owner lookup uses the trace's owner_type/owner_id.
+ * because the polymorphic owner lookup uses the trace's owner_type/owner_id
+ * scoped to the workspace.
  */
 export async function purgeTraceContentForOwner(
   db: Kysely<Database>,
+  workspaceId: string,
   ownerType: ContentOwnerType,
   ownerId: string,
 ): Promise<void> {
-  const traces = await findTracesByOwner(db, ownerType, ownerId)
+  const traces = await findTracesByOwner(db, workspaceId, ownerType, ownerId)
   if (traces.length === 0)
     return
 
@@ -81,6 +97,8 @@ export async function purgeOldTraceContentForWorkspace(
   now: Date = new Date(),
 ): Promise<number> {
   const cutoff = retentionCutoff(now, retentionDays)
+  // Skip content belonging to in-flight (running) traces: pruning mid-flight
+  // could race with generations/tool calls still being written.
   const [genResult, toolResult] = await Promise.all([
     db
       .updateTable('llm_generations')
@@ -88,6 +106,14 @@ export async function purgeOldTraceContentForWorkspace(
       .where('workspace_id', '=', workspaceId)
       .where('pruned_at', 'is', null)
       .where('created_at', '<', cutoff)
+      .where((eb) => {
+        return eb.not(eb.exists(
+          eb.selectFrom('llm_traces as t')
+            .select('t.id')
+            .whereRef('t.id', '=', 'llm_generations.trace_id')
+            .where('t.status', '=', 'running'),
+        ))
+      })
       .executeTakeFirstOrThrow(),
     db
       .updateTable('llm_tool_calls')
@@ -95,6 +121,14 @@ export async function purgeOldTraceContentForWorkspace(
       .where('workspace_id', '=', workspaceId)
       .where('pruned_at', 'is', null)
       .where('created_at', '<', cutoff)
+      .where(eb =>
+        eb.not(eb.exists(
+          eb.selectFrom('llm_traces as t')
+            .select('t.id')
+            .whereRef('t.id', '=', 'llm_tool_calls.trace_id')
+            .where('t.status', '=', 'running'),
+        )),
+      )
       .executeTakeFirstOrThrow(),
   ])
 

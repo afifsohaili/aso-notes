@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UsageSummary } from '~/types/usage-summary'
 import { useI18n } from 'vue-i18n'
+import { formatCost, formatTokens } from '~/utils/format-observability'
 
 const props = defineProps<{
   summary: UsageSummary | null
@@ -9,23 +10,6 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-
-function formatCost(costUsd: string): string {
-  const n = Number.parseFloat(costUsd)
-  if (Number.isNaN(n))
-    return '$—'
-  if (n >= 1)
-    return `$${n.toFixed(2)}`
-  return `$${n.toFixed(4)}`
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1000)
-    return `${(n / 1000).toFixed(1)}k`
-  return `${n}`
-}
 
 function formatGenerations(n: number): string {
   return n.toLocaleString()
@@ -45,7 +29,7 @@ const rangeOrder: Array<{ key: 'today' | 'last7d' | 'last30d', labelKey: string 
 <template>
   <div>
     <div v-if="pending && !summary" class="text-sm text-gray-500">
-      {{ t('chat.streaming') }}
+      {{ t('settings.usage.loading') }}
     </div>
 
     <div v-else-if="error || !summary" class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

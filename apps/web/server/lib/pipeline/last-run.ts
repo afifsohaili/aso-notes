@@ -157,6 +157,7 @@ export interface LastRunDetail extends LastRun {
 
 export async function hydrateLastRunDetail(
   db: Kysely<Database>,
+  workspaceId: string,
   lastRun: LastRun,
 ): Promise<LastRunDetail> {
   const extraction = lastRun.extraction
@@ -182,6 +183,7 @@ export async function hydrateLastRunDetail(
     .selectFrom('llm_generations')
     .select(['prompt', 'response'])
     .where('trace_id', '=', extraction.trace_id)
+    .where('workspace_id', '=', workspaceId)
     .where('llm_use_case', '=', 'extraction')
     .orderBy('seq', 'asc')
     .executeTakeFirst()

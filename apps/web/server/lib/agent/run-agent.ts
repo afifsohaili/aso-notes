@@ -226,36 +226,29 @@ export async function runAgent(
     return event
   }
 
-  let traceId: string | undefined
+  const traceId = await safeTraceWrite('createTrace', () => createTrace(ctx.db, {
+    workspaceId: ctx.workspaceId,
+    kind: 'chat',
+    ownerType: 'conversations',
+    ownerId: conversation.id,
+  }))
+
   let trace: AgentLoopTraceOptions | undefined
   let finishStatus: TraceStatus = 'completed'
   let finishError: string | null = null
-
-  try {
-    traceId = await safeTraceWrite('createTrace', () => createTrace(ctx.db, {
-      workspaceId: ctx.workspaceId,
-      kind: 'chat',
-      ownerType: 'conversations',
-      ownerId: conversation.id,
-    }))
-  }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`[runAgent] createTrace failed: ${message}`)
-  }
-
   let loopCtx = ctx
   let loopTools = tools
   if (traceId) {
     const nextSeq = createSeqCounter()
-    trace = {
+    const traceOptions: AgentLoopTraceOptions = {
       traceId,
       workspaceId: ctx.workspaceId,
       useCase: 'agent',
       nextSeq,
     }
+    trace = traceOptions
     loopCtx = buildTracedContext(ctx)
-    loopTools = tools.map(t => wrapTool(t, trace))
+    loopTools = tools.map(t => wrapTool(t, traceOptions))
   }
 
   try {

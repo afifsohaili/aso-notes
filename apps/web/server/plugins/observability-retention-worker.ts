@@ -23,7 +23,9 @@ export default defineNitroPlugin(() => {
 
   registerBullMqJobAdapter()
 
-  void scheduleObservabilityRetentionRepeatableJobs(queue)
+  void scheduleObservabilityRetentionRepeatableJobs(queue).catch((err) => {
+    console.error('observability retention schedule failed', err)
+  })
 
   const worker = useWorker(
     OBSERVABILITY_RETENTION_QUEUE_NAME,

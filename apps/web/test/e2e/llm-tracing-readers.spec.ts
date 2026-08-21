@@ -163,6 +163,56 @@ describe('llm tracing: last_run readers', () => {
     expect(extraction.response).toBeUndefined()
   })
 
+  test('note detail does not hydrate extraction from a trace in another workspace', async ({ server, trx }) => {
+    const { workspace, cookies } = await givenVerifiedUser()
+    const { note } = await seedNotesDomain(trx, workspace.id)
+    const foreignWorkspace = await trx
+      .insertInto('workspaces')
+      .values({ name: 'foreign' })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+    const foreignTraceId = '11111111-1111-1111-1111-111111111112'
+    await trx
+      .insertInto('llm_traces')
+      .values({
+        id: foreignTraceId,
+        workspace_id: foreignWorkspace.id,
+        kind: 'ingestion',
+        owner_type: 'notes',
+        owner_id: note.id,
+        status: 'completed',
+      })
+      .execute()
+    await trx
+      .insertInto('llm_generations')
+      .values({
+        workspace_id: foreignWorkspace.id,
+        trace_id: foreignTraceId,
+        seq: 0,
+        llm_use_case: 'extraction',
+        provider: 'openrouter',
+        model: 'openai/gpt-4o-mini',
+        prompt: JSON.stringify([{ role: 'system', content: 'foreign' }]),
+        response: JSON.stringify({ role: 'assistant', content: 'secret' }),
+        prompt_tokens: 100,
+        completion_tokens: 50,
+      })
+      .execute()
+
+    await trx
+      .updateTable('notes')
+      .set({ last_run: JSON.stringify(makePointerLastRun(foreignTraceId)) as any })
+      .where('id', '=', note.id)
+      .execute()
+
+    const res = await server('/api/notes/project-a/plan.md', { headers: { cookie: cookies } })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(body.lastRun.extraction.messages).toEqual([])
+    expect(body.lastRun.extraction.response).toBe('')
+  })
+
   test('note detail falls back to inline payload for legacy last_run without trace_id', async ({ server, trx }) => {
     const { workspace, cookies } = await givenVerifiedUser()
     const { note } = await seedNotesDomain(trx, workspace.id)

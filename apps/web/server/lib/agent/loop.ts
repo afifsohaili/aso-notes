@@ -1,4 +1,4 @@
-import type { ChatMessage, CompletionRequest, ToolDefinition } from '../ai/types'
+import type { ChatMessage, CompletionRequest, ToolDefinition, TraceOptions } from '../ai/types'
 import type { AgentContext, AgentEventEmitter, AgentLoopTraceOptions, AgentSseEvent, AgentTool } from './types'
 
 export const MAX_AGENT_ITERATIONS = 10

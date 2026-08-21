@@ -193,7 +193,7 @@ export default defineEventHandler(async (event) => {
         loadNoteTags(db, workspaceId, note.id),
         loadNoteSources(db, workspaceId, note.id),
         loadFolderPath(db, workspaceId, note.folder_id),
-        parsedLastRun ? hydrateLastRunDetail(db, parsedLastRun) : Promise.resolve(null),
+        parsedLastRun ? hydrateLastRunDetail(db, workspaceId, parsedLastRun) : Promise.resolve(null),
       ])
 
       return {

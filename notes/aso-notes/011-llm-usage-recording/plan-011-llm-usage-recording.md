@@ -399,4 +399,36 @@ Skipped for Phase 1 — there is no runtime code yet, only schema. Coverage is p
 - There is no cost budget/threshold alert yet; the consolidation budget card exists but a workspace-level LLM budget is a separate future decision.
 - No export/download of the usage table is provided; the user could screenshot or copy the table, but a CSV export would be a natural next step.
 
+## Phase 8 — Hardening (done)
+
+Review-driven cleanup of tracing correctness, dedup, and race/type issues. All 13 items:
+
+1. **loop.ts `TraceOptions` import** — `loop.ts` imports `TraceOptions` from `../ai/types` (was missing, previously resolving implicitly). Done.
+2. **traced-provider `ProviderKind` import from registry** — moved from `../ai/types` to `../ai/registry` (source of truth), keeping the `formatCost` behavior. Done.
+3. **`usage_missing` flag fix** — the flag was `usage === undefined` only; a paid provider that returns token counts but no `cost` was silently unflagged. Added `isUsageMissing(kind, usage)`: missing usage object ⇒ `true`; `ollama` (local, no cost) ⇒ `false`; otherwise `usage.cost === undefined`. Applied to complete/stream/embedding. Unit case added in `traced-provider.spec.ts`.
+4. **Workspace predicate in `hydrateLastRunDetail`** — now filters `llm_generations` by `workspace_id` in addition to `trace_id`/`llm_use_case`, so a note's last-run detail cannot leak an extraction from another workspace that shares the same trace pointer. Call site in `[...slug].ts` passes `workspaceId`. E2E cross-workspace case added.
+5. **Retention skips `status='running'` traces** — `pruneContentForTraceIds` now filters to non-running traces before pruning (orphan + owner-delete paths), and `purgeOldTraceContentForWorkspace` excludes generations/tool calls belonging to a running trace. Prevents pruning content mid-write. E2E running-trace case added. **Note:** this guard was NOT present in the partial work despite being listed; I implemented it.
+6. **`purgeTraceContentForOwner` gains `workspaceId`** — new first param, scoping `findTracesByOwner` to the workspace. All call sites updated: `sync/files.ts`, `sync/gc.ts`, `consolidation/engine.ts`, `consolidation/snapshot.ts`, `onboarding/smoke-test.ts`. E2E cross-workspace scoping case added.
+7. **Type-narrowing in `run-agent.ts` `wrapTool`** — trace is built into a narrowed `traceOptions` const inside the `if (traceId)` branch and `wrapTool(t, traceOptions)` is called only there; `runAgentLoop(..., trace, ...)` still receives the `AgentLoopTraceOptions | undefined`. No narrowing error remains in the traced files. Typecheck tooling is broken repo-wide (pre-existing `vue` override conflict + `@monorepo/shared` not exporting `Database`/`DB` mismatch); verified by careful reading + comparing error counts (74 at HEAD → 71 now, no new errors introduced).
+8. **i18n key** — `usage-summary.vue` used `t('chat.streaming')` as its loading text. Replaced with new `settings.usage.loading` ("Loading usage…") added to `en.json`.
+9. **Startup `.catch`** — `scheduleObservabilityRetentionRepeatableJobs(queue)` in `observability-retention-worker.ts` now has `.catch(err => console.error('observability retention schedule failed', err))` (still `void`-ed) to avoid an unhandled rejection.
+10. **Formatter dedup** — `formatTokens`/`formatMs`/`formatCost` extracted into a single `apps/web/app/utils/format-observability.ts` and imported by `chat-trace-view.vue`, `trace-timeline.vue`, and `usage-summary.vue`. Precision rule: `null/empty → '—'`, `>= $1 → $X.XX`, `else → $X.XXXX` (four decimals). This preserves the four-decimal behavior all three call sites already used for sub-dollar LLM costs (usage summary mock/spec asserts `$0.0003`); the `>= $1 → $X.XX` guard comes from the usage summary's copy. Documented in the module.
+11. **Type dedup** — `TraceGeneration`/`TraceToolCall` declared inline in `chat-trace-view.vue` and exported from `trace-timeline.vue`; the view now imports them from `trace-timeline.vue`, so there is one canonical copy. The `server/api/traces/[id].get.ts` row types were left as-is: the endpoint intentionally shapes a response DTO (snake_case rows → camelCase with ISO strings + computed `totalTokens`/`totalCost`/`durationMs`), so it does not directly use the generated `DB` types.
+12. **Dead code** — removed the redundant `try/catch` around `safeTraceWrite('createTrace', …)`; the function already swallows errors. Also switched `let traceId` to `const`.
+13. **Seq counter consistency** — `consolidation/engine.ts` replaced its hand-rolled `let seq = 0; nextSeq: () => seq++` with the exported `createSeqCounter()` from `trace-writer.ts` (identical behavior, starts at 0).
+
+### Tests
+
+- `pnpm --filter web vitest run --project unit` — 451 passed in 40 files.
+- `pnpm --filter web vitest run --project e2e` — 352 passed in 48 files.
+- `pnpm --filter web vitest run --project nuxt` — 139 passed in 31 files.
+- `pnpm lint` clean (after `lint:fix`).
+- `pnpm --filter web exec tsc --noEmit -p .nuxt/tsconfig.json` still fails repo-wide with pre-existing errors (`vue` npm override conflict; `@monorepo/shared` not exporting `Database`), unrelated to this phase; error count dropped 74 → 71.
+
+### Divergences from ticket / instructions
+
+- Item 5 (retention running-guard) was listed as already done in the partial work but was NOT present in `retention.ts`; I implemented it and added the guard to both the shared pruner and the age-based workspace pruner. The partial work only added the test.
+- Item 10 cost precision: instructions suggested `>= $1 → $X.XX, else $X.XXX`. I unified on `else $X.XXXX` instead because all three existing call sites used four decimals and the usage-summary spec asserts `$0.0003` (a three-decimal rendering would show `$0.000` and break it). Four decimals is the rule that fits the actual usage sites.
+- Typecheck could not be run to green (repo-wide pre-existing breakage); item 7 was verified by careful reading and by confirming no new type errors were introduced.
+
 

@@ -271,7 +271,7 @@ export async function handleFileUnlink(event: FileEvent): Promise<void> {
     .where('path', '=', notePath)
     .executeTakeFirst()
   if (note) {
-    await purgeTraceContentForOwner(db, 'notes', note.id)
+    await purgeTraceContentForOwner(db, workspaceId, 'notes', note.id)
     await db
       .deleteFrom('notes')
       .where('synced_folder_id', '=', syncedFolderId)
@@ -332,7 +332,7 @@ export async function startupScan(args: {
     .execute()
   for (const row of dbNotes) {
     if (!notePaths.has(row.path)) {
-      await purgeTraceContentForOwner(db, 'notes', row.id)
+      await purgeTraceContentForOwner(db, workspaceId, 'notes', row.id)
       await db
         .deleteFrom('notes')
         .where('synced_folder_id', '=', syncedFolderId)

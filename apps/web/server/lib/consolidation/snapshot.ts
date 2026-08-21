@@ -145,7 +145,7 @@ async function pruneOldSnapshots(db: SnapshotDb, workspaceId: string): Promise<v
     .execute()
 
   for (const run of runsToPrune) {
-    await purgeTraceContentForOwner(db, 'consolidation_runs', run.id)
+    await purgeTraceContentForOwner(db, workspaceId, 'consolidation_runs', run.id)
     await db.deleteFrom('consolidation_runs').where('id', '=', run.id).execute()
   }
 }

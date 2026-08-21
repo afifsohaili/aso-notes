@@ -159,7 +159,7 @@ export async function removeSyncedFolderAndCollectGarbage(
 
   if (noteIds.length > 0) {
     for (const noteId of noteIds) {
-      await purgeTraceContentForOwner(db, 'notes', noteId)
+      await purgeTraceContentForOwner(db, workspaceId, 'notes', noteId)
     }
 
     await db

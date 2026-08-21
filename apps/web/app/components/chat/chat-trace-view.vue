@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { Json } from '@monorepo/shared'
+import type { TraceGeneration, TraceToolCall } from '~/components/observability/trace-timeline.vue'
 import { useI18n } from 'vue-i18n'
 import TraceTimeline from '~/components/observability/trace-timeline.vue'
+import { formatCost, formatMs, formatTokens } from '~/utils/format-observability'
 
 export interface TraceResponse {
   trace: {
@@ -16,35 +17,8 @@ export interface TraceResponse {
     createdAt: string
     updatedAt: string
   }
-  generations: Array<{
-    id: string
-    seq: number
-    llmUseCase: string
-    provider: string
-    model: string
-    prompt: Json | null
-    response: Json | null
-    promptTokens: number | null
-    completionTokens: number | null
-    costUsd: string | null
-    latencyMs: number | null
-    finishReason: string | null
-    error: string | null
-    prunedAt: string | null
-    usageMissing: boolean
-    createdAt: string
-  }>
-  toolCalls: Array<{
-    id: string
-    seq: number
-    name: string
-    input: Json
-    output: Json | null
-    durationMs: number | null
-    status: string
-    prunedAt: string | null
-    createdAt: string
-  }>
+  generations: TraceGeneration[]
+  toolCalls: TraceToolCall[]
   totalTokens: number
   totalCost: string
   durationMs: number | null
@@ -64,20 +38,6 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   })
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
-}
-
-function formatCost(costUsd: string): string {
-  return `$${Number.parseFloat(costUsd).toFixed(4)}`
-}
-
-function formatMs(ms: number | null): string {
-  if (ms === null)
-    return '—'
-  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
 
 function statusClass(status: string): string {
