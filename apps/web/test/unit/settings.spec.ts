@@ -443,7 +443,7 @@ describe('normalizeSettingValue', () => {
 
     it('rejects an unknown provider with a message naming all three providers', () => {
       expect(() => normalizeSettingValue('llm.extraction.provider', 'mistral'))
-        .toThrow("invalid provider: 'mistral' — expected 'openrouter', 'ollama' or 'omlx'")
+        .toThrow('invalid provider: \'mistral\' — expected \'openrouter\', \'ollama\' or \'omlx\'')
     })
 
     it('rejects a non-string provider', () => {

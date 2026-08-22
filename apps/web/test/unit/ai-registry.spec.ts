@@ -1,5 +1,4 @@
-import type { OmlxEmbeddingProvider, OmlxLLMProvider } from '../../server/lib/ai'
-import type { OllamaEmbeddingProvider, OllamaLLMProvider, OpenRouterEmbeddingProvider, OpenRouterLLMProvider } from '../../server/lib/ai'
+import type { OllamaEmbeddingProvider, OllamaLLMProvider, OmlxEmbeddingProvider, OmlxLLMProvider, OpenRouterEmbeddingProvider, OpenRouterLLMProvider } from '../../server/lib/ai'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OMLX_BASE_URL } from '../../server/lib/ai'
 import { createEmbeddingProvider, createLLMProvider, resolveEmbeddingProvider, resolveLLMProvider } from '../../server/lib/ai/registry'
