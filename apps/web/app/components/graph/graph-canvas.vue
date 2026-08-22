@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GraphEdge, GraphNode } from '~/server/lib/graph/ui'
+import type { GraphEdge, GraphNode } from '~~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -17,12 +17,12 @@ const { t } = useI18n()
 const containerRef = ref<HTMLDivElement | null>(null)
 let cy: any = null
 
-const nodeColorMap = {
+const nodeColorMap: Record<GraphNode['label'], string> = {
   Concept: '#4f46e5',
   Topic: '#e11d48',
   Note: '#059669',
   Tag: '#d97706',
-} as const
+}
 
 const legendItems = computed(() => [
   { label: t('graph.legend.topic'), colorClass: 'bg-[#e11d48]' },
@@ -144,7 +144,7 @@ async function initCytoscape() {
         componentSpacing: 60,
         nodeRepulsion: 4000,
         idealEdgeLength: 80,
-      },
+      } as any,
     })
 
     cy.on('tap', 'node', (evt: any) => {

@@ -11,6 +11,6 @@ const { data: summary, pending, error } = await useFetch<UsageSummaryData>('/api
 
 <template>
   <section>
-    <UsageSummary :summary="summary" :pending="pending" :error="!!error" />
+    <UsageSummary :summary="summary ?? null" :pending="pending" :error="!!error" />
   </section>
 </template>

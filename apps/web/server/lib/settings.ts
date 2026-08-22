@@ -259,7 +259,7 @@ export async function resolveWorkspaceSettings(
 
   const workspaceValues = new Map<string, Json>(rows.map(r => [r.key, r.value]))
 
-  function resolveLLM(role: 'agent' | 'extraction' | 'embedding') {
+  function resolveLLM(role: 'agent' | 'extraction' | 'embedding'): Record<`${'provider' | 'model' | 'base_url'}`, { value: Json, source: 'workspace' | 'default' }> {
     const providerKey = `llm.${role}.provider` as KnownSettingKey
     const modelKey = `llm.${role}.model` as KnownSettingKey
     const baseUrlKey = `llm.${role}.base_url` as KnownSettingKey
@@ -289,7 +289,7 @@ export async function resolveWorkspaceSettings(
     }
   }
 
-  function resolveConsolidationLLM() {
+  function resolveConsolidationLLM(): Record<'provider' | 'model' | 'base_url', { value: Json, source: 'workspace' | 'default' }> {
     const consKeys = KEYS.consolidation
     const extKeys = KEYS.extraction
 
@@ -354,6 +354,10 @@ export async function resolveWorkspaceSettings(
     'consolidation.run_budget': {
       value: workspaceValues.get('consolidation.run_budget') ?? DEFAULT_CONSOLIDATION_RUN_BUDGET,
       source: workspaceValues.has('consolidation.run_budget') ? 'workspace' : 'default',
+    },
+    'consolidation.badge_seen_run_id': {
+      value: workspaceValues.get('consolidation.badge_seen_run_id') ?? null,
+      source: workspaceValues.has('consolidation.badge_seen_run_id') ? 'workspace' : 'default',
     },
     'observability.content_retention_days': {
       value: workspaceValues.get('observability.content_retention_days') ?? DEFAULT_CONTENT_RETENTION_DAYS,

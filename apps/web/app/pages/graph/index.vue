@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ConceptDetail, GraphEdge, GraphNode } from '~/server/lib/graph/ui'
+import type { ConceptDetail, GraphEdge, GraphNode } from '~~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
 import QueueListIcon from '~icons/heroicons/queue-list'
 import XMarkIcon from '~icons/heroicons/x-mark'
@@ -32,7 +32,7 @@ const { data: graph } = await useFetch<GraphPayload>('/api/graph')
 const { data: concepts } = await useFetch<ConceptSummary[]>('/api/graph/concepts')
 
 const { data: detail } = useFetch<ConceptDetail>(() =>
-  selectedConceptId.value ? `/api/graph/concepts/${selectedConceptId.value}` : null, {
+  (selectedConceptId.value ? `/api/graph/concepts/${selectedConceptId.value}` : null) as unknown as string, {
   key: computed(() => `concept-${selectedConceptId.value ?? 'none'}`),
   watch: [selectedConceptId],
 })
@@ -138,7 +138,7 @@ function openNote(path: string, syncedFolderId?: string) {
           </button>
         </div>
         <concept-detail
-          :detail="detail"
+          :detail="detail ?? null"
           @open-note="openNote"
         />
       </aside>

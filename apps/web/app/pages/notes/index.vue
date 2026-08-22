@@ -34,7 +34,7 @@ const { data: notes, refresh: refreshNotes } = await useFetch<NoteListItem[]>('/
   watch: [selectedSyncedFolderId, selectedFolderPath],
 })
 
-const { data: note, refresh: refreshNote } = useFetch<NoteDetailNote>(() => selectedNotePath.value && selectedSyncedFolderId.value ? `/api/notes${selectedNotePath.value}?syncedFolder=${selectedSyncedFolderId.value}` : null, {
+const { data: note, refresh: refreshNote } = useFetch<NoteDetailNote>(() => selectedNotePath.value && selectedSyncedFolderId.value ? `/api/notes${selectedNotePath.value}?syncedFolder=${selectedSyncedFolderId.value}` : (null as unknown as string), {
   key: computed(() => `note-${selectedNotePath.value ?? 'none'}-${selectedSyncedFolderId.value ?? 'none'}`),
   watch: [selectedNotePath, selectedSyncedFolderId],
 })

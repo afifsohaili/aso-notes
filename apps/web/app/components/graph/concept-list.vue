@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ConceptSummary } from '~/server/lib/graph/ui'
+import type { ConceptSummary } from '~~/server/lib/graph/ui'
 import { useI18n } from 'vue-i18n'
 import ChevronDownIcon from '~icons/heroicons/chevron-down'
 import ChevronRightIcon from '~icons/heroicons/chevron-right'

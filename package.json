@@ -10,6 +10,7 @@
     "build": "pnpm --filter web build",
     "generate": "pnpm --filter web generate",
     "preview": "pnpm --filter web preview",
+    "typecheck": "pnpm --filter web exec nuxt typecheck",
     "lint": "pnpm --filter web lint",
     "lint:fix": "pnpm --filter web lint:fix",
     "db:migrate": "pnpm --filter web db:migrate",

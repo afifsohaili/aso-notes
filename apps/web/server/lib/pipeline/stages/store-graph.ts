@@ -1,6 +1,7 @@
+import type { DB } from '@monorepo/shared'
 import type { EmbeddingProvider } from '../../ai/types'
 import type { PipelineContext } from '../context'
-import type { ExtractedLink, ExtractedSource, GraphExtraction, Stage } from '../types'
+import type { ExtractedLink, ExtractedSource, GraphExtraction, PipelineDb, Stage } from '../types'
 import { sql } from 'kysely'
 import { EMBEDDING_DIMENSIONS } from '../../ai'
 import {
@@ -383,7 +384,7 @@ export class StoreGraphStage implements Stage {
             .returning(['id', 'seq'])
             .execute()
         : []
-      const chunkIdBySeq = new Map(insertedChunks.map(c => [c.seq, c.id]))
+      const chunkIdBySeq = new Map(insertedChunks.map((c: { id: string, seq: number }) => [c.seq, c.id]))
 
       // (e) mentions: resolve concept + chunk, dedupe the pair
       const mentionPairs = new Map<string, { chunk_id: string, concept_id: string }>()
@@ -430,7 +431,7 @@ export class StoreGraphStage implements Stage {
         await trx
           .insertInto('concept_topics')
           .values([...conceptTopicPairs.values()].map(pair => ({ workspace_id: workspaceId, ...pair })))
-          .onConflict(oc => oc.columns(['concept_id', 'topic_id']).doNothing())
+          .onConflict((oc: import('kysely').OnConflictBuilder<DB, 'concept_topics'>) => oc.columns(['concept_id', 'topic_id']).doNothing())
           .execute()
       }
       for (const pair of conceptTopicPairs.values())

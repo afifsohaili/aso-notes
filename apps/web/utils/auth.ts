@@ -8,9 +8,9 @@ import { useDatabase } from './db'
 interface AuthEnv {
   databaseUrl: string
   redisUrl?: string
-  [key: string]: string | undefined
+  [key: string]: any
   public?: {
-    [key: string]: string | undefined
+    [key: string]: any
   }
 }
 
@@ -73,7 +73,7 @@ export function useAuth(env: AuthEnv) {
 
               await db
                 .insertInto('memberships')
-                .values({ user_id: user.id, workspace_id: workspace.id, role: 'admin' })
+                .values({ user_id: user.id, workspace_id: workspace!.id, role: 'admin' })
                 .execute()
             }
             catch (error) {

@@ -1,16 +1,17 @@
+import type { DB } from '@monorepo/shared'
 import type { Transaction } from 'kysely'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { Kysely, PostgresDialect } from 'kysely'
 import pg from 'pg'
 
 export interface DbContext {
-  trx: Transaction<Database>
+  trx: Transaction<DB>
 }
 
 export const dbContext = new AsyncLocalStorage<DbContext>()
 
 export function useDatabase(env: { databaseUrl: string }) {
-  const globalTrx = (globalThis as any).__BASE_TESTING_TRX__ as Transaction<Database> | undefined
+  const globalTrx = (globalThis as any).__BASE_TESTING_TRX__ as Transaction<DB> | undefined
   if (globalTrx)
     return globalTrx
 
@@ -22,7 +23,7 @@ export function useDatabase(env: { databaseUrl: string }) {
     connectionString: env.databaseUrl,
   })
 
-  return new Kysely<Database>({
+  return new Kysely<DB>({
     dialect: new PostgresDialect({ pool }),
   })
 }

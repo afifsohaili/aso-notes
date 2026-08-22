@@ -1,4 +1,4 @@
-import type { Database } from '@monorepo/shared'
+import type { DB } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
 
 export type TraceKind = 'ingestion' | 'chat' | 'consolidation'
@@ -90,7 +90,7 @@ function jsonb(value: unknown): string | null {
 }
 
 export async function createTrace(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   input: CreateTraceInput,
 ): Promise<string> {
   const row = await db
@@ -110,7 +110,7 @@ export async function createTrace(
 }
 
 export async function appendGeneration(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   input: AppendGenerationInput,
 ): Promise<string> {
   const row = await db
@@ -138,7 +138,7 @@ export async function appendGeneration(
 }
 
 export async function appendToolCall(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   input: AppendToolCallInput,
 ): Promise<string> {
   const row = await db
@@ -159,7 +159,7 @@ export async function appendToolCall(
 }
 
 export async function finishTrace(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   input: FinishTraceInput,
 ): Promise<void> {
   await db

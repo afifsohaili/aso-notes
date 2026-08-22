@@ -44,11 +44,9 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-interface TraceStep {
-  kind: 'generation' | 'tool_call'
-  seq: number
-  item: TraceGeneration | TraceToolCall
-}
+type TraceStep
+  = | { kind: 'generation', seq: number, item: TraceGeneration }
+    | { kind: 'tool_call', seq: number, item: TraceToolCall }
 
 const steps = computed<TraceStep[]>(() => {
   const genSteps: TraceStep[] = props.generations.map(g => ({ kind: 'generation', seq: g.seq, item: g }))
@@ -62,7 +60,7 @@ watch(() => props.generations, () => {
   expanded.value = new Set(steps.value.map(s => s.seq))
 }, { immediate: true })
 
-function isGenerationStep(step: TraceStep): step is TraceStep & { item: TraceGeneration } {
+function isGenerationStep(step: TraceStep): step is Extract<TraceStep, { kind: 'generation' }> {
   return step.kind === 'generation'
 }
 
@@ -165,10 +163,10 @@ function contentState(item: { prunedAt: string | null, value: Json | null }): { 
             <p class="mb-1 font-medium text-gray-500">
               {{ t('chat.trace.prompt') }}
             </p>
-            <div v-if="contentState(step.item).present" class="max-h-48 overflow-y-auto rounded bg-gray-50">
+            <div v-if="contentState({ value: step.item.prompt, prunedAt: step.item.prunedAt }).present" class="max-h-48 overflow-y-auto rounded bg-gray-50">
               <pre class="whitespace-pre-wrap p-2 text-gray-700">{{ formatJson(step.item.prompt) }}</pre>
             </div>
-            <p v-else-if="contentState(step.item).expired" class="italic text-gray-400">
+            <p v-else-if="contentState({ value: step.item.prompt, prunedAt: step.item.prunedAt }).expired" class="italic text-gray-400">
               {{ t('chat.trace.expired') }}
             </p>
             <p v-else class="italic text-gray-400">

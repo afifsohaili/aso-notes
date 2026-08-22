@@ -15,8 +15,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (import.meta.server) {
     try {
-      const $internal = useRequestFetch()
-      const settings = await $internal('/api/settings') as { settings: Record<string, { value: unknown }> }
+      // Cast to a plain fetch function to avoid Nuxt/nitropack's generated
+      // route-rule type instantiation blowing up TS6's depth limit.
+      const $internal = useRequestFetch() as (url: string) => Promise<{ settings: Record<string, { value: unknown }> }>
+      const settings = await $internal('/api/settings')
       const value = settings?.settings?.['onboarding.completed_at']?.value
       completed = !!value && typeof value === 'string'
       cached.value = completed

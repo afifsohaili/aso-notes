@@ -179,7 +179,7 @@ export function chunkMarkdown(content: string, options: ChunkerOptions = {}): Pi
         current = { text: section.text, headingPath: section.headingPath }
         continue
       }
-      const merged = `${current.text}\n\n${section.text}`
+      const merged: string = `${current.text}\n\n${section.text}`
       if (merged.length <= targetChars) {
         // merged chunk carries the most specific (last) section's heading path
         current = { text: merged, headingPath: section.headingPath }

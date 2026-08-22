@@ -2,6 +2,13 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+allowBuilds:
+  vue-demi: true
+
+minimumReleaseAgeExclude:
+  - '@vue/language-core@3.3.11'
+  - vue-tsc@3.3.11
+
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - '@tailwindcss/oxide'

@@ -1,4 +1,5 @@
 import type { JobAdapter } from '@base/jobs'
+import type { JobsOptions } from 'bullmq'
 import { registerJobAdapter } from '@base/jobs'
 import { useQueue } from './queue'
 
@@ -10,7 +11,7 @@ export function createBullMqJobAdapter(): JobAdapter {
   return {
     async enqueue(queueName, name, data, opts) {
       const queue = useQueue(queueName)
-      await queue.add(name, data, opts)
+      await queue.add(name, data, opts as JobsOptions)
     },
   }
 }

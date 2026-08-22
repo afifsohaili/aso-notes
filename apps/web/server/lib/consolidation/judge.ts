@@ -2,7 +2,7 @@ import type { EmbeddingProvider, LLMProvider } from '../ai/types'
 import type { TraceOptions } from '../observability/traced-provider'
 import type { ConsolidationDb, ConsolidationJudge, ConsolidationJudgeRequest, ConsolidationJudgeResponse, MergeCandidate, PruneCandidate, RewriteCandidate } from './types'
 import process from 'node:process'
-import { resolveLLMProvider } from '../ai/registry'
+import { resolveEmbeddingProvider, resolveLLMProvider } from '../ai/registry'
 import { resolveConsolidationProviderSettings, resolveEmbeddingProviderSettings } from '../settings'
 
 interface JudgeOptions {
@@ -85,18 +85,26 @@ export function createDefaultJudge(options: JudgeOptions): ConsolidationJudge {
     }
 
     return {
-      merges: parsed.merges.map(m => ({
-        pairId: m.pair_id,
-        merge: m.merge,
-        survivorId: m.survivor_id,
-        mergedDescription: m.merged_description,
-        reason: m.reason,
-      })),
-      prunes: parsed.prunes.map(p => ({
-        id: p.id,
-        prune: p.prune,
-        reason: p.reason,
-      })),
+      merges: parsed.merges.map((m) => {
+        const pair = request.mergePairs.find(p => p.pairId === m.pair_id)
+        return {
+          kind: pair?.kind ?? 'concept',
+          pairId: m.pair_id,
+          merge: m.merge,
+          survivorId: m.survivor_id,
+          mergedDescription: m.merged_description,
+          reason: m.reason,
+        }
+      }),
+      prunes: parsed.prunes.map((p) => {
+        const candidate = request.pruneCandidates.find(c => c.id === p.id)
+        return {
+          kind: candidate?.kind ?? 'concept',
+          id: p.id,
+          prune: p.prune,
+          reason: p.reason,
+        }
+      }),
       rewrites: parsed.rewrites.map(r => ({
         kind: r.kind as 'concept',
         id: r.id,

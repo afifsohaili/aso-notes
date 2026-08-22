@@ -39,7 +39,7 @@ function centroid(vectors: number[][]): number[] {
   const sum = Array.from({ length: dim }).fill(0) as number[]
   for (const vec of vectors) {
     for (let i = 0; i < dim; i++)
-      sum[i] += vec[i]!
+      sum[i] = (sum[i] ?? 0) + (vec[i] ?? 0)
   }
   return sum.map(v => v / vectors.length)
 }

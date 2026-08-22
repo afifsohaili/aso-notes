@@ -1,4 +1,4 @@
-import type { Database } from '@monorepo/shared'
+import type { DB } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
 import type { PipelineContext } from './context'
 
@@ -156,7 +156,7 @@ export interface LastRunDetail extends LastRun {
 }
 
 export async function hydrateLastRunDetail(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   workspaceId: string,
   lastRun: LastRun,
 ): Promise<LastRunDetail> {
@@ -276,5 +276,5 @@ export function parseLastRun(json: unknown): LastRun | null {
     return null
   }
 
-  return json as LastRun
+  return json as unknown as LastRun
 }

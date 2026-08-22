@@ -1,4 +1,4 @@
-import type { Database } from '@monorepo/shared'
+import type { DB } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
 import type { ProviderKind } from '../ai/registry'
 import type {
@@ -10,11 +10,12 @@ import type {
   LLMProvider,
   TraceOptions,
 } from '../ai/types'
+import type { AppendGenerationInput } from './trace-writer'
 import { appendGeneration, safeTraceWrite } from './trace-writer'
 
 export type { TraceOptions } from '../ai/types'
 export interface TracedProviderDependencies {
-  db: Kysely<Database>
+  db: Kysely<DB>
   provider: ProviderKind
   model: string
   llmUseCase: string

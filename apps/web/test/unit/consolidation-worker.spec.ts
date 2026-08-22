@@ -87,12 +87,12 @@ describe('consolidation worker scheduler', () => {
     expect(queue.add).toHaveBeenCalledWith(
       CONSOLIDATION_JOB_NAME,
       { mode: 'incremental', allWorkspaces: true },
-      { repeat: { cron: '0 3 * * *' }, jobId: 'consolidation:nightly-incremental' },
+      { repeat: { pattern: '0 3 * * *' }, jobId: 'consolidation:nightly-incremental' },
     )
     expect(queue.add).toHaveBeenCalledWith(
       CONSOLIDATION_JOB_NAME,
       { mode: 'full', allWorkspaces: true },
-      { repeat: { cron: WEEKLY_FULL_CRON }, jobId: 'consolidation:weekly-full' },
+      { repeat: { pattern: WEEKLY_FULL_CRON }, jobId: 'consolidation:weekly-full' },
     )
   })
 
@@ -110,7 +110,7 @@ describe('consolidation worker scheduler', () => {
     expect(queue.add).toHaveBeenCalledWith(
       CONSOLIDATION_JOB_NAME,
       { mode: 'incremental', allWorkspaces: true },
-      { repeat: { cron: '0 3 * * *' }, jobId: 'consolidation:nightly-incremental' },
+      { repeat: { pattern: '0 3 * * *' }, jobId: 'consolidation:nightly-incremental' },
     )
   })
 })

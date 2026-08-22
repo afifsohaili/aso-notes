@@ -1,4 +1,4 @@
-import type { Database } from '@monorepo/shared'
+import type { DB } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
 import type { ResilientFetchOptions } from './resilient-fetch'
 import type { EmbeddingProvider, LLMProvider } from './types'
@@ -113,7 +113,7 @@ export interface ResolveOptions {
 }
 
 export interface TraceResolveOptions {
-  db: Kysely<Database>
+  db: Kysely<DB>
 }
 
 function providerKind(value: string | undefined): ProviderKind {

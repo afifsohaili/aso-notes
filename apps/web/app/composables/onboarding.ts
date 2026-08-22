@@ -1,5 +1,5 @@
 export interface OnboardingStatus {
-  completed: boolean | null
+  completed: Ref<boolean | null>
   refresh: () => Promise<boolean | null>
 }
 
@@ -20,7 +20,7 @@ export function useOnboardingStatus(): OnboardingStatus {
   }
 
   return {
-    completed: computed(() => completed.value),
+    completed,
     refresh,
   }
 }

@@ -1,3 +1,4 @@
+import type { DB } from '@monorepo/shared'
 import type { Kysely, Transaction } from 'kysely'
 
 /**
@@ -5,7 +6,7 @@ import type { Kysely, Transaction } from 'kysely'
  * workspace product assumption shared by all consolidation endpoints).
  */
 export async function resolveWorkspaceId(
-  db: Kysely<Database> | Transaction<Database>,
+  db: Kysely<DB> | Transaction<DB>,
   userId: string,
 ): Promise<string | null> {
   const membership = await db

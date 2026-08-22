@@ -262,7 +262,7 @@ export async function reembedConcept(
 
   await db
     .updateTable('concepts')
-    .set({ embedding: halfvecLiteral(embedding) })
+    .set({ embedding: halfvecLiteral(embedding) as unknown as string })
     .where('id', '=', conceptId)
     .where('workspace_id', '=', workspaceId)
     .execute()
@@ -283,7 +283,7 @@ async function reembedTopic(
 
   await db
     .updateTable('topics')
-    .set({ embedding: halfvecLiteral(embedding) })
+    .set({ embedding: halfvecLiteral(embedding) as unknown as string })
     .where('id', '=', topicId)
     .where('workspace_id', '=', workspaceId)
     .execute()

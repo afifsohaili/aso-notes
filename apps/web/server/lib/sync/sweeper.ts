@@ -32,7 +32,7 @@ export function settledPendingNotesQuery(db: SyncDb, workspaceId: string) {
     .select(['id', 'path'])
     .where('workspace_id', '=', workspaceId)
     .where('status', 'in', ['pending', 'queued'])
-    .where(sql`updated_at < now() - interval ${sql.lit(PENDING_SETTLE_INTERVAL)}`)
+    .where(sql<boolean>`updated_at < now() - interval ${sql.lit(PENDING_SETTLE_INTERVAL)}`)
 }
 
 export interface SweepResult {

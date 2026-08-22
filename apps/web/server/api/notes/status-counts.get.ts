@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const counts = { pending: 0, queued: 0, processing: 0, ingested: 0, failed: 0 }
   for (const row of rows) {
     if (row.status in counts)
-      counts[row.status] = Number(row.c)
+      counts[row.status as keyof typeof counts] = Number(row.c)
   }
 
   return counts

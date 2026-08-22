@@ -53,7 +53,14 @@ const mobileView = ref<'list' | 'detail'>('list')
 const selectedRunId = ref<string | null>(null)
 const refreshInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
-const { data: runsData, refresh: refreshRuns } = useFetch('/api/consolidation/runs')
+interface ConsolidationChange {
+  id: string
+  action: 'merge-concept' | 'merge-topic' | 'prune' | 'rewrite' | 'dissolve' | 'refile'
+  text: string
+  reason: string
+}
+
+const { data: runsData, refresh: refreshRuns } = useFetch<{ runs: ConsolidationRun[] }>('/api/consolidation/runs')
 
 const runs = computed<ConsolidationRun[]>(() => runsData.value?.runs ?? [])
 const selectedRun = computed<ConsolidationRun | undefined>(() => runs.value.find(r => r.id === selectedRunId.value))
@@ -82,7 +89,7 @@ watch(latestRunId, (id) => {
     markSeen(id)
 }, { immediate: true })
 
-const detailData = ref<{ run: ConsolidationRun, changes: unknown[], hasSnapshot: boolean } | null>(null)
+const detailData = ref<{ run: ConsolidationRun, changes: ConsolidationChange[], hasSnapshot: boolean } | null>(null)
 const detailLoading = ref(false)
 
 const hasRunningRun = computed(() => runs.value.some(r => r.status === 'running'))
@@ -123,7 +130,9 @@ watch(selectedRunId, (id) => {
 async function fetchDetail(id: string) {
   detailLoading.value = true
   try {
-    detailData.value = await $fetch(`/api/consolidation/runs/${id}`) as typeof detailData.value
+    // NOTE: plain-string variable + explicit generic — Nuxt route-rules types blow up instantiation depth under TS 6 (TS2321)
+    const url: string = `/api/consolidation/runs/${id}`
+    detailData.value = await $fetch<{ run: ConsolidationRun, changes: ConsolidationChange[], hasSnapshot: boolean }>(url)
   }
   finally {
     detailLoading.value = false

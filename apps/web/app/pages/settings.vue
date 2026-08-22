@@ -38,6 +38,6 @@ async function onWizardComplete() {
     <div v-if="pending" class="container mx-auto px-6 py-10 text-gray-500">
       {{ t('chat.streaming') }}
     </div>
-    <SettingsWizard v-else-if="isWizardMode" :settings="payload" :pending="pending" @complete="onWizardComplete" />
+    <SettingsWizard v-else-if="isWizardMode" :settings="payload ?? null" :pending="pending" @complete="onWizardComplete" />
   </div>
 </template>

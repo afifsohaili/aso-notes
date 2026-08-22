@@ -23,9 +23,9 @@ const items: NavItem[] = [
   { id: 'usage', label: t('settings.nav.usage'), path: '/settings/usage' },
 ]
 
-const activeItem = computed(() => {
+const activeItem = computed<NavItem>(() => {
   const sorted = [...items].sort((a, b) => b.path.length - a.path.length)
-  return sorted.find(item => route.path === item.path || route.path.startsWith(`${item.path}/`)) ?? items[0]
+  return sorted.find(item => route.path === item.path || route.path.startsWith(`${item.path}/`)) ?? items[0]!
 })
 </script>
 

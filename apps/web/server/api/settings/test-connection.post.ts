@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
 
     if (resolved.kind === 'openrouter') {
       const embeddings = await resolved.provider.embed(['dimension probe'])
-      const dims = embeddings[0].length
+      const dims = embeddings[0]?.length ?? 0
       if (dims !== EMBEDDING_DIMENSIONS) {
         return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
       }

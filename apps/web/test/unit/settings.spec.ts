@@ -140,6 +140,7 @@ describe('resolveWorkspaceSettings', () => {
       'llm.consolidation.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.consolidation.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
       'llm.consolidation.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'consolidation.badge_seen_run_id': { value: null, source: 'default' },
       'onboarding.completed_at': { value: null, source: 'default' },
     })
   })
@@ -172,6 +173,7 @@ describe('resolveWorkspaceSettings', () => {
       'llm.consolidation.provider': { value: DEFAULT_LLM_PROVIDER, source: 'default' },
       'llm.consolidation.model': { value: DEFAULT_CHAT_MODEL, source: 'default' },
       'llm.consolidation.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
+      'consolidation.badge_seen_run_id': { value: null, source: 'default' },
       'onboarding.completed_at': { value: null, source: 'default' },
     })
   })

@@ -1,5 +1,5 @@
 import type { Job, Queue } from 'bullmq'
-import type { ConsolidationJobData } from './job'
+import type { ConsolidationJobData } from './worker-helpers'
 
 function isConsolidationJobForWorkspace(job: Job, workspaceId: string): job is Job<ConsolidationJobData> {
   const data = job.data as Partial<ConsolidationJobData> | undefined

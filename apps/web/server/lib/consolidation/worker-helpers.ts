@@ -21,14 +21,14 @@ export async function scheduleConsolidationRepeatableJobs(queue: Queue<Consolida
 
   if (!existingNames.has('nightly-incremental')) {
     await queue.add(CONSOLIDATION_JOB_NAME, { mode: 'incremental', allWorkspaces: true } as ConsolidationJobData, {
-      repeat: { cron: NIGHTLY_INCREMENTAL_CRON },
+      repeat: { pattern: NIGHTLY_INCREMENTAL_CRON },
       jobId: 'consolidation:nightly-incremental',
     })
   }
 
   if (!existingNames.has('weekly-full')) {
     await queue.add(CONSOLIDATION_JOB_NAME, { mode: 'full', allWorkspaces: true } as ConsolidationJobData, {
-      repeat: { cron: WEEKLY_FULL_CRON },
+      repeat: { pattern: WEEKLY_FULL_CRON },
       jobId: 'consolidation:weekly-full',
     })
   }

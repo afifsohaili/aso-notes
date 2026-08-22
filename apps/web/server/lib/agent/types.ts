@@ -63,6 +63,7 @@ export interface AnswerSseEvent {
   type: 'answer'
   text: string
   notes: string[]
+  conversationId?: string
 }
 
 export interface ErrorSseEvent {

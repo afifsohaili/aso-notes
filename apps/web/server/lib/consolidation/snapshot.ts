@@ -206,7 +206,7 @@ async function restoreRelational(db: SnapshotDb, snapshotId: string, workspaceId
   if (!snapshot || snapshot.workspace_id !== workspaceId)
     throw new Error('Snapshot not found')
 
-  const payload = snapshot.payload as SnapshotPayload
+  const payload = snapshot.payload as unknown as SnapshotPayload
   const capturedAt = new Date(payload.captured_at)
 
   // Delete child rows first to respect FKs, then parent rows.

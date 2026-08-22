@@ -78,7 +78,7 @@ async function handleSignup() {
     const result = await useAuthClient().signUp.email({
       email: email.value,
       password: password.value,
-      name: email.value.split('@')[0],
+      name: email.value.split('@')[0] ?? '',
     })
 
     if (result.error) {

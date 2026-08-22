@@ -10,7 +10,7 @@ export default defineEventHandler(async () => {
 
   return {
     success: true,
-    jobId: job.id,
+    jobId: job!.id,
     message: 'Email job added to queue',
   }
 })

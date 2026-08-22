@@ -1,4 +1,4 @@
-import type { Database } from '@monorepo/shared'
+import type { DB } from '@monorepo/shared'
 import type { Kysely } from 'kysely'
 import type { IngestionQueueSnapshot } from './queue'
 import type { SweeperState } from './sweeper-state'
@@ -27,7 +27,7 @@ export interface IngestionStatusResponse {
 }
 
 export interface BuildIngestionStatusArgs {
-  db: Kysely<Database>
+  db: Kysely<DB>
   workspaceId: string
   queue: IngestionQueueSnapshot | null
   sweeperState: SweeperState

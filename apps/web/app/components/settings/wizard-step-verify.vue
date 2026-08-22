@@ -56,9 +56,9 @@ async function poll() {
     return
 
   try {
-    const state = await $fetch('/api/onboarding/smoke-test', {
+    const state = await $fetch<{ phase: Phase, error?: string, lastRun?: unknown }>('/api/onboarding/smoke-test' as string, {
       query: { attemptId: attemptId.value },
-    }) as { phase: Phase, error?: string, lastRun?: unknown }
+    })
 
     phase.value = state.phase
     error.value = state.error ?? ''
@@ -93,7 +93,7 @@ async function start() {
   lastRun.value = null
 
   try {
-    const result = await $fetch('/api/onboarding/smoke-test', { method: 'POST' }) as { attemptId: string, phase: Phase }
+    const result = await $fetch<{ attemptId: string, phase: Phase }>('/api/onboarding/smoke-test' as string, { method: 'POST' })
     attemptId.value = result.attemptId
     phase.value = result.phase
 

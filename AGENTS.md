@@ -33,7 +33,7 @@ Most root scripts just proxy to `apps/web`:
 | Build | `pnpm build` |
 | Preview | `pnpm preview` |
 | Lint | `pnpm lint` / `pnpm lint:fix` |
-| Type check | `pnpm --filter web nuxt typecheck` |
+| Type check | `pnpm typecheck` |
 | Full test suite | `pnpm test` |
 | Fast e2e only | `pnpm test:e2e` |
 | Component tests | `pnpm test:components` |

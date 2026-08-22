@@ -24,7 +24,7 @@ export interface EmbeddingProvider {
    * Embed a batch of texts. Returns one embedding per input, in input
    * order. Callers validate dimensionality (2048 for the locked model).
    */
-  embed: (texts: string[]) => Promise<number[][]>
+  embed: (texts: string[], trace?: TraceOptions) => Promise<number[][]>
   /**
    * Embed with usage metadata when the provider reports it. Tracing uses this
    * so the standard `embed` contract stays unchanged for existing callers.

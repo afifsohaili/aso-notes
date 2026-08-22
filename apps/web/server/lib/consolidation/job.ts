@@ -31,7 +31,7 @@ export async function runConsolidationSweep(
 }
 
 export class ConsolidationJob extends ApplicationJob<ConsolidationJobData> {
-  static queueName = CONSOLIDATION_QUEUE_NAME
+  static override queueName = CONSOLIDATION_QUEUE_NAME
 
   async perform(data: ConsolidationJobData): Promise<void> {
     const config = useRuntimeConfig()

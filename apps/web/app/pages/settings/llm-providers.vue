@@ -99,7 +99,8 @@ const roleAvailability = computed(() => {
 async function testConnection(role: LlmRole) {
   llmTestStatus[role] = { kind: 'idle' }
   try {
-    const result = await $fetch('/api/settings/test-connection', {
+    // NOTE: URL cast to plain string — Nuxt route-rules types blow up instantiation depth under TS 6 (TS2321)
+    const result = await $fetch<{ ok: boolean, dims?: number, expected?: number, error?: string }>('/api/settings/test-connection' as string, {
       method: 'POST',
       body: {
         role,
@@ -107,7 +108,7 @@ async function testConnection(role: LlmRole) {
         model: (llmModel[role] as string).trim(),
         base_url: (llmBaseUrl[role] as string).trim() || undefined,
       },
-    }) as { ok: boolean, dims?: number, expected?: number, error?: string }
+    })
 
     if (result.ok) {
       llmTestStatus[role] = { kind: 'ok' }

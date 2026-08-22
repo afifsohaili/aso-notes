@@ -7,6 +7,7 @@ interface PathRow {
   node_list: unknown
   edge_list: unknown
   length: unknown
+  [key: string]: unknown
 }
 
 function parseAgtypeList(value: unknown): any[] {

@@ -54,10 +54,10 @@ export async function sendEmail(job: EmailJobData, provider?: string): Promise<E
   const selectedProvider = provider || EMAIL_PROVIDER
 
   if (selectedProvider === BREVO_PROVIDER) {
-    return providers[BREVO_PROVIDER].sendEmail(job)
+    return providers[BREVO_PROVIDER]!.sendEmail(job)
   }
   if (selectedProvider === MAILPIT_PROVIDER) {
-    return providers[MAILPIT_PROVIDER].sendEmail(job)
+    return providers[MAILPIT_PROVIDER]!.sendEmail(job)
   }
 
   throw new Error(`Invalid provider: ${selectedProvider}`)

@@ -1,3 +1,5 @@
+import type { DB } from '@monorepo/shared'
+import type { ExpressionBuilder } from 'kysely'
 import type { GraphDb } from '../graph/age'
 import { agLiteral, executeCypher } from '../graph/age'
 import { purgeTraceContentForOwner } from '../observability/retention'
@@ -172,11 +174,10 @@ export async function removeSyncedFolderAndCollectGarbage(
     .selectFrom('concepts')
     .select('id')
     .where('workspace_id', '=', workspaceId)
-    .where('id', 'not in', eb => eb.selectFrom('mentions').select('concept_id').distinct())
+    .where('id', 'not in', (eb: ExpressionBuilder<DB, 'concepts'>) => eb.selectFrom('mentions').select('concept_id').distinct())
     .execute()
 
   const conceptIdsToRemove = deadConcepts.map(c => c.id)
-
   const relationsRow = conceptIdsToRemove.length > 0
     ? await db
         .selectFrom('relations')
@@ -200,7 +201,8 @@ export async function removeSyncedFolderAndCollectGarbage(
     .selectFrom('topics')
     .select('id')
     .where('workspace_id', '=', workspaceId)
-    .where('id', 'not in', eb => eb.selectFrom('concept_topics').select('topic_id').distinct())
+    .where('id', 'not in', (eb: ExpressionBuilder<DB, 'topics'>) =>
+      eb.selectFrom('concept_topics').select('topic_id').distinct())
     .execute()
 
   const topicIdsToRemove = deadTopics.map(t => t.id)

@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
   const dispatcher = resolveProcessDispatcher({
     db,
     databaseUrl: config.databaseUrl,
-    redisUrl: config.redisUrl,
+    redisUrl: config.redisUrl as string | undefined,
   })
   await dispatcher.dispatch(note.id)
 

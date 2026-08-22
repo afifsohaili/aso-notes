@@ -1,5 +1,5 @@
-import type { Database } from '@monorepo/shared'
-import type { Kysely } from 'kysely'
+import type { DB } from '@monorepo/shared'
+import type { ExpressionBuilder, Kysely } from 'kysely'
 import { resolveContentRetentionDays } from '../settings'
 
 export type ContentOwnerType = 'notes' | 'conversations' | 'consolidation_runs'
@@ -13,7 +13,7 @@ interface TraceRef {
 }
 
 async function findTracesByOwner(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   workspaceId: string,
   ownerType: string,
   ownerId: string | string[],
@@ -32,7 +32,7 @@ async function findTracesByOwner(
 }
 
 async function pruneContentRows(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   prunedAt: Date,
   buildConstraint: (query: any, table: 'llm_generations' | 'llm_tool_calls') => any,
 ): Promise<number> {
@@ -45,7 +45,7 @@ async function pruneContentRows(
 }
 
 async function pruneContentForTraceIds(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   traceIds: string[],
   prunedAt: Date,
 ): Promise<number> {
@@ -76,7 +76,7 @@ async function pruneContentForTraceIds(
  * scoped to the workspace.
  */
 export async function purgeTraceContentForOwner(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   workspaceId: string,
   ownerType: ContentOwnerType,
   ownerId: string | string[],
@@ -94,7 +94,7 @@ export async function purgeTraceContentForOwner(
  * number of rows whose content was nulled (generations + tool calls).
  */
 export async function purgeOldTraceContentForWorkspace(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   workspaceId: string,
   retentionDays: number,
   now: Date = new Date(),
@@ -107,7 +107,7 @@ export async function purgeOldTraceContentForWorkspace(
       .where('workspace_id', '=', workspaceId)
       .where('pruned_at', 'is', null)
       .where('created_at', '<', cutoff)
-      .where((eb) => {
+      .where((eb: ExpressionBuilder<DB, 'llm_generations' | 'llm_tool_calls'>) => {
         return eb.not(eb.exists(
           eb.selectFrom('llm_traces as t')
             .select('t.id')
@@ -123,7 +123,7 @@ export async function purgeOldTraceContentForWorkspace(
  * site helpers (e.g. synced-folder removal cascading to notes).
  */
 export async function purgeOrphanTraceContent(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   now: Date = new Date(),
 ): Promise<number> {
   const orphaned = await db
@@ -171,7 +171,7 @@ export async function purgeOrphanTraceContent(
  * idempotent — a second run with the same `now` finds no unpruned rows to touch.
  */
 export async function runObservabilityRetentionSweep(
-  db: Kysely<Database>,
+  db: Kysely<DB>,
   now: Date = new Date(),
 ): Promise<{ prunedByAge: number, prunedOrphans: number }> {
   const workspaces = await db.selectFrom('workspaces').select('id').execute()

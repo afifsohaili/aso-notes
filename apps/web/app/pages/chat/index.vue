@@ -20,6 +20,7 @@ interface ConversationDetailMessage {
   content: string | null
   tool_calls: unknown
   tool_call_id: string | null
+  trace_id: string | null
   created_at: string
 }
 
@@ -49,7 +50,7 @@ const sidebarConversations = computed(() => {
   return (conversations.value ?? []).map(c => ({
     id: c.id,
     title: c.title,
-    updatedAt: c.updated_at,
+    updatedAt: c.updatedAt,
   }))
 })
 
@@ -57,12 +58,12 @@ const sidebarArchived = computed(() => {
   return (archivedConversations.value ?? []).map(c => ({
     id: c.id,
     title: c.title,
-    updatedAt: c.updated_at,
+    updatedAt: c.updatedAt,
   }))
 })
 
 const { data: conversation, refresh: refreshConversation } = useFetch<ConversationDetail>(
-  () => conversationId.value ? `/api/conversations/${conversationId.value}` : null,
+  () => conversationId.value ? `/api/conversations/${conversationId.value}` : (null as unknown as string),
   {
     key: computed(() => `conversation-${conversationId.value ?? 'none'}`),
     watch: [conversationId],

@@ -1,3 +1,4 @@
+import type { AgentSseEvent } from '~~/server/lib/agent/types'
 import { AGENT_TOOLS, runAgent } from '~~/server/lib/agent'
 import { getAgentProviders } from '~~/server/lib/agent/providers'
 import { useDatabase } from '~~/utils/db'
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      const onEvent = (e: { type: string }) => {
+      const onEvent = (e: AgentSseEvent) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`))
       }
 
