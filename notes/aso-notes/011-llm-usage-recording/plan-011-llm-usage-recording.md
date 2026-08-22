@@ -431,4 +431,38 @@ Review-driven cleanup of tracing correctness, dedup, and race/type issues. All 1
 - Item 10 cost precision: instructions suggested `>= $1 → $X.XX, else $X.XXX`. I unified on `else $X.XXXX` instead because all three existing call sites used four decimals and the usage-summary spec asserts `$0.0003` (a three-decimal rendering would show `$0.000` and break it). Four decimals is the rule that fits the actual usage sites.
 - Typecheck could not be run to green (repo-wide pre-existing breakage); item 7 was verified by careful reading and by confirming no new type errors were introduced.
 
+## Phase 9A — Record aborted generations on disconnect (done)
+
+Ticket `ticket-agent-chat-tracing.md` resolution: "on client disconnect mid-stream the Generation records the partial text with an aborted flag (+ error if any)". Previously the trace-level `status='aborted'` was set in `run-agent.ts`, but `llm_generations` rows recorded an aborted in-flight LLM call as if it completed normally, because the `AbortSignal` never reached the provider call inside `loop.ts`.
+
+### Changed
+
+1. **`apps/web/server/lib/agent/loop.ts`** — the two `ctx.llm.complete(...)` call sites (main loop + forced final wrap-up) now pass the already-threaded `signal` through to the LLM call. The `signal` was already a `runAgentLoop` parameter; it just wasn't forwarded.
+2. **`apps/web/server/lib/observability/traced-provider.ts`** — `TracedLLMProvider.complete` and `completeStream` accept a `signal?: AbortSignal` and forward it to the wrapped provider. When a call throws `AbortError` (or the signal is aborted), the generation is recorded with `finish_reason='aborted'` and the error message. The streaming path also marks `response.finishReason='aborted'` for the partial text.
+3. **Provider signature** (`apps/web/server/lib/ai/types.ts`, `openrouter-llm.ts`, `ollama.ts`) — `LLMProvider.complete` / `completeStream` gained a `signal?: AbortSignal` param; both built-in HTTP providers forward it to `fetch`.
+4. `buildTraceOptions` refactor (shared `TraceContext` type) was already present in the working tree from Phase 8/earlier; `engine.ts` needed `useCase: 'consolidation'` on its trace context so `buildTraceOptions` produces a non-null `llm_use_case` (its call path otherwise hit a NOT NULL violation).
+
+### Test setup (red → green)
+
+- Unit (`apps/web/test/unit/traced-provider.spec.ts`, +2): a non-streaming `complete` that throws `AbortError` records `finish_reason='aborted'`, `response=null`, `usage_missing=true`; a streaming `completeStream` interrupted mid-stream records the partial text with `finish_reason='aborted'`.
+- E2E (`test/e2e/llm-tracing-chat.spec.ts`) keeps green: mid-tool-call abort still leaves trace `status='aborted'` with ≥1 generation and ≥1 tool call; normal completion still records the provider's finish reason; tracing failure never breaks the chat response.
+
+### Tests
+
+- `pnpm --filter web vitest run --project e2e` — 352 passed in 48 files.
+- `pnpm --filter web vitest run --project unit` — 453 passed in 40 files.
+- `pnpm --filter web vitest run --project nuxt` — 142 passed in 31 files.
+- `pnpm lint` clean.
+- Typecheck unchanged (repo-wide pre-existing failure, unrelated to this phase).
+
+### Limitation
+
+- The current agent path is **non-streaming** (calls `complete`, not `completeStream`), so on abort there is no partial accumulated text to record; `response` is `null`. The partial-text-with-aborted-flag behavior is only exercised by the `completeStream` path (and its unit test), which the live agent does not use today. This matches the ticket's "partial may be unavailable; that is acceptable".
+
+### Divergences
+
+- **Working tree was not clean at task start** — a large pre-existing uncommitted batch (Phases 7/8 UI, retention refactor, usage API) was in the tree; it already contained most of this fix plus a red streamed-abort unit test and a few regressions. I fixed the remaining red test (`response.finishReason='aborted'` for the streamed case), plus three pre-existing failures needed to get the tree green before commit: `consolidation/engine.ts` missing `useCase` on its trace context (NOT NULL violation), `vitest.config.ts` unit project missing `~~`/alias resolution (broke `observability-retention.spec.ts` after `retention-worker-helpers.ts` was deleted), `usage-api.spec.ts` referencing out-of-scope `today`/`yesterday` dates, and removed dead unused type aliases in `server/api/traces/[id].get.ts`. These are commit-all, not part of the Phase 9A behavior itself.
+- `run-agent.ts` trace-level `status='aborted'` handling was **not** touched, per the ticket.
+- No schema migration, no new columns.
+
 

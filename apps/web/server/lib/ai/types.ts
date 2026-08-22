@@ -107,7 +107,7 @@ export interface TraceOptions {
 }
 
 export interface LLMProvider {
-  complete: (request: CompletionRequest, trace?: TraceOptions) => Promise<CompletionResult>
+  complete: (request: CompletionRequest, trace?: TraceOptions, signal?: AbortSignal) => Promise<CompletionResult>
   /** Streaming variant; callers and decorators that support it accumulate chunks. */
-  completeStream?: (request: CompletionRequest, trace?: TraceOptions) => AsyncIterableIterator<CompletionStreamChunk>
+  completeStream?: (request: CompletionRequest, trace?: TraceOptions, signal?: AbortSignal) => AsyncIterableIterator<CompletionStreamChunk>
 }

@@ -65,33 +65,67 @@ const rangeOrder: Array<{ key: 'today' | 'last7d' | 'last30d', labelKey: string 
           <span class="text-sm font-medium text-gray-500">
             {{ t(range.labelKey) }}
           </span>
-          <div class="flex flex-wrap items-center gap-6">
-            <div class="text-right">
-              <p class="text-lg font-semibold text-gray-900">
-                {{ formatCost(summary.ranges[range.key].costUsd) }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ t('settings.usage.costLabel') }}
-              </p>
+          <div class="flex min-w-[10rem] flex-col gap-1">
+            <div class="flex items-center justify-between gap-4 text-sm">
+              <span class="text-gray-500">{{ t('settings.usage.costLabel') }}</span>
+              <span class="font-semibold text-gray-900">{{ formatCost(summary.ranges[range.key].costUsd) }}</span>
             </div>
-            <div class="text-right">
-              <p class="text-lg font-semibold text-gray-900">
-                {{ formatTokens(summary.ranges[range.key].tokens) }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ t('settings.usage.tokensLabel') }}
-              </p>
+            <div class="flex items-center justify-between gap-4 text-sm">
+              <span class="text-gray-500">{{ t('settings.usage.tokensLabel') }}</span>
+              <span class="font-semibold text-gray-900">{{ formatTokens(summary.ranges[range.key].tokens) }}</span>
             </div>
-            <div class="text-right">
-              <p class="text-lg font-semibold text-gray-900">
-                {{ formatGenerations(summary.ranges[range.key].generations) }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ t('settings.usage.generationsLabel') }}
-              </p>
+            <div class="flex items-center justify-between gap-4 text-sm">
+              <span class="text-gray-500">{{ t('settings.usage.generationsLabel') }}</span>
+              <span class="font-semibold text-gray-900">{{ formatGenerations(summary.ranges[range.key].generations) }}</span>
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Daily usage breakdown -->
+      <div v-if="summary.daily.length > 0" class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table class="min-w-full divide-y divide-gray-200 text-sm" data-testid="usage-daily-table">
+          <thead class="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <tr>
+              <th class="px-4 py-3">
+                {{ t('settings.usage.daily.day') }}
+              </th>
+              <th class="px-4 py-3 text-right">
+                {{ t('settings.usage.table.generations') }}
+              </th>
+              <th class="px-4 py-3 text-right">
+                {{ t('settings.usage.table.tokens') }}
+              </th>
+              <th class="px-4 py-3 text-right">
+                {{ t('settings.usage.table.cost') }}
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="row in summary.daily" :key="row.day" class="hover:bg-gray-50">
+              <td class="px-4 py-3 font-medium text-gray-900">
+                {{ row.day }}
+              </td>
+              <td class="px-4 py-3 text-right text-gray-600">
+                {{ formatGenerations(row.generations) }}
+              </td>
+              <td class="px-4 py-3 text-right text-gray-600">
+                {{ formatTokens(row.tokens) }}
+              </td>
+              <td class="px-4 py-3 text-right font-medium text-gray-900">
+                {{ formatCost(row.costUsd) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        v-else-if="summary.groups.length > 0"
+        class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-500"
+        data-testid="usage-daily-empty"
+      >
+        {{ t('settings.usage.daily.empty') }}
       </div>
 
       <!-- Grouped usage table -->

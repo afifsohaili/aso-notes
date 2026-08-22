@@ -4,7 +4,7 @@ import {
   DAILY_RETENTION_CRON,
   OBSERVABILITY_RETENTION_JOB_NAME,
   scheduleObservabilityRetentionRepeatableJobs,
-} from '../../server/lib/observability/retention-worker-helpers'
+} from '../../server/lib/observability/retention-job'
 
 function makeQueue(repeatableJobs: Array<{ name: string }> = []): Queue<unknown> {
   return {

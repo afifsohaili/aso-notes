@@ -1,5 +1,6 @@
 import type { ChatMessage, CompletionRequest, ToolDefinition, TraceOptions } from '../ai/types'
 import type { AgentContext, AgentEventEmitter, AgentLoopTraceOptions, AgentSseEvent, AgentTool } from './types'
+import { buildTraceOptions } from '../observability/trace-context'
 
 export const MAX_AGENT_ITERATIONS = 10
 
@@ -57,14 +58,7 @@ export async function runAgentLoop(
   const citedNotes = new Set<string>()
 
   function nextTraceOptions(): TraceOptions | undefined {
-    if (!trace)
-      return undefined
-    return {
-      traceId: trace.traceId,
-      workspaceId: trace.workspaceId,
-      useCase: trace.useCase,
-      seq: trace.nextSeq(),
-    }
+    return trace ? buildTraceOptions(trace) : undefined
   }
 
   for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
@@ -79,7 +73,7 @@ export async function runAgentLoop(
         messages: workingMessages,
         tools: toolDefinitions,
         toolChoice: 'auto',
-      } as CompletionRequest, nextTraceOptions())
+      } as CompletionRequest, nextTraceOptions(), signal)
     }
     catch (error) {
       const message = error instanceof Error ? error.message : 'LLM request failed'
@@ -148,7 +142,7 @@ export async function runAgentLoop(
   // Iteration cap reached: force a final no-tools completion.
   workingMessages.push({ role: 'system', content: WRAP_UP_PROMPT })
   try {
-    const final = await ctx.llm.complete({ messages: workingMessages, toolChoice: 'none' }, nextTraceOptions())
+    const final = await ctx.llm.complete({ messages: workingMessages, toolChoice: 'none' }, nextTraceOptions(), signal)
     const answer = final.message.content ?? ''
     const finalMessage: ChatMessage = { role: 'assistant', content: answer }
     loopMessages.push(finalMessage)

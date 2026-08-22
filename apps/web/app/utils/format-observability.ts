@@ -1,7 +1,5 @@
 /**
- * Shared formatters for LLM observability UI (chat trace view, trace timeline,
- * and the Settings → Usage summary). These were copy-pasted in three
- * components; this module is the single source of truth.
+ * Shared display formatters for LLM observability UI.
  */
 
 /**

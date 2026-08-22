@@ -15,6 +15,11 @@ interface AgentProviders {
   }
 }
 
+export const DEFAULT_AGENT_PROVIDER_INFO: AgentProviders['llmProviderInfo'] = {
+  kind: 'openrouter',
+  model: 'unknown',
+}
+
 let testProviders: AgentProviders | undefined
 let agentSingleton: AgentProviders | null = null
 
@@ -22,7 +27,7 @@ export function setAgentTestProviders(providers: Partial<AgentProviders> & { llm
   testProviders = {
     ...providers,
     llmProviderInfo: {
-      kind: 'openrouter',
+      ...DEFAULT_AGENT_PROVIDER_INFO,
       model: 'test-model',
       ...providers.llmProviderInfo,
     },

@@ -1,21 +1,14 @@
+import type { TraceContext } from '../observability/trace-context'
 import type { TraceOptions } from '../observability/traced-provider'
 import type { ConsolidationDb, ConsolidationJudge, MergeCandidate, MergeVerdict, PruneCandidate, PruneVerdict, RewriteCandidate, RewriteVerdict } from './types'
 import { sql } from 'kysely'
+import { buildTraceOptions } from '../observability/trace-context'
 import { COSINE_THRESHOLD, JUDGE_BATCH_SIZE, NEIGHBOR_TOP_K, PRUNE_GRACE_DAYS } from './types'
 
-export interface BatchJudgeContext {
-  traceId: string
-  workspaceId: string
-  nextSeq: () => number
-}
+export type BatchJudgeContext = TraceContext
 
-function makeTraceOptions(ctx: BatchJudgeContext): TraceOptions {
-  return {
-    traceId: ctx.traceId,
-    workspaceId: ctx.workspaceId,
-    useCase: 'consolidation',
-    seq: ctx.nextSeq(),
-  }
+function makeTraceOptions(ctx: TraceContext): TraceOptions {
+  return buildTraceOptions(ctx)
 }
 
 interface ConceptRow {

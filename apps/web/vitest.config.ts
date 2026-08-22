@@ -9,6 +9,10 @@ export default defineConfig({
   test: {
     projects: [
       {
+        plugins: [createTestingPlugin({ appRoot })],
+        resolve: {
+          alias: createTestingAliases({ appRoot }),
+        },
         test: {
           name: 'unit',
           include: ['test/unit/*.{test,spec}.ts'],

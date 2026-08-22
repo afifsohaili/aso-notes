@@ -56,7 +56,7 @@ const steps = computed<TraceStep[]>(() => {
   return [...genSteps, ...toolSteps].sort((a, b) => a.seq - b.seq)
 })
 
-const expanded = ref<Set<number>>(new Set(steps.value.map(s => s.seq)))
+const expanded = ref<Set<number>>(new Set())
 
 watch(() => props.generations, () => {
   expanded.value = new Set(steps.value.map(s => s.seq))
@@ -179,10 +179,10 @@ function contentState(item: { prunedAt: string | null, value: Json | null }): { 
             <p class="mb-1 font-medium text-gray-500">
               {{ t('chat.trace.response') }}
             </p>
-            <div v-if="step.item.response !== null" class="max-h-48 overflow-y-auto rounded bg-gray-50">
+            <div v-if="contentState({ value: step.item.response, prunedAt: step.item.prunedAt }).present" class="max-h-48 overflow-y-auto rounded bg-gray-50">
               <pre class="whitespace-pre-wrap p-2 text-gray-700">{{ formatJson(step.item.response) }}</pre>
             </div>
-            <p v-else-if="step.item.prunedAt !== null" class="italic text-gray-400">
+            <p v-else-if="contentState({ value: step.item.response, prunedAt: step.item.prunedAt }).expired" class="italic text-gray-400">
               {{ t('chat.trace.expired') }}
             </p>
             <p v-else class="italic text-gray-400">
@@ -204,10 +204,10 @@ function contentState(item: { prunedAt: string | null, value: Json | null }): { 
             <p class="mb-1 font-medium text-gray-500">
               {{ t('chat.trace.output') }}
             </p>
-            <div v-if="step.item.output !== null" class="max-h-48 overflow-y-auto rounded bg-gray-50">
+            <div v-if="contentState({ value: step.item.output, prunedAt: step.item.prunedAt }).present" class="max-h-48 overflow-y-auto rounded bg-gray-50">
               <pre class="whitespace-pre-wrap p-2 text-gray-700">{{ formatJson(step.item.output) }}</pre>
             </div>
-            <p v-else-if="step.item.prunedAt !== null" class="italic text-gray-400">
+            <p v-else-if="contentState({ value: step.item.output, prunedAt: step.item.prunedAt }).expired" class="italic text-gray-400">
               {{ t('chat.trace.expired') }}
             </p>
             <p v-else class="italic text-gray-400">

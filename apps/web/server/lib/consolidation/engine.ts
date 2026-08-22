@@ -92,7 +92,7 @@ async function runConsolidationBody(
 
   const nextSeq = createSeqCounter()
   const traceContext = traceId
-    ? { traceId, workspaceId, nextSeq }
+    ? { traceId, workspaceId, useCase: 'consolidation', nextSeq }
     : undefined
 
   try {
@@ -277,40 +277,4 @@ async function failRun(db: ConsolidationDb, runId: string, error: unknown): Prom
     })
     .where('id', '=', runId)
     .execute()
-}
-
-export interface ConsolidationUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-}
-
-export async function computeConsolidationUsage(
-  db: ConsolidationDb,
-  runId: string,
-): Promise<ConsolidationUsage | null> {
-  const result = await db
-    .selectFrom('llm_generations')
-    .innerJoin('llm_traces', 'llm_traces.id', 'llm_generations.trace_id')
-    .select([
-      db.fn.sum('llm_generations.prompt_tokens').as('prompt_tokens'),
-      db.fn.sum('llm_generations.completion_tokens').as('completion_tokens'),
-    ])
-    .where('llm_traces.owner_type', '=', 'consolidation_runs')
-    .where('llm_traces.owner_id', '=', runId)
-    .executeTakeFirst()
-
-  if (!result)
-    return null
-
-  const promptTokens = Number(result.prompt_tokens ?? 0)
-  const completionTokens = Number(result.completion_tokens ?? 0)
-  if (promptTokens === 0 && completionTokens === 0)
-    return null
-
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  }
 }

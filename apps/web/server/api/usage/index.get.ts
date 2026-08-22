@@ -1,6 +1,15 @@
+import type { DB } from '@monorepo/shared'
+import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import { useDatabase } from '~~/utils/db'
 import { resolveWorkspaceId } from '../../utils/workspace'
+
+const usageAggregateColumns = [
+  sql<number>`count(*)::int`.as('generations'),
+  sql<number>`coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(completion_tokens, 0)), 0)::int`.as('tokens'),
+  sql<string>`coalesce(sum(cost_usd), 0)::text`.as('cost_usd'),
+  sql<number>`coalesce(sum(case when usage_missing then 1 else 0 end), 0)::int`.as('usage_missing_count'),
+]
 
 interface RangeRow {
   generations: number
@@ -18,6 +27,14 @@ interface GroupRow {
   usage_missing_count: number
 }
 
+interface DailyRow {
+  day: string
+  generations: number
+  tokens: number
+  cost_usd: string
+  usage_missing_count: number
+}
+
 function startOfToday(): Date {
   const now = new Date()
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -29,13 +46,12 @@ function daysAgo(days: number): Date {
   return d
 }
 
-function toRangeRow(row: unknown): RangeResponse {
-  const r = row as RangeRow
+function toRangeRow(row: RangeRow): RangeResponse {
   return {
-    generations: r.generations,
-    tokens: r.tokens,
-    costUsd: formatCost(r.cost_usd),
-    usageMissingGenerations: r.usage_missing_count,
+    generations: row.generations,
+    tokens: row.tokens,
+    costUsd: rawCost(row.cost_usd),
+    usageMissingGenerations: row.usage_missing_count,
   }
 }
 
@@ -55,32 +71,44 @@ interface GroupResponse {
   usageMissingGenerations: number
 }
 
-function toGroupRow(row: unknown): GroupResponse {
-  const r = row as GroupRow
+function toGroupRow(row: GroupRow): GroupResponse {
   return {
-    useCase: r.llm_use_case,
-    model: r.model,
-    generations: r.generations,
-    tokens: r.tokens,
-    costUsd: formatCost(r.cost_usd),
-    usageMissingGenerations: r.usage_missing_count,
+    useCase: row.llm_use_case,
+    model: row.model,
+    generations: row.generations,
+    tokens: row.tokens,
+    costUsd: rawCost(row.cost_usd),
+    usageMissingGenerations: row.usage_missing_count,
   }
 }
 
-function formatCost(costUsd: string): string {
+interface DailyResponse {
+  day: string
+  generations: number
+  tokens: number
+  costUsd: string
+  usageMissingGenerations: number
+}
+
+function toDailyRow(row: DailyRow): DailyResponse {
+  return {
+    day: row.day.slice(0, 10),
+    generations: row.generations,
+    tokens: row.tokens,
+    costUsd: rawCost(row.cost_usd),
+    usageMissingGenerations: row.usage_missing_count,
+  }
+}
+
+function rawCost(costUsd: string): string {
   const n = Number.parseFloat(costUsd)
   return Number.isNaN(n) ? '0.000000' : n.toFixed(6)
 }
 
-function buildRangeQuery(db: any, workspaceId: string, start: Date) {
+function buildRangeQuery(db: Kysely<DB>, workspaceId: string, start: Date) {
   return db
     .selectFrom('llm_generations')
-    .select([
-      sql<number>`count(*)::int`.as('generations'),
-      sql<number>`coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(completion_tokens, 0)), 0)::int`.as('tokens'),
-      sql<string>`coalesce(sum(cost_usd), 0)::text`.as('cost_usd'),
-      sql<number>`coalesce(sum(case when usage_missing then 1 else 0 end), 0)::int`.as('usage_missing_count'),
-    ])
+    .select(usageAggregateColumns)
     .where('workspace_id', '=', workspaceId)
     .where('created_at', '>=', start)
 }
@@ -100,7 +128,7 @@ export default defineEventHandler(async (event) => {
 
   const start30d = daysAgo(30)
 
-  const [todayRow, last7dRow, last30dRow, groups] = await Promise.all([
+  const [todayRow, last7dRow, last30dRow, groups, daily] = await Promise.all([
     buildRangeQuery(db, workspaceId, startOfToday()).executeTakeFirstOrThrow(),
     buildRangeQuery(db, workspaceId, daysAgo(7)).executeTakeFirstOrThrow(),
     buildRangeQuery(db, workspaceId, start30d).executeTakeFirstOrThrow(),
@@ -109,20 +137,29 @@ export default defineEventHandler(async (event) => {
       .select([
         'llm_use_case',
         'model',
-        sql<number>`count(*)::int`.as('generations'),
-        sql<number>`coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(completion_tokens, 0)), 0)::int`.as('tokens'),
-        sql<string>`coalesce(sum(cost_usd), 0)::text`.as('cost_usd'),
-        sql<number>`coalesce(sum(case when usage_missing then 1 else 0 end), 0)::int`.as('usage_missing_count'),
+        ...usageAggregateColumns,
       ])
       .where('workspace_id', '=', workspaceId)
       .where('created_at', '>=', start30d)
       .groupBy(['llm_use_case', 'model'])
       .orderBy('llm_use_case', 'asc')
       .orderBy('model', 'asc')
-      .execute() as unknown as GroupRow[],
+      .execute(),
+    db
+      .selectFrom('llm_generations')
+      .select([
+        sql<string>`date_trunc('day', created_at)::text`.as('day'),
+        ...usageAggregateColumns,
+      ])
+      .where('workspace_id', '=', workspaceId)
+      .where('created_at', '>=', start30d)
+      .groupBy(sql`date_trunc('day', created_at)`)
+      .orderBy(sql`date_trunc('day', created_at)`, 'asc')
+      .execute(),
   ])
 
   const mappedGroups = groups.map(toGroupRow)
+  const mappedDaily = daily.map(toDailyRow)
   const total = mappedGroups.reduce((acc, row) => ({
     generations: acc.generations + row.generations,
     tokens: acc.tokens + row.tokens,
@@ -141,6 +178,7 @@ export default defineEventHandler(async (event) => {
       last7d: toRangeRow(last7dRow),
       last30d: toRangeRow(last30dRow),
     },
+    daily: mappedDaily,
     groups: mappedGroups,
     total,
   }

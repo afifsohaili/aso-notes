@@ -137,6 +137,10 @@ async function seedUsage(trx: any, workspaceId: string) {
     .execute()
 }
 
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
 describe('get /api/usage', () => {
   test('returns 401 when unauthenticated', async ({ server }) => {
     const res = await server('/api/usage')
@@ -159,6 +163,7 @@ describe('get /api/usage', () => {
     expect(body.ranges.last7d).toEqual(body.ranges.today)
     expect(body.ranges.last30d).toEqual(body.ranges.today)
     expect(body.groups).toEqual([])
+    expect(body.daily).toEqual([])
     expect(body.total).toEqual({
       generations: 0,
       tokens: 0,
@@ -173,6 +178,15 @@ describe('get /api/usage', () => {
 
     const other = await givenVerifiedUser()
     await seedUsage(trx, other.workspace.id)
+
+    const now = new Date()
+    const today = new Date(now)
+    const yesterday = new Date(now)
+    yesterday.setUTCDate(now.getUTCDate() - 1)
+    const sixDaysAgo = new Date(now)
+    sixDaysAgo.setUTCDate(now.getUTCDate() - 6)
+    const twentyNineDaysAgo = new Date(now)
+    twentyNineDaysAgo.setUTCDate(now.getUTCDate() - 29)
 
     const res = await server('/api/usage', { headers: { cookie: cookies } })
     expect(res.status).toBe(200)
@@ -231,6 +245,36 @@ describe('get /api/usage', () => {
       tokens: 120,
       costUsd: '0.001200',
       usageMissingGenerations: 1,
+    })
+
+    expect(body.daily).toHaveLength(4)
+    expect(body.daily).toContainEqual({
+      day: isoDay(today),
+      generations: 1,
+      tokens: 30,
+      costUsd: '0.000300',
+      usageMissingGenerations: 0,
+    })
+    expect(body.daily).toContainEqual({
+      day: isoDay(yesterday),
+      generations: 1,
+      tokens: 40,
+      costUsd: '0.000400',
+      usageMissingGenerations: 0,
+    })
+    expect(body.daily).toContainEqual({
+      day: isoDay(sixDaysAgo),
+      generations: 1,
+      tokens: 0,
+      costUsd: '0.000000',
+      usageMissingGenerations: 1,
+    })
+    expect(body.daily).toContainEqual({
+      day: isoDay(twentyNineDaysAgo),
+      generations: 1,
+      tokens: 50,
+      costUsd: '0.000500',
+      usageMissingGenerations: 0,
     })
   })
 

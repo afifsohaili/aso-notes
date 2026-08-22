@@ -1,50 +1,5 @@
-import type { Json } from '@monorepo/shared'
 import { useDatabase } from '~~/utils/db'
 import { resolveWorkspaceId } from '../../utils/workspace'
-
-interface TraceRow {
-  id: string
-  kind: string
-  status: string
-  owner_type: string
-  owner_id: string
-  started_at: Date
-  finished_at: Date | null
-  error: string | null
-  created_at: Date
-  updated_at: Date
-}
-
-interface GenerationRow {
-  id: string
-  seq: number
-  llm_use_case: string
-  provider: string
-  model: string
-  prompt: Json | null
-  response: Json | null
-  prompt_tokens: number | null
-  completion_tokens: number | null
-  cost_usd: string | null
-  latency_ms: number | null
-  finish_reason: string | null
-  error: string | null
-  pruned_at: Date | null
-  usage_missing: boolean | null
-  created_at: Date
-}
-
-interface ToolCallRow {
-  id: string
-  seq: number
-  name: string
-  input: Json
-  output: Json | null
-  duration_ms: number | null
-  status: string
-  pruned_at: Date | null
-  created_at: Date
-}
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
@@ -80,7 +35,7 @@ export default defineEventHandler(async (event) => {
     ])
     .where('id', '=', id)
     .where('workspace_id', '=', workspaceId)
-    .executeTakeFirst() as TraceRow | undefined
+    .executeTakeFirst()
 
   if (!trace) {
     throw createError({ statusCode: 404, statusMessage: 'Trace not found' })
@@ -109,7 +64,7 @@ export default defineEventHandler(async (event) => {
       ])
       .where('trace_id', '=', id)
       .orderBy('seq', 'asc')
-      .execute() as Promise<GenerationRow[]>,
+      .execute(),
     db
       .selectFrom('llm_tool_calls')
       .select([
@@ -125,7 +80,7 @@ export default defineEventHandler(async (event) => {
       ])
       .where('trace_id', '=', id)
       .orderBy('seq', 'asc')
-      .execute() as Promise<ToolCallRow[]>,
+      .execute(),
   ])
 
   let totalTokens = 0

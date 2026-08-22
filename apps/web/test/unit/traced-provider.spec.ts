@@ -225,6 +225,55 @@ describe('tracedLLMProvider', () => {
     expect(call.error).toBe('stream broken')
   })
 
+  it('records an aborted generation when the provider throws an AbortError', async () => {
+    const error = new Error('Aborted')
+    error.name = 'AbortError'
+    const fake: LLMProvider = {
+      async complete() {
+        throw error
+      },
+    }
+    const traced = new TracedLLMProvider(fake, { db: createMockDb(), provider: 'openrouter', model: 'm', llmUseCase: 'agent' })
+    const trace = createTraceOptions()
+
+    await expect(traced.complete({ messages: [{ role: 'user', content: 'hi' }] }, trace)).rejects.toThrow('Aborted')
+    await drainWrites()
+
+    expect(mockedAppendGeneration).toHaveBeenCalledTimes(1)
+    const call = mockedAppendGeneration.mock.calls[0]![1]
+    expect(call.response).toBeNull()
+    expect(call.finishReason).toBe('aborted')
+    expect(call.error).toBe('Aborted')
+    expect(call.usageMissing).toBe(true)
+  })
+
+  it('records a partial streamed generation as aborted when the stream is interrupted', async () => {
+    const error = new Error('Aborted')
+    error.name = 'AbortError'
+    const fake: LLMProvider = {
+      async* completeStream() {
+        yield { delta: 'partial ' }
+        yield { delta: 'answer' }
+        throw error
+      },
+    }
+    const traced = new TracedLLMProvider(fake, { db: createMockDb(), provider: 'openrouter', model: 'm', llmUseCase: 'agent' })
+    const trace = createTraceOptions()
+
+    const chunks: CompletionStreamChunk[] = []
+    await expect(async () => {
+      for await (const chunk of traced.completeStream({ messages: [{ role: 'user', content: 'hi' }] }, trace))
+        chunks.push(chunk)
+    }).rejects.toThrow('Aborted')
+    await drainWrites()
+
+    expect(mockedAppendGeneration).toHaveBeenCalledTimes(1)
+    const call = mockedAppendGeneration.mock.calls[0]![1]
+    expect(call.response).toEqual({ content: 'partial answer', finishReason: 'aborted' })
+    expect(call.finishReason).toBe('aborted')
+    expect(call.error).toBe('Aborted')
+  })
+
   it('passes through without tracing when no trace option is provided', async () => {
     const fake: LLMProvider = {
       async complete() {

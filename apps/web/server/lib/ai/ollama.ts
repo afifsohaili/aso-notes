@@ -87,7 +87,7 @@ export class OllamaLLMProvider implements LLMProvider {
     }
   }
 
-  async complete(request: CompletionRequest, _trace?: TraceOptions): Promise<CompletionResult> {
+  async complete(request: CompletionRequest, _trace?: TraceOptions, signal?: AbortSignal): Promise<CompletionResult> {
     const body: Record<string, unknown> = {
       model: this.model,
       messages: request.messages.map(toWireMessage),
@@ -116,6 +116,7 @@ export class OllamaLLMProvider implements LLMProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     }, {
       ...this.resilience,
       fetchFn: this.fetchFn,

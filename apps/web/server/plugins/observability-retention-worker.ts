@@ -1,10 +1,6 @@
 import type { Job } from 'bullmq'
 import process from 'node:process'
-import { ObservabilityRetentionJob } from '../lib/observability/retention-job'
-import {
-  OBSERVABILITY_RETENTION_QUEUE_NAME,
-  scheduleObservabilityRetentionRepeatableJobs,
-} from '../lib/observability/retention-worker-helpers'
+import { OBSERVABILITY_RETENTION_QUEUE_NAME, ObservabilityRetentionJob, scheduleObservabilityRetentionRepeatableJobs } from '../lib/observability/retention-job'
 import { registerBullMqJobAdapter } from '../utils/job-adapter'
 import { useQueue } from '../utils/queue'
 import { useWorker } from '../utils/worker'

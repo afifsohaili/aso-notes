@@ -2,6 +2,7 @@ import type { DB } from '@monorepo/shared'
 import type { Kysely, Transaction } from 'kysely'
 import type { ProviderKind } from '../ai/registry'
 import type { EmbeddingProvider, LLMProvider } from '../ai/types'
+import type { TraceContext } from '../observability/trace-context'
 
 /** Database handle used by agent tools. */
 export type AgentDb = Kysely<DB> | Transaction<DB>
@@ -19,12 +20,7 @@ export interface AgentContext {
 }
 
 /** Options passed into the agent loop to enable tracing. */
-export interface AgentLoopTraceOptions {
-  traceId: string
-  workspaceId: string
-  useCase: string
-  nextSeq: () => number
-}
+export type AgentLoopTraceOptions = TraceContext
 
 /** A tool the agent can call to retrieve Context. */
 export interface AgentTool {

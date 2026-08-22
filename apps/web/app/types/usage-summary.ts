@@ -10,12 +10,17 @@ export interface UsageGroup extends RangeStat {
   model: string
 }
 
+export interface DailyStat extends RangeStat {
+  day: string
+}
+
 export interface UsageSummary {
   ranges: {
     today: RangeStat
     last7d: RangeStat
     last30d: RangeStat
   }
+  daily: DailyStat[]
   groups: UsageGroup[]
   total: RangeStat
 }

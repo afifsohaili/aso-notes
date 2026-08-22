@@ -1,5 +1,5 @@
 import { useDatabase } from '~~/utils/db'
-import { computeConsolidationUsage } from '../../../lib/consolidation/engine'
+import { computeConsolidationUsage } from '../../../lib/observability/usage'
 import { resolveWorkspaceId } from '../../../utils/workspace'
 
 export default defineEventHandler(async (event) => {

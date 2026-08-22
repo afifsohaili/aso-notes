@@ -16,15 +16,32 @@ async function findTracesByOwner(
   db: Kysely<Database>,
   workspaceId: string,
   ownerType: string,
-  ownerId: string,
+  ownerId: string | string[],
 ): Promise<TraceRef[]> {
+  const ownerIds = Array.isArray(ownerId) ? ownerId : [ownerId]
+  if (ownerIds.length === 0)
+    return []
+
   return db
     .selectFrom('llm_traces')
     .select(['id', 'workspace_id'])
     .where('workspace_id', '=', workspaceId)
     .where('owner_type', '=', ownerType)
-    .where('owner_id', '=', ownerId)
+    .where('owner_id', 'in', ownerIds)
     .execute()
+}
+
+async function pruneContentRows(
+  db: Kysely<Database>,
+  prunedAt: Date,
+  buildConstraint: (query: any, table: 'llm_generations' | 'llm_tool_calls') => any,
+): Promise<number> {
+  const [genResult, toolResult] = await Promise.all([
+    buildConstraint(db.updateTable('llm_generations').set({ prompt: null, response: null, pruned_at: prunedAt }), 'llm_generations').executeTakeFirstOrThrow(),
+    buildConstraint(db.updateTable('llm_tool_calls').set({ output: null, pruned_at: prunedAt }), 'llm_tool_calls').executeTakeFirstOrThrow(),
+  ])
+
+  return Number(genResult.numUpdatedRows ?? 0) + Number(toolResult.numUpdatedRows ?? 0)
 }
 
 async function pruneContentForTraceIds(
@@ -47,22 +64,8 @@ async function pruneContentForTraceIds(
     return 0
   const ids = settledTraceIds.map(t => t.id)
 
-  const [genResult, toolResult] = await Promise.all([
-    db
-      .updateTable('llm_generations')
-      .set({ prompt: null, response: null, pruned_at: prunedAt })
-      .where('trace_id', 'in', ids)
-      .where('pruned_at', 'is', null)
-      .executeTakeFirstOrThrow(),
-    db
-      .updateTable('llm_tool_calls')
-      .set({ output: null, pruned_at: prunedAt })
-      .where('trace_id', 'in', ids)
-      .where('pruned_at', 'is', null)
-      .executeTakeFirstOrThrow(),
-  ])
-
-  return Number(genResult.numUpdatedRows ?? 0) + Number(toolResult.numUpdatedRows ?? 0)
+  return pruneContentRows(db, prunedAt, (query, _table) =>
+    query.where('trace_id', 'in', ids).where('pruned_at', 'is', null))
 }
 
 /**
@@ -76,7 +79,7 @@ export async function purgeTraceContentForOwner(
   db: Kysely<Database>,
   workspaceId: string,
   ownerType: ContentOwnerType,
-  ownerId: string,
+  ownerId: string | string[],
 ): Promise<void> {
   const traces = await findTracesByOwner(db, workspaceId, ownerType, ownerId)
   if (traces.length === 0)
@@ -99,10 +102,8 @@ export async function purgeOldTraceContentForWorkspace(
   const cutoff = retentionCutoff(now, retentionDays)
   // Skip content belonging to in-flight (running) traces: pruning mid-flight
   // could race with generations/tool calls still being written.
-  const [genResult, toolResult] = await Promise.all([
-    db
-      .updateTable('llm_generations')
-      .set({ prompt: null, response: null, pruned_at: now })
+  return pruneContentRows(db, now, (query, table) =>
+    query
       .where('workspace_id', '=', workspaceId)
       .where('pruned_at', 'is', null)
       .where('created_at', '<', cutoff)
@@ -110,29 +111,10 @@ export async function purgeOldTraceContentForWorkspace(
         return eb.not(eb.exists(
           eb.selectFrom('llm_traces as t')
             .select('t.id')
-            .whereRef('t.id', '=', 'llm_generations.trace_id')
+            .whereRef('t.id', '=', `${table}.trace_id`)
             .where('t.status', '=', 'running'),
         ))
-      })
-      .executeTakeFirstOrThrow(),
-    db
-      .updateTable('llm_tool_calls')
-      .set({ output: null, pruned_at: now })
-      .where('workspace_id', '=', workspaceId)
-      .where('pruned_at', 'is', null)
-      .where('created_at', '<', cutoff)
-      .where(eb =>
-        eb.not(eb.exists(
-          eb.selectFrom('llm_traces as t')
-            .select('t.id')
-            .whereRef('t.id', '=', 'llm_tool_calls.trace_id')
-            .where('t.status', '=', 'running'),
-        )),
-      )
-      .executeTakeFirstOrThrow(),
-  ])
-
-  return Number(genResult.numUpdatedRows ?? 0) + Number(toolResult.numUpdatedRows ?? 0)
+      }))
 }
 
 /**

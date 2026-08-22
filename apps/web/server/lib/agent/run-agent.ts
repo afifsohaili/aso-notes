@@ -4,6 +4,7 @@ import type { AgentContext, AgentLoopTraceOptions, AgentRunResult, AgentSseEvent
 import { appendToolCall, createSeqCounter, createTrace, finishTrace, safeTraceWrite } from '../observability/trace-writer'
 import { TracedLLMProvider } from '../observability/traced-provider'
 import { runAgentLoop } from './loop'
+import { DEFAULT_AGENT_PROVIDER_INFO } from './providers'
 
 interface MessageRow {
   id: string
@@ -161,8 +162,10 @@ export interface RunAgentOptions {
 }
 
 function buildTracedContext(ctx: AgentContext): AgentContext {
-  const provider = ctx.llmProviderInfo?.kind ?? 'openrouter'
-  const model = ctx.llmProviderInfo?.model ?? 'unknown'
+  // Production callers always supply provider info. The fallback matches the
+  // test-double default so untraced contexts still record sensible metadata.
+  const provider = ctx.llmProviderInfo?.kind ?? DEFAULT_AGENT_PROVIDER_INFO.kind
+  const model = ctx.llmProviderInfo?.model ?? DEFAULT_AGENT_PROVIDER_INFO.model
   return {
     ...ctx,
     llm: new TracedLLMProvider(ctx.llm, { db: ctx.db, provider, model, llmUseCase: 'agent' }),

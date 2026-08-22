@@ -8,6 +8,22 @@ const baseSummary = {
     last7d: { costUsd: '0.000700', tokens: 70, generations: 3, usageMissingGenerations: 1 },
     last30d: { costUsd: '0.001200', tokens: 120, generations: 4, usageMissingGenerations: 1 },
   },
+  daily: [
+    {
+      day: '2026-08-22',
+      generations: 1,
+      tokens: 30,
+      costUsd: '0.000300',
+      usageMissingGenerations: 0,
+    },
+    {
+      day: '2026-08-21',
+      generations: 1,
+      tokens: 40,
+      costUsd: '0.000400',
+      usageMissingGenerations: 0,
+    },
+  ],
   groups: [
     {
       useCase: 'agent',
@@ -65,6 +81,46 @@ describe('usage-summary', () => {
     expect(component.text()).toContain('Total')
   })
 
+  it('renders each card metric as a horizontal label/value row', async () => {
+    const component = await mountSuspended(UsageSummary, {
+      props: { summary: baseSummary },
+    })
+
+    const card = component.find('[data-testid="usage-card-today"]')
+    const text = card.text()
+    expect(text).toContain('Today')
+    expect(text).toContain('Cost')
+    expect(text).toContain('$0.0003')
+    expect(text).toContain('Tokens')
+    expect(text).toContain('30')
+    expect(text).toContain('Generations')
+    expect(text).toContain('1')
+  })
+
+  it('renders the daily breakdown table', async () => {
+    const component = await mountSuspended(UsageSummary, {
+      props: { summary: baseSummary },
+    })
+
+    const dailyTable = component.find('[data-testid="usage-daily-table"]')
+    expect(dailyTable.exists()).toBe(true)
+    expect(dailyTable.text()).toContain('2026-08-22')
+    expect(dailyTable.text()).toContain('2026-08-21')
+  })
+
+  it('shows an empty daily state when no daily rows exist but groups do', async () => {
+    const component = await mountSuspended(UsageSummary, {
+      props: {
+        summary: {
+          ...baseSummary,
+          daily: [],
+        },
+      },
+    })
+
+    expect(component.find('[data-testid="usage-daily-empty"]').exists()).toBe(true)
+  })
+
   it('shows a usage-missing notice when some generations lack usage data', async () => {
     const component = await mountSuspended(UsageSummary, {
       props: { summary: baseSummary },
@@ -78,6 +134,7 @@ describe('usage-summary', () => {
       props: {
         summary: {
           ranges: baseSummary.ranges,
+          daily: [],
           groups: [],
           total: { generations: 0, tokens: 0, costUsd: '0.000000', usageMissingGenerations: 0 },
         },
