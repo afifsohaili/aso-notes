@@ -27,7 +27,7 @@ interface ProviderAvailabilityPayload {
 }
 
 const LLM_ROLES: LlmRole[] = ['agent', 'extraction', 'embedding']
-const DEFAULT_PROVIDER_AVAILABILITY: ProviderAvailability = { openrouter: true, ollama: true }
+const DEFAULT_PROVIDER_AVAILABILITY: ProviderAvailability = { openrouter: true, ollama: true, omlx: true }
 
 const { t } = useI18n()
 

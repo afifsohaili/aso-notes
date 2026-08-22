@@ -122,4 +122,18 @@ describe('settings wizard mode', () => {
 
     expect(llmStep.attributes('disabled')).toBeUndefined()
   })
+
+  it('defaults to omlx availability in the wizard LLM step', async () => {
+    mockWizardResponse({}, [{ id: '1', path: '/notes', basename: 'notes', noteCount: 0 }])
+
+    const component = await mountSuspended(SettingsPage)
+    await component.find('[data-testid="wizard-step-llm"]').trigger('click')
+
+    const options = component.findAll('option[value="omlx"]')
+    expect(options.length).toBe(3)
+    for (const option of options) {
+      expect(option.text()).toContain('oMLX')
+      expect(option.attributes('disabled')).toBeUndefined()
+    }
+  })
 })

@@ -22,7 +22,7 @@ describe('llm role card', () => {
         role: 'agent',
         provider: 'openrouter',
         model: '',
-        available: { openrouter: true, ollama: false },
+        available: { openrouter: true, ollama: false, omlx: true },
       },
     })
 
@@ -36,7 +36,7 @@ describe('llm role card', () => {
         role: 'embedding',
         provider: 'openrouter',
         model: '',
-        available: { openrouter: true, ollama: false },
+        available: { openrouter: true, ollama: false, omlx: true },
       },
     })
 
@@ -45,13 +45,58 @@ describe('llm role card', () => {
     expect(option.text()).toContain('(API key missing)')
   })
 
+  it('renders an oMLX provider option', async () => {
+    const component = await mountSuspended(LlmRoleCard, {
+      props: {
+        role: 'agent',
+        provider: 'openrouter',
+        model: '',
+        available: { openrouter: true, ollama: true, omlx: true },
+      },
+    })
+
+    const option = component.find('option[value="omlx"]')
+    expect(option.exists()).toBe(true)
+    expect(option.text()).toContain('oMLX')
+  })
+
+  it('disables the oMLX option when omlx is unavailable', async () => {
+    const component = await mountSuspended(LlmRoleCard, {
+      props: {
+        role: 'agent',
+        provider: 'openrouter',
+        model: '',
+        available: { openrouter: true, ollama: true, omlx: false },
+      },
+    })
+
+    const option = component.find('option[value="omlx"]')
+    expect(option.attributes('disabled')).toBeDefined()
+  })
+
+  it('emits update:provider with omlx when the oMLX option is selected', async () => {
+    const component = await mountSuspended(LlmRoleCard, {
+      props: {
+        role: 'agent',
+        provider: 'openrouter',
+        model: '',
+        available: { openrouter: true, ollama: true, omlx: true },
+      },
+    })
+
+    await component.find('select#agent-provider').setValue('omlx')
+
+    expect(component.emitted('update:provider')).toHaveLength(1)
+    expect(component.emitted('update:provider')?.[0]).toEqual(['omlx'])
+  })
+
   it('emits update:model when the model input changes', async () => {
     const component = await mountSuspended(LlmRoleCard, {
       props: {
         role: 'extraction',
         provider: 'openrouter',
         model: '',
-        available: { openrouter: true, ollama: true },
+        available: { openrouter: true, ollama: true, omlx: true },
       },
     })
 
@@ -67,7 +112,7 @@ describe('llm role card', () => {
         role: 'agent',
         provider: 'openrouter',
         model: '',
-        available: { openrouter: true, ollama: true },
+        available: { openrouter: true, ollama: true, omlx: true },
       },
     })
 
@@ -82,7 +127,7 @@ describe('llm role card', () => {
         role: 'agent',
         provider: 'openrouter',
         model: 'deepseek/deepseek-v4-flash',
-        available: { openrouter: true, ollama: true },
+        available: { openrouter: true, ollama: true, omlx: true },
         testStatus: { kind: 'ok' },
       },
     })

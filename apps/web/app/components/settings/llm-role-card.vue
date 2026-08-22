@@ -10,6 +10,7 @@ export type LlmRole = 'agent' | 'extraction' | 'embedding'
 export interface ProviderAvailability {
   openrouter: boolean
   ollama: boolean
+  omlx: boolean
 }
 
 export type TestStatus
@@ -57,6 +58,7 @@ watch(() => props.baseUrl, v => localBaseUrl.value = v ?? '')
 const providerOptions = computed(() => [
   { value: 'openrouter', label: 'OpenRouter', enabled: props.available.openrouter },
   { value: 'ollama', label: 'Ollama', enabled: props.available.ollama },
+  { value: 'omlx', label: 'oMLX', enabled: props.available.omlx },
 ])
 
 const isEmbedding = computed(() => props.role === 'embedding')
