@@ -55,6 +55,30 @@ describe('ai registry — createLLMProvider', () => {
     expect(() => createLLMProvider('agent', { NUXT_LLM_AGENT_PROVIDER: 'ollama' }))
       .toThrow(/NUXT_LLM_AGENT_MODEL/)
   })
+
+  it('builds an omlx provider with its default base url and no api key', () => {
+    const provider = createLLMProvider('agent', {
+      NUXT_LLM_AGENT_PROVIDER: 'omlx',
+      NUXT_LLM_AGENT_MODEL: 'mlx-community/llama-3.2-3b',
+    })
+    expect(provider.kind).toBe('omlx')
+    expect(provider.model).toBe('mlx-community/llama-3.2-3b')
+    expect(provider.baseUrl).toBe('http://localhost:8000/v1')
+  })
+
+  it('honours an omlx base url override', () => {
+    const provider = createLLMProvider('extraction', {
+      NUXT_LLM_EXTRACTION_PROVIDER: 'omlx',
+      NUXT_LLM_EXTRACTION_BASE_URL: 'http://192.168.1.5:8000/v1',
+      NUXT_LLM_EXTRACTION_MODEL: 'mlx-community/llama-3.2-3b',
+    })
+    expect(provider.baseUrl).toBe('http://192.168.1.5:8000/v1')
+  })
+
+  it('throws a clear error when omlx has no model configured', () => {
+    expect(() => createLLMProvider('agent', { NUXT_LLM_AGENT_PROVIDER: 'omlx' }))
+      .toThrow(/NUXT_LLM_AGENT_MODEL/)
+  })
 })
 
 describe('ai registry — createEmbeddingProvider', () => {
@@ -82,6 +106,30 @@ describe('ai registry — createEmbeddingProvider', () => {
 
   it('throws a clear error when ollama embedding has no model configured', () => {
     expect(() => createEmbeddingProvider({ NUXT_LLM_EMBEDDING_PROVIDER: 'ollama' }))
+      .toThrow(/NUXT_LLM_EMBEDDING_MODEL/)
+  })
+
+  it('builds an omlx embedding provider with its default base url and no api key', () => {
+    const provider = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'omlx',
+      NUXT_LLM_EMBEDDING_MODEL: 'mlx-community/all-MiniLM-L6-v2',
+    })
+    expect(provider.kind).toBe('omlx')
+    expect(provider.model).toBe('mlx-community/all-MiniLM-L6-v2')
+    expect(provider.baseUrl).toBe('http://localhost:8000/v1')
+  })
+
+  it('honours an omlx embedding base url override', () => {
+    const provider = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'omlx',
+      NUXT_LLM_EMBEDDING_BASE_URL: 'http://192.168.1.5:8000/v1',
+      NUXT_LLM_EMBEDDING_MODEL: 'mlx-community/all-MiniLM-L6-v2',
+    })
+    expect(provider.baseUrl).toBe('http://192.168.1.5:8000/v1')
+  })
+
+  it('throws a clear error when omlx embedding has no model configured', () => {
+    expect(() => createEmbeddingProvider({ NUXT_LLM_EMBEDDING_PROVIDER: 'omlx' }))
       .toThrow(/NUXT_LLM_EMBEDDING_MODEL/)
   })
 })

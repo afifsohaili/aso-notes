@@ -4,11 +4,13 @@ import type { ResilientFetchOptions } from './resilient-fetch'
 import type { EmbeddingProvider, LLMProvider } from './types'
 import { TracedEmbeddingProvider, TracedLLMProvider } from '../observability/traced-provider'
 import { OLLAMA_BASE_URL, OllamaEmbeddingProvider, OllamaLLMProvider } from './ollama'
+import { OMLX_BASE_URL, OmlxEmbeddingProvider, OmlxLLMProvider } from './omlx'
 import { DEFAULT_EMBEDDING_MODEL, OPENROUTER_BASE_URL, OpenRouterEmbeddingProvider } from './openrouter-embedding'
 import { DEFAULT_CHAT_MODEL, OpenRouterLLMProvider } from './openrouter-llm'
 import { DEFAULT_RESILIENCE } from './resilient-fetch'
 
 export { OLLAMA_BASE_URL } from './ollama'
+export { OMLX_BASE_URL } from './omlx'
 export { DEFAULT_EMBEDDING_MODEL } from './openrouter-embedding'
 export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
 
@@ -35,7 +37,7 @@ export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
  * when workspace settings are available.
  */
 
-export type ProviderKind = 'openrouter' | 'ollama'
+export type ProviderKind = 'openrouter' | 'ollama' | 'omlx'
 export type LlmRole = 'agent' | 'extraction' | 'consolidation'
 
 export type EnvMap = Record<string, string | undefined>
@@ -118,7 +120,9 @@ function providerKind(value: string | undefined): ProviderKind {
     return 'openrouter'
   if (value === 'ollama')
     return 'ollama'
-  throw new Error(`Unknown LLM provider "${value}" — expected 'openrouter' or 'ollama'`)
+  if (value === 'omlx')
+    return 'omlx'
+  throw new Error(`Unknown LLM provider "${value}" — expected 'openrouter', 'ollama' or 'omlx'`)
 }
 
 export function resolveApiKey(env: EnvMap, apiKeyKey: string): string {
@@ -131,13 +135,13 @@ export function resolveApiKey(env: EnvMap, apiKeyKey: string): string {
 function resolveLLMModelDefault(kind: ProviderKind, role: LlmRole): string {
   if (kind === 'openrouter')
     return DEFAULT_CHAT_MODEL
-  throw new Error(`${KEYS[role].model} is required when using the ollama provider`)
+  throw new Error(`${KEYS[role].model} is required when using the ${kind} provider`)
 }
 
 function resolveEmbeddingModelDefault(kind: ProviderKind): string {
   if (kind === 'openrouter')
     return DEFAULT_EMBEDDING_MODEL
-  throw new Error(`${KEYS.embedding.model} is required when using the ollama provider`)
+  throw new Error(`${KEYS.embedding.model} is required when using the ${kind} provider`)
 }
 
 function resolveResilienceOptions(
@@ -159,13 +163,16 @@ export function resolveLLMProvider(role: LlmRole, env: EnvMap, settings: Resolve
   const keys = KEYS[role]
   const kind = providerKind(settings.provider || env[keys.provider])
   const model = settings.model || env[keys.model] || resolveLLMModelDefault(kind, role)
-  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
+  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : kind === 'omlx' ? OMLX_BASE_URL : OPENROUTER_BASE_URL)
   const resilience = resolveResilienceOptions(env, keys, options)
   const providerOptions = { ...resilience, fetchFn: options?.fetchFn, sleepFn: options?.sleepFn }
 
   let provider: LLMProvider
   if (kind === 'ollama') {
     provider = new OllamaLLMProvider({ model, baseUrl, ...providerOptions })
+  }
+  else if (kind === 'omlx') {
+    provider = new OmlxLLMProvider({ model, baseUrl, ...providerOptions })
   }
   else {
     provider = new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })
@@ -186,13 +193,16 @@ export function resolveEmbeddingProvider(env: EnvMap, settings: ResolvedProvider
   const keys = KEYS.embedding
   const kind = providerKind(settings.provider || env[keys.provider])
   const model = settings.model || env[keys.model] || resolveEmbeddingModelDefault(kind)
-  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : OPENROUTER_BASE_URL)
+  const baseUrl = settings.base_url || env[keys.baseUrl] || (kind === 'ollama' ? OLLAMA_BASE_URL : kind === 'omlx' ? OMLX_BASE_URL : OPENROUTER_BASE_URL)
   const resilience = resolveResilienceOptions(env, keys, options)
   const providerOptions = { ...resilience, fetchFn: options?.fetchFn, sleepFn: options?.sleepFn }
 
   let provider: EmbeddingProvider
   if (kind === 'ollama') {
     provider = new OllamaEmbeddingProvider({ model, baseUrl, ...providerOptions })
+  }
+  else if (kind === 'omlx') {
+    provider = new OmlxEmbeddingProvider({ model, baseUrl, ...providerOptions })
   }
   else {
     provider = new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })
