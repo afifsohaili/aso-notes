@@ -15,7 +15,7 @@ The app previously supported `openrouter` (remote, paid) and `ollama` (local). `
 - **Provider kind**: add a new `omlx` provider kind rather than generalizing to a generic openai-compatible provider. This keeps zero risk to existing provider paths.
 - **Roles**: support `omlx` for the agent, extraction, and embedding roles. The consolidation role falls back to the extraction config (existing pattern, no change).
 - **Embedding strategy**: zero-pad short vectors to `EMBEDDING_DIMENSIONS = 2048` (like ollama) rather than migrating the graph store to 1024. This keeps the graph store unchanged.
-- **Configurability**: `base_url` is the seam for remote Macs. Default is `http://localhost:8000/v1`; a remote Mac uses a custom `base_url` plus an optional oMLX `--api-key`. The API key remains env-only for now.
+- **Configurability**: `base_url` is the seam for remote Macs. Default is `http://localhost:8000/v1`; a remote Mac uses a custom `base_url`. oMLX API-key auth is not supported by the app (no api-key field in the provider; works with an unauthenticated oMLX server).
 - **Model**: `omlx` requires an explicit model (no default), like ollama.
 
 ## Implementation status per phase
@@ -55,7 +55,7 @@ Tests:
 Built:
 
 - `apps/web/app/components/settings/llm-role-card.vue` — dropdown gains `'oMLX'` option; `ProviderAvailability.omlx`.
-- `apps/web/app/components/settings/llm-providers.vue` and `settings-wizard.vue` — `DEFAULT_PROVIDER_AVAILABILITY` gains `omlx: true`.
+- `apps/web/app/pages/settings/llm-providers.vue` and `apps/web/app/components/settings/settings-wizard.vue` — `DEFAULT_PROVIDER_AVAILABILITY` gains `omlx: true`.
 - `apps/web/.env.example` — omlx docs for agent/extraction/embedding roles.
 
 Tests:
