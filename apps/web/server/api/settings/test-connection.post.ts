@@ -8,10 +8,10 @@ function validateRole(value: unknown): 'agent' | 'extraction' | 'embedding' {
   throw createError({ statusCode: 400, message: 'role must be \'agent\', \'extraction\', or \'embedding\'' })
 }
 
-function validateProvider(value: unknown): 'openrouter' | 'ollama' {
-  if (value === 'openrouter' || value === 'ollama')
+function validateProvider(value: unknown): 'openrouter' | 'ollama' | 'omlx' {
+  if (value === 'openrouter' || value === 'ollama' || value === 'omlx')
     return value
-  throw createError({ statusCode: 400, message: 'provider must be \'openrouter\' or \'ollama\'' })
+  throw createError({ statusCode: 400, message: 'provider must be \'openrouter\', \'ollama\' or \'omlx\'' })
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
     const env = process.env
     const settings = { provider, model, base_url: baseUrl }
-    const timeoutMs = provider === 'ollama' ? 30000 : 15000
+    const timeoutMs = provider === 'ollama' || provider === 'omlx' ? 30000 : 15000
 
     if (role === 'agent' || role === 'extraction') {
       const resolved = resolveLLMProvider(role, env, settings, { timeoutMs, maxAttempts: 1 })
@@ -81,8 +81,31 @@ export default defineEventHandler(async (event) => {
     }
 
     // Ollama embedding: raw /api/embed without dimensions param.
+    if (resolved.kind === 'ollama') {
+      const response = await fetchWithTimeout(
+        `${resolved.baseUrl}/api/embed`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: resolved.model, input: 'dimension probe' }),
+        },
+        timeoutMs,
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        return { ok: false, error: `Ollama returned ${response.status}: ${text}` }
+      }
+      const payload = await response.json() as { embeddings: number[][] }
+      const dims = payload.embeddings[0]?.length ?? 0
+      if (dims !== EMBEDDING_DIMENSIONS) {
+        return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
+      }
+      return { ok: true }
+    }
+
+    // oMLX embedding: OpenAI-compatible /embeddings endpoint.
     const response = await fetchWithTimeout(
-      `${resolved.baseUrl}/api/embed`,
+      `${resolved.baseUrl}/embeddings`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,10 +115,10 @@ export default defineEventHandler(async (event) => {
     )
     if (!response.ok) {
       const text = await response.text()
-      return { ok: false, error: `Ollama returned ${response.status}: ${text}` }
+      return { ok: false, error: `oMLX returned ${response.status}: ${text}` }
     }
-    const payload = await response.json() as { embeddings: number[][] }
-    const dims = payload.embeddings[0]?.length ?? 0
+    const payload = await response.json() as { data: { embedding: number[] }[] }
+    const dims = payload.data[0]?.embedding.length ?? 0
     if (dims !== EMBEDDING_DIMENSIONS) {
       return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
     }

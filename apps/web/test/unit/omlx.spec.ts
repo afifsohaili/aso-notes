@@ -151,6 +151,97 @@ describe('omlxLLMProvider', () => {
     })
     expect(calls[0]!.url).toBe('http://192.168.1.5:8000/v1/chat/completions')
   })
+
+  it('rejects a response with no choices', async () => {
+    const { fetchFn } = mockFetch(200, { choices: [] })
+    const provider = new OmlxLLMProvider({ model: 'm', fetchFn })
+
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toThrow(/no choices/)
+  })
+
+  it('leaves usage undefined when the response omits a usage block', async () => {
+    const { fetchFn } = mockFetch(200, {
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+    })
+    const provider = new OmlxLLMProvider({ model: 'm', fetchFn })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    expect(result.usage).toBeUndefined()
+  })
+
+  it('passes tool_choice none through unchanged with tools still sent', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      choices: [{ message: { role: 'assistant', content: '{}' } }],
+    })
+    const provider = new OmlxLLMProvider({ model: 'm', fetchFn })
+
+    await provider.complete({
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [{ name: 'search_notes', description: 'search', parameters: { type: 'object' } }],
+      toolChoice: 'none',
+    })
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.tools).toEqual([{ type: 'function', function: { name: 'search_notes', description: 'search', parameters: { type: 'object' } } }])
+    expect(body.tool_choice).toBe('none')
+  })
+
+  it('throws FatalError immediately on 400 and 404', async () => {
+    for (const status of [400, 404]) {
+      const { calls, fetchFn } = mockFetch(status, { error: 'bad' })
+      const provider = new OmlxLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
+
+      await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toSatisfy((error: Error) => {
+        expect(error).toBeInstanceOf(FatalError)
+        expect(error.message).toMatch(new RegExp(String(status)))
+        return true
+      })
+      expect(calls).toHaveLength(1)
+    }
+  })
+})
+
+describe('omlxLLMProvider resilience', () => {
+  it('retries 503 and returns the successful response', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+    })
+    let attempt = 0
+    const provider = new OmlxLLMProvider({
+      model: 'm',
+      fetchFn: (async (url: any, init: any) => {
+        attempt++
+        if (attempt === 1) {
+          return new Response(JSON.stringify({ error: 'loading model' }), {
+            status: 503,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        return fetchFn(url, init)
+      }) as typeof fetch,
+      sleepFn,
+      timeoutMs: 5000,
+      maxAttempts: 3,
+    })
+
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    expect(attempt).toBe(2)
+    expect(calls).toHaveLength(1)
+    expect(result.message.content).toBe('ok')
+  })
+
+  it('throws TransientError when 5xx is exhausted', async () => {
+    const { fetchFn } = mockFetch(503, { error: 'loading model' })
+    const provider = new OmlxLLMProvider({ model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 2 })
+
+    await expect(provider.complete({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toSatisfy((error: Error) => {
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error.message).toMatch(/503/)
+      return true
+    })
+  })
 })
 
 describe('omlxEmbeddingProvider', () => {
@@ -206,6 +297,15 @@ describe('omlxEmbeddingProvider', () => {
     const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn, dimensions: 2 })
 
     await expect(provider.embed(['x'])).rejects.toThrow(/3 dimensions, above the 2 target/)
+  })
+
+  it('returns an empty array for an empty data payload', async () => {
+    const { fetchFn } = mockFetch(200, { data: [] })
+    const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result).toEqual([])
   })
 
   it('throws FatalError on a 404 response', async () => {

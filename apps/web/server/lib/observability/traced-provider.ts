@@ -21,7 +21,7 @@ export interface TracedProviderDependencies {
 }
 
 function formatCost(kind: ProviderKind, usage?: { cost?: number }): string | null {
-  if (kind === 'ollama')
+  if (kind === 'ollama' || kind === 'omlx')
     return '0'
   if (usage?.cost !== undefined)
     return String(usage.cost)
@@ -31,7 +31,7 @@ function formatCost(kind: ProviderKind, usage?: { cost?: number }): string | nul
 function isUsageMissing(kind: ProviderKind, usage?: { cost?: number }): boolean {
   if (usage === undefined)
     return true
-  if (kind === 'ollama')
+  if (kind === 'ollama' || kind === 'omlx')
     return false
   return usage.cost === undefined
 }

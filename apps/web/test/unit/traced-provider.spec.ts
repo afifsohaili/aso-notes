@@ -100,6 +100,27 @@ describe('tracedLLMProvider', () => {
     expect(call.costUsd).toBe('0')
   })
 
+  it('sets cost to 0 and treats usage as present for omlx', async () => {
+    const fake: LLMProvider = {
+      async complete() {
+        return {
+          message: { role: 'assistant', content: 'ok' },
+          usage: { promptTokens: 2, completionTokens: 3 },
+        }
+      },
+    }
+    const traced = new TracedLLMProvider(fake, { db: createMockDb(), provider: 'omlx', model: 'mlx-community/llama-3.2-3b', llmUseCase: 'agent' })
+
+    await traced.complete({ messages: [{ role: 'user', content: 'hi' }] }, createTraceOptions())
+    await drainWrites()
+
+    const call = mockedAppendGeneration.mock.calls[0]![1]
+    expect(call.costUsd).toBe('0')
+    expect(call.promptTokens).toBe(2)
+    expect(call.completionTokens).toBe(3)
+    expect(call.usageMissing).toBe(false)
+  })
+
   it('marks usage missing when the provider omits usage', async () => {
     const fake: LLMProvider = {
       async complete() {

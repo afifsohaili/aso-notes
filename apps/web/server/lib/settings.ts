@@ -7,6 +7,7 @@ import {
   DEFAULT_EMBEDDING_MODEL,
   KEYS,
   OLLAMA_BASE_URL,
+  OMLX_BASE_URL,
   OPENROUTER_BASE_URL,
 } from './ai/registry'
 import { defaultVocabularyStrategy, getVocabularyStrategy } from './pipeline/vocabulary'
@@ -274,7 +275,11 @@ export async function resolveWorkspaceSettings(
     const model = workspaceValues.get(modelKey) ?? envModel ?? defaultModel
 
     const envBaseUrl = env[envKeys.baseUrl]
-    const defaultBaseUrl = provider === 'openrouter' ? OPENROUTER_BASE_URL : OLLAMA_BASE_URL
+    const defaultBaseUrl = provider === 'openrouter'
+      ? OPENROUTER_BASE_URL
+      : provider === 'omlx'
+        ? OMLX_BASE_URL
+        : OLLAMA_BASE_URL
     const baseUrl = workspaceValues.get(baseUrlKey) ?? envBaseUrl ?? defaultBaseUrl
 
     return {
@@ -304,7 +309,11 @@ export async function resolveWorkspaceSettings(
       ?? workspaceValues.get('llm.extraction.base_url')
       ?? env[consKeys.baseUrl]
       ?? env[extKeys.baseUrl]
-      ?? (provider === 'openrouter' ? OPENROUTER_BASE_URL : OLLAMA_BASE_URL)
+      ?? (provider === 'openrouter'
+        ? OPENROUTER_BASE_URL
+        : provider === 'omlx'
+          ? OMLX_BASE_URL
+          : OLLAMA_BASE_URL)
 
     const sourceFor = (consKey: string, extKey: string) => (
       workspaceValues.has(consKey) || workspaceValues.has(extKey) ? 'workspace' : 'default' as const
@@ -381,7 +390,7 @@ export function assertKnownSettingKey(key: unknown): KnownSettingKey {
 }
 
 const VALID_VOCABULARY_STRATEGIES = ['top-k', 'blind-merge', 'full'] as const
-const VALID_LLM_PROVIDERS = ['openrouter', 'ollama'] as const
+const VALID_LLM_PROVIDERS = ['openrouter', 'ollama', 'omlx'] as const
 
 /**
  * Validate and normalize a setting value for a known key. Throws a clear error
@@ -433,7 +442,7 @@ export function normalizeSettingValue(key: KnownSettingKey, value: unknown): Jso
   if (field) {
     if (field === 'provider') {
       if (typeof value !== 'string' || !(VALID_LLM_PROVIDERS as readonly string[]).includes(value)) {
-        throw new Error(`invalid provider: '${value}' — expected 'openrouter' or 'ollama'`)
+        throw new Error(`invalid provider: '${value}' — expected 'openrouter', 'ollama' or 'omlx'`)
       }
       return value
     }

@@ -1,7 +1,8 @@
+import type { OmlxEmbeddingProvider, OmlxLLMProvider } from '../../server/lib/ai'
 import type { OllamaEmbeddingProvider, OllamaLLMProvider, OpenRouterEmbeddingProvider, OpenRouterLLMProvider } from '../../server/lib/ai'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from '../../server/lib/ai'
-import { createEmbeddingProvider, createLLMProvider } from '../../server/lib/ai/registry'
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OMLX_BASE_URL } from '../../server/lib/ai'
+import { createEmbeddingProvider, createLLMProvider, resolveEmbeddingProvider, resolveLLMProvider } from '../../server/lib/ai/registry'
 
 describe('ai registry — createLLMProvider', () => {
   it('defaults to openrouter with the provider default model', () => {
@@ -184,5 +185,53 @@ describe('ai registry — resilience options', () => {
     })
     const provider = resolved.provider as OllamaEmbeddingProvider
     expect(provider.resilience).toEqual({ timeoutMs: 45000, maxAttempts: 6, baseDelayMs: 750 })
+  })
+
+  it('passes resilience env vars to omlx llm providers', () => {
+    const resolved = createLLMProvider('agent', {
+      NUXT_LLM_AGENT_PROVIDER: 'omlx',
+      NUXT_LLM_AGENT_MODEL: 'mlx-community/llama-3.2-3b',
+      NUXT_LLM_AGENT_TIMEOUT_MS: '45000',
+      NUXT_LLM_AGENT_MAX_ATTEMPTS: '7',
+      NUXT_LLM_AGENT_BASE_DELAY_MS: '300',
+    })
+    const provider = resolved.provider as OmlxLLMProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 45000, maxAttempts: 7, baseDelayMs: 300 })
+  })
+
+  it('passes resilience env vars to omlx embedding providers', () => {
+    const resolved = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'omlx',
+      NUXT_LLM_EMBEDDING_MODEL: 'mlx-community/all-MiniLM-L6-v2',
+      NUXT_LLM_EMBEDDING_TIMEOUT_MS: '60000',
+      NUXT_LLM_EMBEDDING_MAX_ATTEMPTS: '4',
+      NUXT_LLM_EMBEDDING_BASE_DELAY_MS: '250',
+    })
+    const provider = resolved.provider as OmlxEmbeddingProvider
+    expect(provider.resilience).toEqual({ timeoutMs: 60000, maxAttempts: 4, baseDelayMs: 250 })
+  })
+
+  it('settings provider override beats env for omlx llm', () => {
+    const resolved = resolveLLMProvider('agent', {
+      NUXT_LLM_AGENT_PROVIDER: 'openrouter',
+      NUXT_LLM_AGENT_MODEL: 'deepseek/deepseek-v4-flash',
+      NUXT_LLM_AGENT_API_KEY: 'env-key',
+    }, { provider: 'omlx', model: 'mlx-community/llama-3.2-3b' })
+
+    expect(resolved.kind).toBe('omlx')
+    expect(resolved.model).toBe('mlx-community/llama-3.2-3b')
+    expect(resolved.baseUrl).toBe(OMLX_BASE_URL)
+  })
+
+  it('settings provider override beats env for omlx embedding', () => {
+    const resolved = resolveEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'openrouter',
+      NUXT_LLM_EMBEDDING_MODEL: 'openai/text-embedding-3-small',
+      NUXT_LLM_EMBEDDING_API_KEY: 'env-key',
+    }, { provider: 'omlx', model: 'mlx-community/all-MiniLM-L6-v2' })
+
+    expect(resolved.kind).toBe('omlx')
+    expect(resolved.model).toBe('mlx-community/all-MiniLM-L6-v2')
+    expect(resolved.baseUrl).toBe(OMLX_BASE_URL)
   })
 })

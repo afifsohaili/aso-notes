@@ -2,7 +2,7 @@ import type { EnvMap } from '../../server/lib/ai/registry'
 import type { PipelineDb } from '../../server/lib/pipeline/types'
 import type { KnownSettingKey } from '../../server/lib/settings'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OLLAMA_BASE_URL, OPENROUTER_BASE_URL } from '../../server/lib/ai/registry'
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, OLLAMA_BASE_URL, OMLX_BASE_URL, OPENROUTER_BASE_URL } from '../../server/lib/ai/registry'
 import {
   assertKnownSettingKey,
   DEFAULT_BLIND_MERGE_THRESHOLD,
@@ -174,6 +174,38 @@ describe('resolveWorkspaceSettings', () => {
       'llm.consolidation.base_url': { value: OPENROUTER_BASE_URL, source: 'default' },
       'onboarding.completed_at': { value: null, source: 'default' },
     })
+  })
+
+  it('resolves omlx default base_url to the local oMLX server for all llm roles', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.agent.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.agent.model', value: 'mlx-community/llama-3.2-3b' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.model', value: 'mlx-community/llama-3.2-3b' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.model', value: 'mlx-community/all-MiniLM-L6-v2' },
+      { workspace_id: 'ws-1', key: 'llm.consolidation.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.consolidation.model', value: 'mlx-community/llama-3.2-3b' },
+    ])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
+
+    expect(settings['llm.agent.base_url']).toEqual({ value: OMLX_BASE_URL, source: 'default' })
+    expect(settings['llm.extraction.base_url']).toEqual({ value: OMLX_BASE_URL, source: 'default' })
+    expect(settings['llm.embedding.base_url']).toEqual({ value: OMLX_BASE_URL, source: 'default' })
+    expect(settings['llm.consolidation.base_url']).toEqual({ value: OMLX_BASE_URL, source: 'default' })
+  })
+
+  it('keeps model default null for omlx (explicit model required, like ollama)', async () => {
+    const db = fakeDb([
+      { workspace_id: 'ws-1', key: 'llm.agent.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.extraction.provider', value: 'omlx' },
+      { workspace_id: 'ws-1', key: 'llm.embedding.provider', value: 'omlx' },
+    ])
+    const settings = await resolveWorkspaceSettings(db, 'ws-1', env())
+
+    expect(settings['llm.agent.model']).toEqual({ value: null, source: 'default' })
+    expect(settings['llm.extraction.model']).toEqual({ value: null, source: 'default' })
+    expect(settings['llm.embedding.model']).toEqual({ value: null, source: 'default' })
   })
 
   it('uses env values as default source for unsaved llm keys', async () => {
@@ -402,8 +434,16 @@ describe('normalizeSettingValue', () => {
       expect(normalizeSettingValue('llm.embedding.provider', 'ollama')).toBe('ollama')
     })
 
-    it('rejects an unknown provider', () => {
-      expect(() => normalizeSettingValue('llm.extraction.provider', 'mistral')).toThrow('invalid provider')
+    it('accepts omlx as a provider', () => {
+      expect(normalizeSettingValue('llm.agent.provider', 'omlx')).toBe('omlx')
+      expect(normalizeSettingValue('llm.extraction.provider', 'omlx')).toBe('omlx')
+      expect(normalizeSettingValue('llm.embedding.provider', 'omlx')).toBe('omlx')
+      expect(normalizeSettingValue('llm.consolidation.provider', 'omlx')).toBe('omlx')
+    })
+
+    it('rejects an unknown provider with a message naming all three providers', () => {
+      expect(() => normalizeSettingValue('llm.extraction.provider', 'mistral'))
+        .toThrow("invalid provider: 'mistral' — expected 'openrouter', 'ollama' or 'omlx'")
     })
 
     it('rejects a non-string provider', () => {

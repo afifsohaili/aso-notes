@@ -30,10 +30,10 @@ describe('gET /api/settings/providers', () => {
       const body = await res.json()
 
       expect(body.providers).toEqual({
-        agent: { openrouter: false, ollama: true },
-        extraction: { openrouter: false, ollama: true },
-        embedding: { openrouter: false, ollama: true },
-        consolidation: { openrouter: false, ollama: true },
+        agent: { openrouter: false, ollama: true, omlx: true },
+        extraction: { openrouter: false, ollama: true, omlx: true },
+        embedding: { openrouter: false, ollama: true, omlx: true },
+        consolidation: { openrouter: false, ollama: true, omlx: true },
       })
 
       process.env.NUXT_LLM_AGENT_API_KEY = 'sk-test-agent'
@@ -43,10 +43,10 @@ describe('gET /api/settings/providers', () => {
       expect(res2.status).toBe(200)
       const body2 = await res2.json()
 
-      expect(body2.providers.agent).toEqual({ openrouter: true, ollama: true })
-      expect(body2.providers.extraction).toEqual({ openrouter: false, ollama: true })
-      expect(body2.providers.embedding).toEqual({ openrouter: false, ollama: true })
-      expect(body2.providers.consolidation).toEqual({ openrouter: true, ollama: true })
+      expect(body2.providers.agent).toEqual({ openrouter: true, ollama: true, omlx: true })
+      expect(body2.providers.extraction).toEqual({ openrouter: false, ollama: true, omlx: true })
+      expect(body2.providers.embedding).toEqual({ openrouter: false, ollama: true, omlx: true })
+      expect(body2.providers.consolidation).toEqual({ openrouter: true, ollama: true, omlx: true })
     }
     finally {
       for (const key of API_KEY_ENV_VARS) {
@@ -71,8 +71,8 @@ describe('gET /api/settings/providers', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
 
-      expect(body.providers.extraction).toEqual({ openrouter: true, ollama: true })
-      expect(body.providers.consolidation).toEqual({ openrouter: true, ollama: true })
+      expect(body.providers.extraction).toEqual({ openrouter: true, ollama: true, omlx: true })
+      expect(body.providers.consolidation).toEqual({ openrouter: true, ollama: true, omlx: true })
     }
     finally {
       for (const key of API_KEY_ENV_VARS) {

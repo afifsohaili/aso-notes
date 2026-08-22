@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     return {
       openrouter: typeof apiKey === 'string' && apiKey.length > 0,
       ollama: true,
+      omlx: true,
     }
   }
 

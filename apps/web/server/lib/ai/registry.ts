@@ -26,9 +26,10 @@ export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
  *   NUXT_LLM_EMBEDDING_PROVIDER / _BASE_URL / _MODEL / _API_KEY
  *
  * Provider defaults to 'openrouter'. Base URL defaults per provider.
- * API key is required for openrouter and ignored for ollama. Model falls
- * back to the provider default (openrouter only — ollama requires an
- * explicit model). No legacy env vars are honored.
+ * API key is required for openrouter and ignored for ollama and omlx.
+ * Model falls back to the provider default (openrouter only — ollama and
+ * omlx require an explicit model). omlx defaults to the local oMLX server
+ * at http://localhost:8000/v1. No legacy env vars are honored.
  *
  * Phase 3 adds workspace_settings overrides: caller supplies a settings
  * object (provider, model, base_url) and it wins over env, which wins over
