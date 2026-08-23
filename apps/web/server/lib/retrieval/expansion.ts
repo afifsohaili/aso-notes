@@ -23,6 +23,8 @@ export interface RelatedChunk {
     matchedConcept: string
     neighborConcept: string
     relationType: string
+    /** The direct-hit Chunk whose Mention of the matched Concept led here. */
+    matchedChunk: { path: string, seq: number }
   }
 }
 
@@ -61,6 +63,25 @@ export async function expandRelatedChunks(
   if (matchedIds.length === 0)
     return []
 
+  // 1b. The direct-hit Chunk (Note path + seq) that Mentioned each matched
+  // Concept, so provenance can trace the full chain. When several direct
+  // Chunks mention the same Concept, the first by (path, seq) wins.
+  const matchedChunkRows = await db
+    .selectFrom('mentions')
+    .innerJoin('chunks', 'chunks.id', 'mentions.chunk_id')
+    .innerJoin('notes', 'notes.id', 'chunks.note_id')
+    .select(['mentions.concept_id', 'notes.path', 'chunks.seq'])
+    .where('mentions.workspace_id', '=', workspaceId)
+    .where('mentions.concept_id', 'in', matchedIds)
+    .where('mentions.chunk_id', 'in', resultChunkIds)
+    .orderBy(['notes.path', 'chunks.seq'])
+    .execute()
+  const matchedChunkByConcept = new Map<string, { path: string, seq: number }>()
+  for (const row of matchedChunkRows) {
+    if (!matchedChunkByConcept.has(row.concept_id))
+      matchedChunkByConcept.set(row.concept_id, { path: row.path, seq: row.seq })
+  }
+
   // 2. One hop of RELATES_TO from those Concepts (Workspace-scoped neighbors).
   const idList = matchedIds.map(id => agLiteral(id)).join(', ')
   const neighborRows = await queryCypher<NeighborRow>(
@@ -81,6 +102,7 @@ export async function expandRelatedChunks(
     const neighborName = String(parseAgtype(row.neighbor_name))
     const matchedName = String(parseAgtype(row.matched_name))
     const relationType = String(parseAgtype(row.relation_type))
+    const matchedChunk = matchedChunkByConcept.get(String(parseAgtype(row.matched_id)))
 
     let query = db
       .selectFrom('mentions')
@@ -110,7 +132,12 @@ export async function expandRelatedChunks(
         title: m.title,
         text: m.text,
         seq: m.seq,
-        provenance: { matchedConcept: matchedName, neighborConcept: neighborName, relationType },
+        provenance: {
+          matchedConcept: matchedName,
+          neighborConcept: neighborName,
+          relationType,
+          matchedChunk: matchedChunk ?? { path: '', seq: 0 },
+        },
       })
     }
   }

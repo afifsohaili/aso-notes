@@ -144,6 +144,8 @@ describe('search_notes graph expansion', () => {
       matchedConcept: 'Concept X',
       neighborConcept: 'Concept Y',
       relationType: 'supports',
+      // The direct-hit Chunk (Note A) whose Mention of Concept X led here.
+      matchedChunk: { path: '/note-a.md', seq: 0 },
     })
     // The related note is also cited so the Agent can reference it.
     expect(result.notes).toContain('/note-b.md')
@@ -299,6 +301,54 @@ describe('search_notes graph expansion', () => {
       matchedConcept: 'Concept X',
       neighborConcept: 'Concept Y',
       relationType: 'contradicts',
+      matchedChunk: { path: '/note-a.md', seq: 0 },
+    })
+  })
+
+  test('provenance identifies the correct source Chunk when multiple direct hits mention the matched Concept', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'graph-multi-source')
+    await ensureNotesGraphCatalog(trx)
+
+    const x = await givenConcept(trx, workspaceId, 'Concept X')
+    const y = await givenConcept(trx, workspaceId, 'Concept Y')
+
+    // Two direct-hit Notes (A and C) both mention Concept X; Note B mentions
+    // Concept Y and is reachable only via expansion.
+    const noteA = await givenNote(trx, workspaceId, '/note-a.md')
+    const noteB = await givenNote(trx, workspaceId, '/note-b.md')
+    const noteC = await givenNote(trx, workspaceId, '/note-c.md')
+    const chunkA = await givenChunk(trx, workspaceId, noteA.id, 0, 'the zephyr protocol handles retries', vec(1, 0))
+    const chunkB = await givenChunk(trx, workspaceId, noteB.id, 0, 'cooking pasta recipes with anchovies', vec(0, 1))
+    const chunkC = await givenChunk(trx, workspaceId, noteC.id, 1, 'zephyr also handles backpressure', vec(1, 0))
+
+    await givenMention(trx, workspaceId, chunkA.id, x.id)
+    await givenMention(trx, workspaceId, chunkC.id, x.id)
+    await givenMention(trx, workspaceId, chunkB.id, y.id)
+
+    await mergeConceptNode(trx, { id: x.id, workspaceId, name: x.name })
+    await mergeConceptNode(trx, { id: y.id, workspaceId, name: y.name })
+    await mergeRelatesToEdge(trx, { fromId: x.id, toId: y.id, type: 'supports', workspaceId })
+
+    // limit:2 admits both Note A and Note C as direct hits; Note B only via expansion.
+    const result = await searchNotesTool.execute(
+      { query: 'zephyr', limit: 2, relatedLimit: 3 },
+      stubContext(trx, workspaceId, stubEmbedding(vec(1, 0))),
+    )
+
+    const payload = result.result as any
+    const directPaths = payload.notes.map((n: any) => n.path)
+    expect(directPaths).toEqual(expect.arrayContaining(['/note-a.md', '/note-c.md']))
+
+    const related = payload.related
+    expect(related).toHaveLength(1)
+    expect(related[0].path).toBe('/note-b.md')
+    // The matched Chunk is the first direct hit (by note path, then seq) that
+    // mentions Concept X — Note A's chunk, not Note C's.
+    expect(related[0].provenance).toEqual({
+      matchedConcept: 'Concept X',
+      neighborConcept: 'Concept Y',
+      relationType: 'supports',
+      matchedChunk: { path: '/note-a.md', seq: 0 },
     })
   })
 
