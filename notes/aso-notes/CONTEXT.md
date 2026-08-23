@@ -165,3 +165,13 @@ _Avoid_: Function call record, tool span
 **LLM Use Case**:
 A per-role provider configuration slot: `agent`, `extraction`, `embedding`, or `consolidation`. Each has its own provider/model/base-url (workspace-overridable) with env-var API keys, configured in Settings.
 _Avoid_: Role, slot, provider profile
+
+### Embeddings
+
+**Embedding Dimensions**:
+The canonical width of every stored Embedding vector: 2048, locked in code (`EMBEDDING_DIMENSIONS`). Providers are asked for 2048 dims; a model that returns fewer dims is zero-padded to 2048; a model that natively returns more than 2048 is rejected by the test-connection probe.
+_Avoid_: Vector size, embedding length
+
+**Rebuild**:
+The full reset of a Workspace's derived data: Chunks, Concepts, Topics, Mentions, Relations, and Links are wiped, the shared AGE graph is dropped and recreated, and the Notes of ALL Workspaces return to `pending` for re-ingestion. Triggered manually from Settings, and automatically (with a warning dialog) when the User changes the embedding model.
+_Avoid_: Reset, re-index

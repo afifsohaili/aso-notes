@@ -81,7 +81,7 @@ Then fill in the values:
 | `NUXT_LLM_EMBEDDING_API_KEY` | yes* | OpenRouter key for embeddings (may duplicate the others) |
 | `NUXT_LLM_AGENT_PROVIDER` / `NUXT_LLM_AGENT_BASE_URL` / `NUXT_LLM_AGENT_MODEL` | no | Chat agent backend: `openrouter` (default), `ollama`, or `omlx` — optional base-URL override, model ID |
 | `NUXT_LLM_EXTRACTION_PROVIDER` / `NUXT_LLM_EXTRACTION_BASE_URL` / `NUXT_LLM_EXTRACTION_MODEL` | no | Ingestion extraction backend — same quad, independent of the agent |
-| `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Local embedding models must output 2048-dim vectors; smaller models (e.g. BGE-M3 1024-dim) are zero-padded at runtime but fail the settings test-connection probe (2048 check) |
+| `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Embedding width is fixed at 2048 dims: providers are asked for 2048, models that output fewer dims are zero-padded to 2048, and models that natively output more than 2048 are rejected by the settings test-connection probe. Changing the embedding model in `/settings` warns, then wipes and re-ingests the workspace's Notes |
 | `NUXT_EMAIL_PROVIDER`, `NUXT_BREVO_API_KEY`, `NUXT_SENDER_EMAIL`, `NUXT_SENDER_NAME` | no | Transactional email. In dev, email verification is bypassed entirely, so these are unused locally |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, `NUXT_TURNSTILE_SECRET_KEY` | no | Signup captcha — skipped entirely in dev (`NODE_ENV=development`) |
 | `NUXT_PUBLIC_POSTHOG_API_KEY`, `NUXT_POSTHOG_API_KEY` | no | PostHog analytics |
