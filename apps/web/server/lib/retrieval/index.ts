@@ -1,4 +1,4 @@
 export type { FusedItem, FusionStrategy, RankedItem } from './fusion'
 export { fuseRankedLists, rrfFuse } from './fusion'
-export type { HybridChunkRow } from './hybrid'
-export { hybridSearchChunks } from './hybrid'
+export type { HybridChunkRow, HybridConceptRow } from './hybrid'
+export { hybridSearchChunks, hybridSearchConcepts } from './hybrid'

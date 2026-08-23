@@ -178,7 +178,7 @@ describe('agent tools', () => {
       const concepts = (result.result as any).concepts
       expect(concepts[0].id).toBe(conceptA.id)
       expect(concepts[0].name).toBe('Alpha Concept')
-      expect(concepts[0].distance).toBeLessThan(concepts[1].distance)
+      expect(concepts[0].score).toBeGreaterThan(concepts[1].score)
       expect(result.notes).toEqual([])
     })
 

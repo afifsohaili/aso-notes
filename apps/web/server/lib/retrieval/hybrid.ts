@@ -70,6 +70,105 @@ export async function hybridSearchChunks(
     })
 }
 
+/** A fused concept row with its fused relevance score. */
+export interface HybridConceptRow {
+  id: string
+  name: string
+  description: string | null
+  score: number
+}
+
+interface ConceptDenseRow {
+  id: string
+  name: string
+  description: string | null
+}
+
+interface ConceptLexicalRow {
+  id: string
+  name: string
+  description: string | null
+}
+
+/**
+ * Hybrid search over concepts: runs a dense (vector) leg and a lexical (BM25)
+ * leg, both Workspace-scoped, and fuses the two ranked lists with RRF.
+ * Returns fused rows ordered by descending fused score.
+ */
+export async function hybridSearchConcepts(
+  db: AgentDb,
+  workspaceId: string,
+  query: string,
+  queryEmbedding: number[],
+  limit: number,
+): Promise<HybridConceptRow[]> {
+  const [denseRows, lexicalRows] = await Promise.all([
+    runConceptDenseLeg(db, workspaceId, queryEmbedding),
+    runConceptLexicalLeg(db, workspaceId, query),
+  ])
+
+  const fused = fuseRankedLists([
+    denseRows.map(r => ({ id: r.id })),
+    lexicalRows.map(r => ({ id: r.id })),
+  ])
+
+  const byId = new Map<string, ConceptDenseRow>()
+  for (const row of denseRows)
+    byId.set(row.id, row)
+  for (const row of lexicalRows) {
+    if (!byId.has(row.id))
+      byId.set(row.id, row)
+  }
+
+  return fused
+    .slice(0, limit)
+    .map(({ id, score }) => {
+      const row = byId.get(id)!
+      return { ...row, score }
+    })
+}
+
+async function runConceptDenseLeg(
+  db: AgentDb,
+  workspaceId: string,
+  queryEmbedding: number[],
+): Promise<ConceptDenseRow[]> {
+  return db
+    .selectFrom('concepts')
+    .select([
+      'id',
+      'name',
+      'description',
+      sql<number>`embedding <=> ${halfvecLiteral(queryEmbedding)}`.as('distance'),
+    ])
+    .where('workspace_id', '=', workspaceId)
+    .orderBy('distance', 'asc')
+    .orderBy('id', 'asc')
+    .limit(BRANCH_LIMIT)
+    .execute()
+}
+
+async function runConceptLexicalLeg(
+  db: AgentDb,
+  workspaceId: string,
+  query: string,
+): Promise<ConceptLexicalRow[]> {
+  return db
+    .selectFrom('concepts')
+    .select([
+      'id',
+      'name',
+      'description',
+      sql<number>`pdb.score(concepts.id)`.as('score'),
+    ])
+    .where('workspace_id', '=', workspaceId)
+    .where(sql<boolean>`(concepts.name ||| ${query} OR concepts.description ||| ${query})`)
+    .orderBy(sql`pdb.score(concepts.id)`, 'desc')
+    .orderBy('id', 'asc')
+    .limit(BRANCH_LIMIT)
+    .execute()
+}
+
 async function runDenseLeg(
   db: AgentDb,
   workspaceId: string,

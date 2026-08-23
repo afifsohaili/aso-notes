@@ -101,6 +101,7 @@ DROP INDEX IF EXISTS public.idx_mentions_concept_id;
 DROP INDEX IF EXISTS public.idx_links_to_note_id;
 DROP INDEX IF EXISTS public.idx_links_from_note_id;
 DROP INDEX IF EXISTS public.idx_concepts_embedding_hnsw;
+DROP INDEX IF EXISTS public.idx_concepts_bm25;
 DROP INDEX IF EXISTS public.idx_chunks_note_id;
 DROP INDEX IF EXISTS public.idx_chunks_embedding_hnsw;
 DROP INDEX IF EXISTS public.idx_chunks_bm25;
@@ -1359,6 +1360,13 @@ CREATE INDEX idx_chunks_embedding_hnsw ON public.chunks USING hnsw (embedding pu
 --
 
 CREATE INDEX idx_chunks_note_id ON public.chunks USING btree (note_id);
+
+
+--
+-- Name: idx_concepts_bm25; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_concepts_bm25 ON public.concepts USING paradedb (id, workspace_id, name, description) WITH (key_field=id);
 
 
 --

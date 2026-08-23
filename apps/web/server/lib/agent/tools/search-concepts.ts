@@ -1,12 +1,11 @@
 import type { AgentTool, AgentToolResult } from '../types'
-import { sql } from 'kysely'
-import { halfvecLiteral } from '../vector'
+import { hybridSearchConcepts } from '../../retrieval'
 
 export const SEARCH_CONCEPTS_TOOL_NAME = 'search_concepts'
 
 export const searchConceptsTool: AgentTool = {
   name: SEARCH_CONCEPTS_TOOL_NAME,
-  description: 'Semantic search over extracted concepts by their embeddings.',
+  description: 'Hybrid semantic + lexical search over extracted concepts.',
   parameters: {
     type: 'object',
     properties: {
@@ -32,24 +31,13 @@ export const searchConceptsTool: AgentTool = {
     const limit = Math.max(1, Math.min(20, Math.floor(Number(args.limit) || 5)))
     const [queryEmbedding] = await ctx.embedding.embed([query])
 
-    const rows = await ctx.db
-      .selectFrom('concepts')
-      .select([
-        'id',
-        'name',
-        'description',
-        sql<number>`embedding <=> ${halfvecLiteral(queryEmbedding!)}`.as('distance'),
-      ])
-      .where('workspace_id', '=', ctx.workspaceId)
-      .orderBy('distance', 'asc')
-      .limit(limit)
-      .execute()
+    const rows = await hybridSearchConcepts(ctx.db, ctx.workspaceId, query, queryEmbedding!, limit)
 
     const concepts = rows.map(row => ({
       id: row.id,
       name: row.name,
       description: row.description,
-      distance: row.distance,
+      score: row.score,
     }))
 
     return {
