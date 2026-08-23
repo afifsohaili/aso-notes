@@ -244,21 +244,63 @@ describe('settings rebuild API', () => {
     expect(Number(graphRows[0]!.n)).toBe(0)
   })
 
-  test('POST /api/settings/rebuild leaves other workspaces untouched', async ({ server, trx }) => {
-    const { cookies } = await givenVerifiedUser()
-    const other = await givenVerifiedUser()
-    await seedRebuildDomain(trx, other.workspace.id)
+  test('POST /api/settings/rebuild resets notes to pending in ALL workspaces when dropping the shared graph', async ({ server, trx }) => {
+    // Workspace A is the triggering workspace; workspace B is a separate tenant.
+    // Both hold ingested notes; the shared AGE graph is dropped, so BOTH must be
+    // reset to pending to re-ingest and repopulate the shared graph.
+    const a = await givenVerifiedUser()
+    const b = await givenVerifiedUser()
+    await seedRebuildDomain(trx, a.workspace.id)
+    await seedRebuildDomain(trx, b.workspace.id)
 
     const res = await server('/api/settings/rebuild', {
       method: 'POST',
-      headers: { 'cookie': cookies, 'content-type': 'application/json' },
+      headers: { 'cookie': a.cookies, 'content-type': 'application/json' },
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(200)
-    expect((await res.json()).notesReset).toBe(0)
+    // one note per workspace was reset
+    expect((await res.json()).notesReset).toBe(2)
 
-    expect(await rowCount(trx, 'concepts', (q: any) => q.where('workspace_id', '=', other.workspace.id))).toBe(1)
-    expect(await rowCount(trx, 'notes', (q: any) => q.where('workspace_id', '=', other.workspace.id).where('status', '=', 'ingested'))).toBe(1)
+    const notesA = await trx
+      .selectFrom('notes')
+      .select('status')
+      .where('workspace_id', '=', a.workspace.id)
+      .execute()
+    const notesB = await trx
+      .selectFrom('notes')
+      .select('status')
+      .where('workspace_id', '=', b.workspace.id)
+      .execute()
+    expect(notesA).toEqual([expect.objectContaining({ status: 'pending' })])
+    expect(notesB).toEqual([expect.objectContaining({ status: 'pending' })])
+  })
+
+  test('POST /api/settings/rebuild resets a non-triggering workspace even with no notes of its own', async ({ server, trx }) => {
+    const a = await givenVerifiedUser()
+    const b = await givenVerifiedUser()
+    // Only workspace B holds notes; the triggering workspace A has none.
+    await seedRebuildDomain(trx, b.workspace.id)
+
+    const res = await server('/api/settings/rebuild', {
+      method: 'POST',
+      headers: { 'cookie': a.cookies, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(200)
+    // B has one note, A has none.
+    expect((await res.json()).notesReset).toBe(1)
+
+    // Other-workspace relational rows are NOT deleted by the wipe (only the
+    // shared graph is dropped), but its notes must be pending for re-ingestion.
+    expect(await rowCount(trx, 'concepts', (q: any) => q.where('workspace_id', '=', b.workspace.id))).toBe(1)
+    expect(await rowCount(trx, 'notes', (q: any) => q.where('workspace_id', '=', b.workspace.id).where('status', '=', 'ingested'))).toBe(0)
+    const notesB = await trx
+      .selectFrom('notes')
+      .select('status')
+      .where('workspace_id', '=', b.workspace.id)
+      .execute()
+    expect(notesB).toEqual([expect.objectContaining({ status: 'pending' })])
   })
 
   test('GET /api/notes/status-counts returns 401 when unauthenticated', async ({ server }) => {

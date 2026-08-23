@@ -67,15 +67,10 @@ export async function rebuildWorkspaceGraph(db: GraphDb, workspaceId: string): P
     .where('origin', '=', 'ai')
     .execute()
 
-  await sql`SELECT ag_catalog.drop_graph(${NOTES_GRAPH}, true)`.execute(db)
-  await sql`SELECT ag_catalog.create_graph(${NOTES_GRAPH})`.execute(db)
-
-  const notesResetResult = await db
-    .updateTable('notes')
-    .set({ status: 'pending' })
-    .where('workspace_id', '=', workspaceId)
-    .where('status', '<>', 'pending')
-    .executeTakeFirstOrThrow()
+  // Wipe and note-reset are kept as separable units so a future re-embed-only
+  // path can reuse either piece without re-running the other.
+  await dropAndRecreateNotesGraph(db)
+  const notesReset = await resetAllNotesToPending(db)
 
   return {
     wiped: {
@@ -89,8 +84,34 @@ export async function rebuildWorkspaceGraph(db: GraphDb, workspaceId: string): P
       sources,
       aiNoteTags,
     },
-    notesReset: Number(notesResetResult.numUpdatedRows ?? 0),
+    notesReset,
   }
+}
+
+/**
+ * Drop and recreate the SHARED Apache AGE graph (single graph for the MVP).
+ * Every workspace's graph nodes live in this graph, so dropping it orphans all
+ * workspaces' relational rows until each re-ingests. This is the graph-wipe
+ * unit — a future re-embed-only path can reuse it without resetting notes.
+ */
+export async function dropAndRecreateNotesGraph(db: GraphDb): Promise<void> {
+  await sql`SELECT ag_catalog.drop_graph(${NOTES_GRAPH}, true)`.execute(db)
+  await sql`SELECT ag_catalog.create_graph(${NOTES_GRAPH})`.execute(db)
+}
+
+/**
+ * Reset every workspace's notes to status='pending' for re-ingestion. Dropping
+ * the shared graph removes every workspace's nodes, so this must span all
+ * workspaces (not just the triggering one). This is the note-reset unit — a
+ * future re-embed-only path can reuse it without wiping the graph.
+ */
+export async function resetAllNotesToPending(db: GraphDb): Promise<number> {
+  const result = await db
+    .updateTable('notes')
+    .set({ status: 'pending' })
+    .where('status', '<>', 'pending')
+    .executeTakeFirstOrThrow()
+  return Number(result.numUpdatedRows ?? 0)
 }
 
 async function countWorkspaceRows(db: GraphDb, table: string, workspaceId: string): Promise<number> {
