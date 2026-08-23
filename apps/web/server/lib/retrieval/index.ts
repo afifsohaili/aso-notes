@@ -1,3 +1,5 @@
+export type { RelatedChunk } from './expansion'
+export { expandRelatedChunks } from './expansion'
 export type { FusedItem, FusionStrategy, RankedItem } from './fusion'
 export { fuseRankedLists, rrfFuse } from './fusion'
 export type { HybridChunkRow, HybridConceptRow } from './hybrid'

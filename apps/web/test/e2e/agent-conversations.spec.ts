@@ -5,8 +5,11 @@ import { test } from '@base/testing/test'
 import { afterEach, describe, expect } from 'vitest'
 import { clearAgentTestProviders, setAgentTestProviders } from '../../server/lib/agent/providers'
 import { halfvecLiteral } from '../../server/lib/agent/vector'
+import { ensureNotesGraphCatalog } from './age-catalog'
 
 async function seedNotesDomain(trx: any, workspaceId: string) {
+  // search_notes reads the AGE graph for expansion, so provision its catalog.
+  await ensureNotesGraphCatalog(trx)
   const note = await trx
     .insertInto('notes')
     .values({
