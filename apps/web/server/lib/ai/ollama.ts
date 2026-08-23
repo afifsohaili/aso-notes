@@ -8,6 +8,7 @@ import type {
   ResponseFormat,
   TraceOptions,
 } from './types'
+import { normalizeEmbeddingDimensions } from './normalize-embedding'
 import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 import { EMBEDDING_DIMENSIONS } from './types'
 
@@ -192,20 +193,6 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     })
 
     const payload = await response.json() as OllamaEmbedResponse
-    return payload.embeddings.map(embedding => this.fitDimensions(embedding))
-  }
-
-  private fitDimensions(embedding: number[]): number[] {
-    if (embedding.length === this.dimensions)
-      return embedding
-    if (embedding.length > this.dimensions) {
-      throw new Error(
-        `Ollama model ${this.model} returned ${embedding.length} dimensions, above the ${this.dimensions} target — pick a smaller model or widen the graph store`,
-      )
-    }
-    const result = [...embedding]
-    while (result.length < this.dimensions)
-      result.push(0)
-    return result
+    return payload.embeddings.map(embedding => normalizeEmbeddingDimensions(embedding, this.dimensions))
   }
 }

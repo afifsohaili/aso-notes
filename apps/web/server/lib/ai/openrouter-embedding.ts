@@ -1,5 +1,6 @@
 import type { ResilientFetchOptions } from './resilient-fetch'
 import type { EmbeddingProvider, EmbeddingResult } from './types'
+import { normalizeEmbeddingDimensions } from './normalize-embedding'
 import { DEFAULT_RESILIENCE, resilientFetch } from './resilient-fetch'
 import { EMBEDDING_DIMENSIONS } from './types'
 
@@ -33,7 +34,7 @@ function toEmbeddingResult(payload: EmbeddingsResponse): EmbeddingResult {
   const embeddings = payload.data
     .slice()
     .sort((a, b) => a.index - b.index)
-    .map(entry => entry.embedding)
+    .map(entry => normalizeEmbeddingDimensions(entry.embedding))
   return {
     embeddings,
     ...(payload.usage
@@ -81,7 +82,7 @@ export class OpenRouterEmbeddingProvider implements EmbeddingProvider {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: JSON.stringify({ model: this.model, input: texts, dimensions: EMBEDDING_DIMENSIONS }),
     }, {
       ...this.resilience,
       fetchFn: this.fetchFn,

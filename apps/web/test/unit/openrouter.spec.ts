@@ -33,6 +33,11 @@ function sequenceFetch(scenarios: Array<{ status: number, body: unknown, headers
 
 async function sleepFn() {}
 
+/** A full-width (2048-dim) embedding, uniformly filled with `value`. */
+function embedVector(value: number): number[] {
+  return Array.from({ length: 2048 }).fill(value) as number[]
+}
+
 function timedOutFetch<T>(attemptsToFail: number, successBody: T) {
   let attempt = 0
   return async (url: any, init: any) => {
@@ -62,8 +67,8 @@ describe('openRouterEmbeddingProvider', () => {
   it('posts texts to the embeddings endpoint and returns embeddings in input order', async () => {
     const { calls, fetchFn } = mockFetch(200, {
       data: [
-        { index: 1, embedding: [0.2, 0.2] },
-        { index: 0, embedding: [0.1, 0.1] },
+        { index: 1, embedding: embedVector(0.2) },
+        { index: 0, embedding: embedVector(0.1) },
       ],
     })
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk-test', model: 'embed-model', fetchFn })
@@ -75,9 +80,9 @@ describe('openRouterEmbeddingProvider', () => {
     expect(url).toBe('https://openrouter.ai/api/v1/embeddings')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-test')
-    expect(JSON.parse(String(init.body))).toEqual({ model: 'embed-model', input: ['first', 'second'] })
+    expect(JSON.parse(String(init.body))).toEqual({ model: 'embed-model', input: ['first', 'second'], dimensions: 2048 })
     // ordered by index, not by response order
-    expect(result).toEqual([[0.1, 0.1], [0.2, 0.2]])
+    expect(result).toEqual([embedVector(0.1), embedVector(0.2)])
   })
 
   it('throws RateLimitError with status and body on a 429 response', async () => {
@@ -89,6 +94,46 @@ describe('openRouterEmbeddingProvider', () => {
       expect((error as RateLimitError).retryAfterMs).toBeNull()
       return true
     })
+  })
+
+  it('requests dimensions 2048 in the outgoing body', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      data: [{ index: 0, embedding: Array.from({ length: 2048 }).fill(0) }],
+    })
+    const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk-test', model: 'embed-model', fetchFn })
+
+    await provider.embed(['x'])
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.dimensions).toBe(2048)
+  })
+
+  it('zero-pads a 768-dim embedding to the 2048 graph-store width by default', async () => {
+    const { fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: Array.from({ length: 768 }).fill(0.1) }] })
+    const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk-test', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result[0]).toHaveLength(2048)
+    expect(result[0]!.slice(0, 768)).toEqual(Array.from({ length: 768 }).fill(0.1))
+    expect(result[0]!.slice(768)).toEqual(Array.from({ length: 1280 }).fill(0))
+  })
+
+  it('passes through a 2048-dim embedding unchanged', async () => {
+    const input = Array.from({ length: 2048 }, (_, i) => i / 1000)
+    const { fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: input }] })
+    const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk-test', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result[0]).toEqual(input)
+  })
+
+  it('throws a clear error when the model returns more than 2048 dims', async () => {
+    const { fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: Array.from({ length: 4096 }).fill(0.1) }] })
+    const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk-test', fetchFn })
+
+    await expect(provider.embed(['x'])).rejects.toThrow(/4096 dimensions, above the 2048 target/)
   })
 })
 
@@ -177,17 +222,21 @@ describe('openRouterLLMProvider', () => {
 })
 
 describe('openRouterEmbeddingProvider resilience', () => {
+  function fullDimEmbedding() {
+    return embedVector(0.1)
+  }
+
   it('retries 429 with Retry-After and returns the successful response', async () => {
     const { calls, fetchFn } = sequenceFetch([
       { status: 429, body: { error: 'rate limited' }, headers: { 'Retry-After': '1', 'content-type': 'application/json' } },
-      { status: 200, body: { data: [{ index: 0, embedding: [0.1] }] } },
+      { status: 200, body: { data: [{ index: 0, embedding: fullDimEmbedding() }] } },
     ])
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
 
     const result = await provider.embed(['x'])
 
     expect(calls).toHaveLength(2)
-    expect(result).toEqual([[0.1]])
+    expect(result).toEqual([fullDimEmbedding()])
   })
 
   it('throws RateLimitError when 429 is exhausted', async () => {
@@ -222,14 +271,14 @@ describe('openRouterEmbeddingProvider resilience', () => {
   it('retries 5xx and returns the successful response', async () => {
     const { calls, fetchFn } = sequenceFetch([
       { status: 503, body: { error: 'server error' } },
-      { status: 200, body: { data: [{ index: 0, embedding: [0.1] }] } },
+      { status: 200, body: { data: [{ index: 0, embedding: fullDimEmbedding() }] } },
     ])
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
 
     const result = await provider.embed(['x'])
 
     expect(calls).toHaveLength(2)
-    expect(result).toEqual([[0.1]])
+    expect(result).toEqual([fullDimEmbedding()])
   })
 
   it('throws TransientError when 5xx is exhausted', async () => {
@@ -247,12 +296,12 @@ describe('openRouterEmbeddingProvider resilience', () => {
   })
 
   it('retries a timed-out fetch and returns the successful response', async () => {
-    const fetchFn = timedOutFetch(1, { data: [{ index: 0, embedding: [0.1] }] })
+    const fetchFn = timedOutFetch(1, { data: [{ index: 0, embedding: fullDimEmbedding() }] })
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 1, maxAttempts: 2 })
 
     const result = await provider.embed(['x'])
 
-    expect(result).toEqual([[0.1]])
+    expect(result).toEqual([fullDimEmbedding()])
   })
 })
 

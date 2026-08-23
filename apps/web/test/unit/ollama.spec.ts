@@ -208,6 +208,34 @@ describe('ollamaEmbeddingProvider', () => {
     expect(body.dimensions).toBe(2048)
   })
 
+  it('zero-pads a 768-dim embedding to 2048 by default', async () => {
+    const { fetchFn } = mockFetch(200, { embeddings: [Array.from({ length: 768 }).fill(0.1)] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result[0]).toHaveLength(2048)
+    expect(result[0]!.slice(0, 768)).toEqual(Array.from({ length: 768 }).fill(0.1))
+    expect(result[0]!.slice(768)).toEqual(Array.from({ length: 1280 }).fill(0))
+  })
+
+  it('passes through a 2048-dim embedding unchanged by default', async () => {
+    const input = Array.from({ length: 2048 }, (_, i) => i / 1000)
+    const { fetchFn } = mockFetch(200, { embeddings: [input] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result[0]).toEqual(input)
+  })
+
+  it('throws a clear error when the model returns more than 2048 dims by default', async () => {
+    const { fetchFn } = mockFetch(200, { embeddings: [Array.from({ length: 4096 }).fill(0.1)] })
+    const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn })
+
+    await expect(provider.embed(['x'])).rejects.toThrow(/4096 dimensions, above the 2048 target/)
+  })
+
   it('zero-pads embeddings shorter than the target dimensions', async () => {
     const { fetchFn } = mockFetch(200, { embeddings: [[0.5, -0.5]] })
     const provider = new OllamaEmbeddingProvider({ model: 'embeddinggemma:300m', fetchFn, dimensions: 4 })

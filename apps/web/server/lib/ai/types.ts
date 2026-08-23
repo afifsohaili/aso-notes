@@ -23,6 +23,14 @@ export interface EmbeddingProvider {
   /**
    * Embed a batch of texts. Returns one embedding per input, in input
    * order. Callers validate dimensionality (2048 for the locked model).
+   *
+   * Output invariant: every returned vector has exactly EMBEDDING_DIMENSIONS
+   * (2048) dimensions. Adapters request `dimensions: 2048` from the provider
+   * API (native Matryoshka truncation where supported); if a provider ignores
+   * that and returns fewer dims, the vector is zero-padded to 2048. A vector
+   * longer than 2048 is unsupported and throws. Zero-padding is
+   * retrieval-safe — cosine distance is unchanged when stored and query
+   * vectors are padded consistently, and all retrieval is workspace-scoped.
    */
   embed: (texts: string[], trace?: TraceOptions) => Promise<number[][]>
   /**

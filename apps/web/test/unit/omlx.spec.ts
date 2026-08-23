@@ -258,18 +258,28 @@ describe('omlxEmbeddingProvider', () => {
 
     expect(calls[0]!.url).toBe('http://localhost:8000/v1/embeddings')
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body).toEqual({ model: 'mlx-community/all-MiniLM-L6-v2', input: ['a', 'b'], encoding_format: 'float' })
+    expect(body).toEqual({ model: 'mlx-community/all-MiniLM-L6-v2', input: ['a', 'b'], encoding_format: 'float', dimensions: 2 })
     expect(result).toEqual([[0.1, 0.1], [0.2, 0.2]])
   })
 
-  it('does not send a dimensions param', async () => {
+  it('sends the target dimensions param', async () => {
     const { calls, fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: [0.1] }] })
     const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn, dimensions: 2 })
 
     await provider.embed(['x'])
 
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body.dimensions).toBeUndefined()
+    expect(body.dimensions).toBe(2)
+  })
+
+  it('requests the graph-store width by default', async () => {
+    const { calls, fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: Array.from({ length: 2048 }).fill(0) }] })
+    const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn })
+
+    await provider.embed(['x'])
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    expect(body.dimensions).toBe(2048)
   })
 
   it('zero-pads embeddings shorter than the target dimensions', async () => {
@@ -297,6 +307,23 @@ describe('omlxEmbeddingProvider', () => {
     const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn, dimensions: 2 })
 
     await expect(provider.embed(['x'])).rejects.toThrow(/3 dimensions, above the 2 target/)
+  })
+
+  it('passes through a 2048-dim embedding unchanged by default', async () => {
+    const input = Array.from({ length: 2048 }, (_, i) => i / 1000)
+    const { fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: input }] })
+    const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn })
+
+    const result = await provider.embed(['x'])
+
+    expect(result[0]).toEqual(input)
+  })
+
+  it('throws a clear error when the model returns more than 2048 dims by default', async () => {
+    const { fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: Array.from({ length: 4096 }).fill(0.1) }] })
+    const provider = new OmlxEmbeddingProvider({ model: 'm', fetchFn })
+
+    await expect(provider.embed(['x'])).rejects.toThrow(/4096 dimensions, above the 2048 target/)
   })
 
   it('returns an empty array for an empty data payload', async () => {

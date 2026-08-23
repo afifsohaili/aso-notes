@@ -1,3 +1,4 @@
+export { normalizeEmbeddingDimensions } from './normalize-embedding'
 export { OLLAMA_BASE_URL, OllamaEmbeddingProvider, OllamaLLMProvider } from './ollama'
 export { OMLX_BASE_URL, OmlxEmbeddingProvider, OmlxLLMProvider } from './omlx'
 export {
