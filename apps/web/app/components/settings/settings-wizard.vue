@@ -125,7 +125,7 @@ async function testConnection(role: LlmRole) {
   llmTestStatus[role] = { kind: 'idle' }
   try {
     // NOTE: URL cast to plain string — Nuxt route-rules types blow up instantiation depth under TS 6 (TS2321)
-    const result = await $fetch<{ ok: boolean, dims?: number, expected?: number, error?: string }>('/api/settings/test-connection' as string, {
+    const result = await $fetch<{ ok: boolean, error?: string }>('/api/settings/test-connection' as string, {
       method: 'POST',
       body: {
         role,
@@ -137,9 +137,6 @@ async function testConnection(role: LlmRole) {
 
     if (result.ok) {
       llmTestStatus[role] = { kind: 'ok' }
-    }
-    else if (typeof result.dims === 'number') {
-      llmTestStatus[role] = { kind: 'dims', dims: result.dims }
     }
     else {
       llmTestStatus[role] = { kind: 'error', error: result.error ?? 'unknown error' }

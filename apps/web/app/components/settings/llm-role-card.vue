@@ -17,7 +17,6 @@ export type TestStatus
   = | { kind: 'idle' }
     | { kind: 'ok' }
     | { kind: 'error', error: string }
-    | { kind: 'dims', dims: number }
 
 interface Props {
   role: LlmRole
@@ -75,8 +74,6 @@ const isSaveDisabled = computed(() => {
   if (!localModel.value.trim())
     return true
   if (props.saveDisabled)
-    return true
-  if (isEmbedding.value && props.testStatus?.kind === 'dims')
     return true
   return false
 })
@@ -234,16 +231,6 @@ const roleHelpKey = computed(() => `settings.llm.roles.${props.role}Help`)
       >
         <XCircleIcon class="h-4 w-4" />
         {{ t('settings.llm.testError', { error: testStatus.error }) }}
-      </span>
-
-      <span
-        v-else-if="testStatus.kind === 'dims'"
-        class="flex max-w-md items-start gap-1 text-sm font-medium text-amber-600"
-        role="alert"
-        data-testid="llm-test-dims"
-      >
-        <ExclamationTriangleIcon class="mt-0.5 h-4 w-4 flex-shrink-0" />
-        {{ t('settings.llm.dimsMismatch', { dims: testStatus.dims, expected: 2048 }) }}
       </span>
     </div>
   </div>

@@ -2,6 +2,7 @@
 import type { IngestionStatusResponse } from '~~/server/lib/sync/ingestion-status'
 import type { LlmRole, ProviderAvailability, TestStatus } from '~/components/settings/llm-role-card.vue'
 import { useI18n } from 'vue-i18n'
+import ExclamationTriangleIcon from '~icons/heroicons/exclamation-triangle'
 import LlmRoleCard from '~/components/settings/llm-role-card.vue'
 import WizardStepVerify from '~/components/settings/wizard-step-verify.vue'
 
@@ -87,6 +88,30 @@ const llmSaving = reactive({
   embedding: false,
 })
 
+// Embeddings from different models are never comparable. When the user
+// changes the embedding model we must warn, then wipe + re-ingest, so we
+// compare the newly typed model against the last *saved* value.
+const savedEmbeddingModel = computed(() => {
+  const value = payload.value?.settings?.['llm.embedding.model']?.value
+  return typeof value === 'string' ? value : ''
+})
+
+const showModelSwitchDialog = ref(false)
+const modelSwitchSaveError = ref('')
+const modelSwitchRebuildError = ref('')
+const modelSwitchWorking = ref(false)
+
+function openModelSwitchDialog() {
+  modelSwitchSaveError.value = ''
+  modelSwitchRebuildError.value = ''
+  modelSwitchWorking.value = false
+  showModelSwitchDialog.value = true
+}
+
+function closeModelSwitchDialog() {
+  showModelSwitchDialog.value = false
+}
+
 const roleAvailability = computed(() => {
   const providers = availabilityPayload.value?.providers
   return {
@@ -100,7 +125,7 @@ async function testConnection(role: LlmRole) {
   llmTestStatus[role] = { kind: 'idle' }
   try {
     // NOTE: URL cast to plain string — Nuxt route-rules types blow up instantiation depth under TS 6 (TS2321)
-    const result = await $fetch<{ ok: boolean, dims?: number, expected?: number, error?: string }>('/api/settings/test-connection' as string, {
+    const result = await $fetch<{ ok: boolean, error?: string }>('/api/settings/test-connection' as string, {
       method: 'POST',
       body: {
         role,
@@ -113,9 +138,6 @@ async function testConnection(role: LlmRole) {
     if (result.ok) {
       llmTestStatus[role] = { kind: 'ok' }
     }
-    else if (typeof result.dims === 'number') {
-      llmTestStatus[role] = { kind: 'dims', dims: result.dims }
-    }
     else {
       llmTestStatus[role] = { kind: 'error', error: result.error ?? 'unknown error' }
     }
@@ -125,28 +147,49 @@ async function testConnection(role: LlmRole) {
   }
 }
 
+async function persistRoleFields(role: LlmRole) {
+  const fields = [
+    { key: `llm.${role}.provider`, value: llmProvider[role] as string },
+    { key: `llm.${role}.model`, value: (llmModel[role] as string).trim() },
+    { key: `llm.${role}.base_url`, value: (llmBaseUrl[role] as string).trim() || null },
+  ]
+
+  for (const field of fields) {
+    await $fetch('/api/settings', {
+      method: 'PATCH',
+      body: { key: field.key, value: field.value },
+    })
+  }
+}
+
+/**
+ * Intercept a save for a changed embedding model: embeddings from different
+ * models are never comparable, so switching silently breaks retrieval. Before
+ * anything is saved, show a warning dialog; only on confirm do we save the new
+ * model and trigger the rebuild (notes → pending, re-ingested with the new
+ * model). Cancel leaves the saved model and data untouched.
+ */
 async function saveRole(role: LlmRole) {
   if (role === 'embedding') {
     await testConnection(role)
     const status = llmTestStatus[role]
     if (status.kind !== 'ok')
       return
+
+    const current = (llmModel.embedding as string).trim()
+    if (didEmbeddingModelChange(savedEmbeddingModel.value, current)) {
+      openModelSwitchDialog()
+      return
+    }
   }
 
+  await saveRoleFields(role)
+}
+
+async function saveRoleFields(role: LlmRole) {
   llmSaving[role] = true
   try {
-    const fields = [
-      { key: `llm.${role}.provider`, value: llmProvider[role] as string },
-      { key: `llm.${role}.model`, value: (llmModel[role] as string).trim() },
-      { key: `llm.${role}.base_url`, value: (llmBaseUrl[role] as string).trim() || null },
-    ]
-
-    for (const field of fields) {
-      await $fetch('/api/settings', {
-        method: 'PATCH',
-        body: { key: field.key, value: field.value },
-      })
-    }
+    await persistRoleFields(role)
   }
   catch (err) {
     llmTestStatus[role] = { kind: 'error', error: err instanceof Error ? err.message : 'unknown error' }
@@ -154,6 +197,36 @@ async function saveRole(role: LlmRole) {
   finally {
     llmSaving[role] = false
   }
+}
+
+/**
+ * User confirmed the warning: save the new embedding model first, then trigger
+ * the rebuild flow. Surfacing failures from either step, we keep the dialog
+ * open so the user can retry.
+ */
+async function onModelSwitchConfirm() {
+  modelSwitchWorking.value = true
+  modelSwitchSaveError.value = ''
+  modelSwitchRebuildError.value = ''
+  try {
+    await persistRoleFields('embedding')
+  }
+  catch (err) {
+    modelSwitchSaveError.value = err instanceof Error ? err.message : t('settings.saveError')
+    modelSwitchWorking.value = false
+    return
+  }
+
+  try {
+    await $fetch('/api/settings/rebuild', { method: 'POST' })
+  }
+  catch {
+    modelSwitchRebuildError.value = t('settings.saveError')
+    modelSwitchWorking.value = false
+    return
+  }
+
+  showModelSwitchDialog.value = false
 }
 
 const showReverify = ref(false)
@@ -231,5 +304,63 @@ definePageMeta({
         />
       </div>
     </section>
+
+    <!-- Embedding model change warning dialog -->
+    <div
+      v-if="showModelSwitchDialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      data-testid="embedding-model-switch-dialog"
+      @click.self="closeModelSwitchDialog"
+    >
+      <div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-center gap-2">
+          <ExclamationTriangleIcon class="h-5 w-5 text-amber-600" />
+          <h3 class="text-lg font-semibold text-gray-900">
+            {{ t('settings.llm.modelSwitch.title') }}
+          </h3>
+        </div>
+
+        <p class="mt-2 text-sm text-gray-600">
+          {{ t('settings.llm.modelSwitch.description') }}
+        </p>
+
+        <div class="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          <p class="font-medium">
+            {{ t('settings.llm.modelSwitch.warning') }}
+          </p>
+        </div>
+
+        <p v-if="modelSwitchSaveError" class="mt-3 text-sm font-medium text-red-600" role="alert">
+          {{ modelSwitchSaveError }}
+        </p>
+        <p v-if="modelSwitchRebuildError" class="mt-3 text-sm font-medium text-red-600" role="alert">
+          {{ modelSwitchRebuildError }}
+        </p>
+
+        <div class="mt-4 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            :disabled="modelSwitchWorking"
+            data-testid="embedding-model-switch-cancel"
+            @click="closeModelSwitchDialog"
+          >
+            {{ t('settings.rebuild.cancel') }}
+          </button>
+
+          <button
+            type="button"
+            class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            :disabled="modelSwitchWorking"
+            data-testid="embedding-model-switch-confirm"
+            @click="onModelSwitchConfirm"
+          >
+            {{ t('settings.llm.modelSwitch.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
