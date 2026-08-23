@@ -92,6 +92,26 @@ _Avoid_: Function, capability
 A persisted chat thread between the User and the Agent, with session memory scoped to the thread.
 _Avoid_: Session, chat, thread
 
+**Hybrid Retrieval**:
+Retrieval that runs a Dense leg and a Lexical leg and fuses them into one ranked list. Used by `search_notes` and `search_concepts`.
+_Avoid_: Blended search, combined retrieval, unified search
+
+**Dense Leg**:
+The vector-similarity half of Hybrid Retrieval: cosine over Chunk or Concept Embeddings.
+_Avoid_: Vector pass, semantic leg, embedding search
+
+**Lexical Leg**:
+The full-text half of Hybrid Retrieval: BM25 over Chunk text or Concept name and description, backed by pg_search.
+_Avoid_: Text leg, keyword search, FTS leg
+
+**Fusion**:
+The step that combines the ranked lists of the Dense and Lexical legs into one result. Currently Reciprocal Rank Fusion (RRF); every returned Chunk carries a fused relevance score.
+_Avoid_: Merging, blending, combining, mixing
+
+**Graph Expansion**:
+`search_notes` automatically following one hop of Relations from the Concepts mentioned in the top fused Chunks to surface related Chunks from other Notes. Each related entry is labeled with its provenance chain and the result is bounded by `relatedLimit` (default 3, max 10).
+_Avoid_: Graph traversal, neighbor fetch, graph boost
+
 ### Ingestion
 
 **Synced Folder**:
