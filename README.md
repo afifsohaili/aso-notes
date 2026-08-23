@@ -21,7 +21,7 @@ Inspired by LightRAG, but retrieval is driven by an Agent with Tools rather than
 - **Backend**: Nitro (Nuxt server), Kysely, PostgreSQL
 - **Auth**: BetterAuth (email/password with verification)
 - **Storage**: `pgvector` for Embeddings, Apache AGE for graph storage and traversal (Cypher)
-- **AI**: OpenRouter by default — LLM and Embeddings behind a per-use-case provider registry
+- **AI**: OpenRouter by default — LLM and Embeddings behind a per-use-case provider registry; local options: Ollama and oMLX (macOS MLX server)
 - **Testing**: Vitest (in-process transactional e2e via `@base/testing`)
 
 ## Repository layout
@@ -79,15 +79,17 @@ Then fill in the values:
 | `NUXT_LLM_AGENT_API_KEY` | yes* | OpenRouter key (https://openrouter.ai/keys) for the chat agent |
 | `NUXT_LLM_EXTRACTION_API_KEY` | yes* | OpenRouter key for ingestion extraction (may duplicate the agent key) |
 | `NUXT_LLM_EMBEDDING_API_KEY` | yes* | OpenRouter key for embeddings (may duplicate the others) |
-| `NUXT_LLM_AGENT_PROVIDER` / `NUXT_LLM_AGENT_BASE_URL` / `NUXT_LLM_AGENT_MODEL` | no | Chat agent backend: `openrouter` (default) or `ollama`, optional base-URL override, model ID |
+| `NUXT_LLM_AGENT_PROVIDER` / `NUXT_LLM_AGENT_BASE_URL` / `NUXT_LLM_AGENT_MODEL` | no | Chat agent backend: `openrouter` (default), `ollama`, or `omlx` — optional base-URL override, model ID |
 | `NUXT_LLM_EXTRACTION_PROVIDER` / `NUXT_LLM_EXTRACTION_BASE_URL` / `NUXT_LLM_EXTRACTION_MODEL` | no | Ingestion extraction backend — same quad, independent of the agent |
-| `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Local embedding models need a schema migration (2048-dim columns) |
+| `NUXT_LLM_EMBEDDING_PROVIDER` / `NUXT_LLM_EMBEDDING_BASE_URL` / `NUXT_LLM_EMBEDDING_MODEL` | no | Embedding backend — default OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`. Local embedding models must output 2048-dim vectors; smaller models (e.g. BGE-M3 1024-dim) are zero-padded at runtime but fail the settings test-connection probe (2048 check) |
 | `NUXT_EMAIL_PROVIDER`, `NUXT_BREVO_API_KEY`, `NUXT_SENDER_EMAIL`, `NUXT_SENDER_NAME` | no | Transactional email. In dev, email verification is bypassed entirely, so these are unused locally |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, `NUXT_TURNSTILE_SECRET_KEY` | no | Signup captcha — skipped entirely in dev (`NODE_ENV=development`) |
 | `NUXT_PUBLIC_POSTHOG_API_KEY`, `NUXT_POSTHOG_API_KEY` | no | PostHog analytics |
 | `NUXT_PUBLIC_SITE_URL` | no | SEO / sitemap |
 
 \* Required only when the corresponding provider is `openrouter`. Provider, model, and base URL can be overridden per workspace from `/settings`; API keys are env-only and never stored in the UI.
+
+Local providers need no API key. **Ollama** runs at `http://localhost:11434`; **oMLX** (macOS MLX inference server, omlx.ai) runs at `http://localhost:8000/v1` — set `NUXT_LLM_<ROLE>_PROVIDER=omlx` plus a model ID (e.g. a Qwen3 MLX model). oMLX is OpenAI-compatible and works for chat and embeddings; point `NUXT_LLM_<ROLE>_BASE_URL` at another Mac to use a remote oMLX server (unauthenticated only — oMLX `--api-key` auth is not supported).
 
 ### 4. Migrate the database
 
