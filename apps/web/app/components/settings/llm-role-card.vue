@@ -116,7 +116,7 @@ const roleHelpKey = computed(() => `settings.llm.roles.${props.role}Help`)
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white p-5">
+  <div class="rounded-lg border border-gray-200 bg-white p-5" :data-testid="`llm-role-card-${role}`">
     <div class="flex items-center gap-2">
       <CpuChipIcon class="h-5 w-5 text-indigo-600" />>
       <h3 class="text-base font-semibold text-gray-900">
@@ -198,6 +198,7 @@ const roleHelpKey = computed(() => `settings.llm.roles.${props.role}Help`)
         type="button"
         class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
         :disabled="!localModel.trim()"
+        data-testid="llm-role-test"
         @click="onTest"
       >
         {{ t('settings.llm.testConnection') }}
@@ -207,6 +208,7 @@ const roleHelpKey = computed(() => `settings.llm.roles.${props.role}Help`)
         type="button"
         class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         :disabled="isSaveDisabled"
+        data-testid="llm-role-save"
         @click="onSave"
       >
         <span v-if="saving">{{ t('settings.llm.saving') }}</span>

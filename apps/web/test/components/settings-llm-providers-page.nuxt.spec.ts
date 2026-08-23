@@ -150,14 +150,16 @@ describe('settings llm providers page — embedding model switch warning', () =>
     })
   }
 
+  function stubOkFetch() {
+    $fetchMock.mockImplementation(async () => ({ ok: true }))
+  }
+
   async function showEmbeddingSave(component: ReturnType<typeof mountSuspended<typeof SettingsLlmProvidersPage>> extends Promise<infer T> ? T : never) {
-    // The embedding role card is the one whose heading is "Embeddings".
-    const cards = component.findAll('.rounded-lg.border.border-gray-200.bg-white.p-5')
-    const embeddingCard = cards.find(c => c.text().includes('Embeddings'))
-    if (!embeddingCard)
+    const embeddingCard = component.find('[data-testid="llm-role-card-embedding"]')
+    if (!embeddingCard.exists())
       throw new Error('no embedding card found')
-    const saveButton = embeddingCard.findAll('button').find(b => b.text().trim().length > 0 && !b.text().includes('Test connection'))
-    if (!saveButton)
+    const saveButton = embeddingCard.find('[data-testid="llm-role-save"]')
+    if (!saveButton.exists())
       throw new Error('no Save button found')
     await saveButton.trigger('click')
     await flushPromises()
@@ -165,11 +167,7 @@ describe('settings llm providers page — embedding model switch warning', () =>
 
   it('opens the warning dialog when the embedding model changes before saving', async () => {
     mockEmbeddingChangeResponse()
-    $fetchMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/settings/test-connection'))
-        return { ok: true }
-      return { ok: true }
-    })
+    stubOkFetch()
 
     const component = await mountSuspended(SettingsLlmProvidersPage)
     await component.find('input#embedding-model').setValue('model-b')
@@ -186,11 +184,7 @@ describe('settings llm providers page — embedding model switch warning', () =>
 
   it('does not open the dialog when the embedding model is unchanged', async () => {
     mockEmbeddingChangeResponse()
-    $fetchMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/settings/test-connection'))
-        return { ok: true }
-      return { ok: true }
-    })
+    stubOkFetch()
 
     const component = await mountSuspended(SettingsLlmProvidersPage)
 
@@ -201,11 +195,7 @@ describe('settings llm providers page — embedding model switch warning', () =>
 
   it('on confirm saves the model setting and triggers rebuild', async () => {
     mockEmbeddingChangeResponse()
-    $fetchMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/settings/test-connection'))
-        return { ok: true }
-      return { ok: true }
-    })
+    stubOkFetch()
 
     const component = await mountSuspended(SettingsLlmProvidersPage)
     await component.find('input#embedding-model').setValue('model-b')
@@ -227,11 +217,7 @@ describe('settings llm providers page — embedding model switch warning', () =>
 
   it('on cancel, saves nothing and triggers no rebuild', async () => {
     mockEmbeddingChangeResponse()
-    $fetchMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/settings/test-connection'))
-        return { ok: true }
-      return { ok: true }
-    })
+    stubOkFetch()
 
     const component = await mountSuspended(SettingsLlmProvidersPage)
     await component.find('input#embedding-model').setValue('model-b')
@@ -244,5 +230,70 @@ describe('settings llm providers page — embedding model switch warning', () =>
     expect($fetchMock.mock.calls.filter(([url]) => url === '/api/settings')).toHaveLength(0)
     expect($fetchMock.mock.calls.filter(([url]) => url === '/api/settings/rebuild')).toHaveLength(0)
     expect(component.find('[data-testid="embedding-model-switch-dialog"]').exists()).toBe(false)
+  })
+
+  it('dismissing the dialog by backdrop click behaves as cancel (no save, no rebuild)', async () => {
+    mockEmbeddingChangeResponse()
+    stubOkFetch()
+
+    const component = await mountSuspended(SettingsLlmProvidersPage)
+    await component.find('input#embedding-model').setValue('model-b')
+
+    await showEmbeddingSave(component)
+
+    // Click the dimmed backdrop (not the dialog panel) to dismiss.
+    await component.find('[data-testid="embedding-model-switch-dialog"]').trigger('click')
+    await flushPromises()
+
+    expect(component.find('[data-testid="embedding-model-switch-dialog"]').exists()).toBe(false)
+    const patchCalls = $fetchMock.mock.calls.filter(([url, init]) => url === '/api/settings' && init?.method === 'PATCH')
+    expect(patchCalls).toHaveLength(0)
+    expect($fetchMock.mock.calls.filter(([url]) => url === '/api/settings/rebuild')).toHaveLength(0)
+  })
+
+  it('on rebuild failure, keeps the dialog open, shows the inline error, and rolls back the model PATCH', async () => {
+    mockEmbeddingChangeResponse()
+    $fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/settings/test-connection'))
+        return { ok: true }
+      if (url === '/api/settings/rebuild')
+        throw new Error('rebuild exploded')
+      return { ok: true }
+    })
+
+    const component = await mountSuspended(SettingsLlmProvidersPage)
+    await component.find('input#embedding-model').setValue('model-b')
+
+    await showEmbeddingSave(component)
+    await component.find('[data-testid="embedding-model-switch-confirm"]').trigger('click')
+    await flushPromises()
+
+    // dialog stays open and surfaces the real rebuild error
+    expect(component.find('[data-testid="embedding-model-switch-dialog"]').exists()).toBe(true)
+    expect(component.find('[role="alert"]').text()).toContain('rebuild exploded')
+    // the saved model was rolled back to the previously-saved value
+    const patchCalls = $fetchMock.mock.calls.filter(([url, init]) => url === '/api/settings' && init?.method === 'PATCH')
+    expect(patchCalls).toEqual(expect.arrayContaining([
+      ['/api/settings', { method: 'PATCH', body: { key: 'llm.embedding.model', value: 'model-a' } }],
+    ]))
+  })
+
+  it('re-opens the warning dialog when switching back after a successful A->B->A switch (guard sees the new saved model)', async () => {
+    mockEmbeddingChangeResponse()
+    stubOkFetch()
+
+    const component = await mountSuspended(SettingsLlmProvidersPage)
+
+    // A -> B, confirm
+    await component.find('input#embedding-model').setValue('model-b')
+    await showEmbeddingSave(component)
+    await component.find('[data-testid="embedding-model-switch-confirm"]').trigger('click')
+    await flushPromises()
+    expect(component.find('[data-testid="embedding-model-switch-dialog"]').exists()).toBe(false)
+
+    // B -> A: the guard must now see B as the saved model and warn again
+    await component.find('input#embedding-model').setValue('model-a')
+    await showEmbeddingSave(component)
+    expect(component.find('[data-testid="embedding-model-switch-dialog"]').exists()).toBe(true)
   })
 })

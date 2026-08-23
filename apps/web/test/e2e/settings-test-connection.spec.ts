@@ -1,6 +1,7 @@
 import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
 import { describe, expect, vi } from 'vitest'
+import { normalizeFetchUrl } from './test-utils'
 
 function makeOllamaEmbeddingResponse(dims: number): Response {
   return new Response(JSON.stringify({
@@ -26,6 +27,14 @@ function makeOmlxChatResponse(): Response {
 function makeOmlxEmbeddingsResponse(dims: number): Response {
   return new Response(JSON.stringify({
     data: [{ index: 0, embedding: Array.from({ length: dims }).fill(0.1) }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+function makeOpenAiEmbeddingsResponse(dims: number): Response {
+  // OpenRouter serves the OpenAI wire format: { data: [{ index, embedding }] }.
+  return new Response(JSON.stringify({
+    data: [{ index: 0, embedding: Array.from({ length: dims }).fill(0.1) }],
+    usage: { prompt_tokens: 3, total_tokens: 3 },
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
@@ -65,8 +74,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/api/chat')
+      expect(normalizeFetchUrl(url)).toContain('/api/chat')
       return makeOllamaChatResponse()
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -90,8 +98,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/api/embed')
+      expect(normalizeFetchUrl(url)).toContain('/api/embed')
       const body = JSON.parse(String(init?.body))
       expect(body.dimensions).toBe(2048)
       return makeOllamaEmbeddingResponse(2048)
@@ -117,8 +124,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/api/embed')
+      expect(normalizeFetchUrl(url)).toContain('/api/embed')
       const body = JSON.parse(String(init?.body))
       expect(body.dimensions).toBe(2048)
       return makeOllamaEmbeddingResponse(768)
@@ -144,8 +150,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/api/embed')
+      expect(normalizeFetchUrl(url)).toContain('/api/embed')
       return makeOllamaEmbeddingResponse(4096)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -195,8 +200,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/v1/chat/completions')
+      expect(normalizeFetchUrl(url)).toContain('/v1/chat/completions')
       return makeOmlxChatResponse()
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -220,8 +224,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/v1/embeddings')
+      expect(normalizeFetchUrl(url)).toContain('/v1/embeddings')
       const body = JSON.parse(String(init?.body))
       expect(body.model).toBe('mlx-community/all-MiniLM-L6-v2')
       expect(body.input).toEqual(['dimension probe'])
@@ -249,8 +252,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/v1/embeddings')
+      expect(normalizeFetchUrl(url)).toContain('/v1/embeddings')
       const body = JSON.parse(String(init?.body))
       expect(body.dimensions).toBe(2048)
       return makeOmlxEmbeddingsResponse(768)
@@ -276,8 +278,7 @@ describe('pOST /api/settings/test-connection', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/v1/embeddings')
+      expect(normalizeFetchUrl(url)).toContain('/v1/embeddings')
       return makeOmlxEmbeddingsResponse(4096)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -296,6 +297,37 @@ describe('pOST /api/settings/test-connection', () => {
       expect(body.error).toContain('unsupported')
     }
     finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('rejects openrouter model whose native output exceeds 2048 with a clear error', async ({ server }) => {
+    const { cookies } = await givenVerifiedUser()
+
+    vi.stubEnv('NUXT_LLM_EMBEDDING_API_KEY', 'sk-test-openrouter')
+    const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      expect(normalizeFetchUrl(url)).toContain('/api/v1/embeddings')
+      const body = JSON.parse(String(init?.body))
+      expect(body.dimensions).toBe(2048)
+      return makeOpenAiEmbeddingsResponse(4096)
+    }
+    vi.stubGlobal('fetch', fetchStub)
+
+    try {
+      const res = await server('/api/settings/test-connection', {
+        method: 'POST',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'embedding', provider: 'openrouter', model: 'nvidia/nemotron-embed-4096' }),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ok).toBe(false)
+      expect(body.error).toContain('exceed')
+      expect(body.error).toContain('2048')
+      expect(body.error).toContain('unsupported')
+    }
+    finally {
+      vi.unstubAllEnvs()
       vi.unstubAllGlobals()
     }
   })

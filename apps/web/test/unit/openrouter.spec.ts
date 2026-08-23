@@ -222,21 +222,17 @@ describe('openRouterLLMProvider', () => {
 })
 
 describe('openRouterEmbeddingProvider resilience', () => {
-  function fullDimEmbedding() {
-    return embedVector(0.1)
-  }
-
   it('retries 429 with Retry-After and returns the successful response', async () => {
     const { calls, fetchFn } = sequenceFetch([
       { status: 429, body: { error: 'rate limited' }, headers: { 'Retry-After': '1', 'content-type': 'application/json' } },
-      { status: 200, body: { data: [{ index: 0, embedding: fullDimEmbedding() }] } },
+      { status: 200, body: { data: [{ index: 0, embedding: embedVector(0.1) }] } },
     ])
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
 
     const result = await provider.embed(['x'])
 
     expect(calls).toHaveLength(2)
-    expect(result).toEqual([fullDimEmbedding()])
+    expect(result).toEqual([embedVector(0.1)])
   })
 
   it('throws RateLimitError when 429 is exhausted', async () => {
@@ -271,14 +267,14 @@ describe('openRouterEmbeddingProvider resilience', () => {
   it('retries 5xx and returns the successful response', async () => {
     const { calls, fetchFn } = sequenceFetch([
       { status: 503, body: { error: 'server error' } },
-      { status: 200, body: { data: [{ index: 0, embedding: fullDimEmbedding() }] } },
+      { status: 200, body: { data: [{ index: 0, embedding: embedVector(0.1) }] } },
     ])
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 5000, maxAttempts: 3 })
 
     const result = await provider.embed(['x'])
 
     expect(calls).toHaveLength(2)
-    expect(result).toEqual([fullDimEmbedding()])
+    expect(result).toEqual([embedVector(0.1)])
   })
 
   it('throws TransientError when 5xx is exhausted', async () => {
@@ -296,12 +292,12 @@ describe('openRouterEmbeddingProvider resilience', () => {
   })
 
   it('retries a timed-out fetch and returns the successful response', async () => {
-    const fetchFn = timedOutFetch(1, { data: [{ index: 0, embedding: fullDimEmbedding() }] })
+    const fetchFn = timedOutFetch(1, { data: [{ index: 0, embedding: embedVector(0.1) }] })
     const provider = new OpenRouterEmbeddingProvider({ apiKey: 'sk', model: 'm', fetchFn, sleepFn, timeoutMs: 1, maxAttempts: 2 })
 
     const result = await provider.embed(['x'])
 
-    expect(result).toEqual([fullDimEmbedding()])
+    expect(result).toEqual([embedVector(0.1)])
   })
 })
 

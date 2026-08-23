@@ -1,17 +1,7 @@
 import process from 'node:process'
+import { OverDimensionsError } from '../../lib/ai/normalize-embedding'
 import { resolveEmbeddingProvider, resolveLLMProvider } from '../../lib/ai/registry'
 import { EMBEDDING_DIMENSIONS } from '../../lib/ai/types'
-
-/**
- * Error thrown by the embedding adapters (normalizeEmbeddingDimensions) when a
- * provider returns a vector longer than the graph-store width. That model
- * cannot reach the 2048 target and is unsupported.
- */
-export const OVER_DIMENSIONS_ERROR = 'above the'
-
-function isOverDimensionsError(err: unknown): boolean {
-  return err instanceof Error && err.message.includes(OVER_DIMENSIONS_ERROR)
-}
 
 function validateRole(value: unknown): 'agent' | 'extraction' | 'embedding' {
   if (value === 'agent' || value === 'extraction' || value === 'embedding')
@@ -83,7 +73,7 @@ export default defineEventHandler(async (event) => {
     if (err && typeof err === 'object' && 'statusCode' in err && (err as any).statusCode === 400) {
       throw err
     }
-    if (isOverDimensionsError(err)) {
+    if (err instanceof OverDimensionsError) {
       return {
         ok: false,
         error: `This model's native embedding exceeds the supported ${EMBEDDING_DIMENSIONS} dimensions — it is unsupported. Pick a model that outputs at most ${EMBEDDING_DIMENSIONS} dimensions.`,

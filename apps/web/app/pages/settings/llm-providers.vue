@@ -147,11 +147,11 @@ async function testConnection(role: LlmRole) {
   }
 }
 
-async function persistRoleFields(role: LlmRole) {
+async function persistRoleFields(role: LlmRole, overrides?: { provider?: string, model?: string, base_url?: string | null }) {
   const fields = [
-    { key: `llm.${role}.provider`, value: llmProvider[role] as string },
-    { key: `llm.${role}.model`, value: (llmModel[role] as string).trim() },
-    { key: `llm.${role}.base_url`, value: (llmBaseUrl[role] as string).trim() || null },
+    { key: `llm.${role}.provider`, value: overrides?.provider ?? llmProvider[role] as string },
+    { key: `llm.${role}.model`, value: overrides?.model ?? (llmModel[role] as string).trim() },
+    { key: `llm.${role}.base_url`, value: overrides?.base_url ?? ((llmBaseUrl[role] as string).trim() || null) },
   ]
 
   for (const field of fields) {
@@ -160,6 +160,24 @@ async function persistRoleFields(role: LlmRole) {
       body: { key: field.key, value: field.value },
     })
   }
+}
+
+/**
+ * Keep the saved-model state in sync with what is actually persisted. After a
+ * successful switch the `/api/settings` fetch is stale, so the model-change
+ * guard would otherwise keep comparing against the old value and skip the
+ * warning on a switch back.
+ */
+function refreshSavedEmbeddingModel(model: string, provider?: string | number | null, baseUrl?: string | number | null) {
+  const settings = payload.value?.settings
+  if (!settings)
+    return
+  if (model !== undefined)
+    settings['llm.embedding.model'] = { value: model, source: 'workspace' }
+  if (provider !== undefined)
+    settings['llm.embedding.provider'] = { value: String(provider), source: 'workspace' }
+  if (baseUrl !== undefined)
+    settings['llm.embedding.base_url'] = { value: typeof baseUrl === 'string' ? baseUrl : null, source: 'workspace' }
 }
 
 /**
@@ -203,8 +221,17 @@ async function saveRoleFields(role: LlmRole) {
  * User confirmed the warning: save the new embedding model first, then trigger
  * the rebuild flow. Surfacing failures from either step, we keep the dialog
  * open so the user can retry.
+ *
+ * Order stays save-then-rebuild because the async re-ingestion reads the saved
+ * workspace settings. To keep the switch atomic on rebuild failure, we ROLL
+ * BACK the PATCH (restore the previously-saved values) so the stored model
+ * never diverges from the embeddings actually in the graph.
  */
 async function onModelSwitchConfirm() {
+  const previousModel = savedEmbeddingModel.value
+  const previousProvider = payload.value?.settings?.['llm.embedding.provider']?.value ?? ''
+  const previousBaseUrl = payload.value?.settings?.['llm.embedding.base_url']?.value ?? null
+
   modelSwitchWorking.value = true
   modelSwitchSaveError.value = ''
   modelSwitchRebuildError.value = ''
@@ -220,13 +247,33 @@ async function onModelSwitchConfirm() {
   try {
     await $fetch('/api/settings/rebuild', { method: 'POST' })
   }
-  catch {
-    modelSwitchRebuildError.value = t('settings.saveError')
+  catch (err) {
+    modelSwitchRebuildError.value = err instanceof Error ? err.message : t('settings.saveError')
+    // Roll back the saved model so the stored value matches the embeddings in
+    // the graph (which still belong to the previous model).
+    try {
+      await persistRoleFields('embedding', {
+        provider: String(previousProvider),
+        model: previousModel,
+        base_url: typeof previousBaseUrl === 'string' ? previousBaseUrl : null,
+      })
+      refreshSavedEmbeddingModel(previousModel, previousProvider)
+    }
+    catch (rollbackErr) {
+      modelSwitchRebuildError.value += ` ${rollbackErr instanceof Error ? rollbackErr.message : t('settings.saveError')}`
+    }
     modelSwitchWorking.value = false
     return
   }
 
   showModelSwitchDialog.value = false
+  // BUG 2: keep the saved-model state in sync so a subsequent switch (B->A)
+  // triggers the warning again instead of saving silently.
+  refreshSavedEmbeddingModel(
+    (llmModel.embedding as string).trim(),
+    llmProvider.embedding,
+    (llmBaseUrl.embedding as string).trim() || null,
+  )
 }
 
 const showReverify = ref(false)

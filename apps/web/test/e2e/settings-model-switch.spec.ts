@@ -2,6 +2,7 @@ import { givenVerifiedUser } from '@base/testing/auth'
 import { test } from '@base/testing/test'
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { ensureNotesGraphCatalog } from './age-catalog'
+import { normalizeFetchUrl } from './test-utils'
 
 /**
  * End-to-end for the embedding model switch flow (ticket 04): the settings
@@ -82,8 +83,7 @@ describe('settings embedding model switch', () => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request): Promise<Response> => {
-      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-      expect(urlString).toContain('/api/embed')
+      expect(normalizeFetchUrl(url)).toContain('/api/embed')
       return makeOllamaEmbeddingResponse()
     }
     vi.stubGlobal('fetch', fetchStub)

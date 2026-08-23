@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeEmbeddingDimensions } from '../../server/lib/ai/normalize-embedding'
+import { normalizeEmbeddingDimensions, OverDimensionsError } from '../../server/lib/ai/normalize-embedding'
 import { EMBEDDING_DIMENSIONS } from '../../server/lib/ai/types'
 
 describe('normalizeEmbeddingDimensions', () => {
@@ -27,6 +27,19 @@ describe('normalizeEmbeddingDimensions', () => {
     expect(() => normalizeEmbeddingDimensions(input)).toThrow(
       /4096 dimensions, above the 2048 target/,
     )
+  })
+
+  it('throws an OverDimensionsError (typed) on a vector longer than 2048', () => {
+    const input = Array.from({ length: 4096 }).fill(0.1)
+
+    try {
+      normalizeEmbeddingDimensions(input)
+      throw new Error('expected normalizeEmbeddingDimensions to throw')
+    }
+    catch (err) {
+      expect(err).toBeInstanceOf(OverDimensionsError)
+      expect((err as Error).message).toContain('above the')
+    }
   })
 
   it('pads an empty vector to 2048 zeros', () => {
