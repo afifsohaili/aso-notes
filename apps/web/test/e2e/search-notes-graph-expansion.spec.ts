@@ -261,6 +261,47 @@ describe('search_notes graph expansion', () => {
     expect(relatedPaths).not.toContain('/note-b.md')
   })
 
+  test('expands a Relation stored in the reverse direction (Y→X only)', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'graph-reverse')
+    await ensureNotesGraphCatalog(trx)
+
+    const x = await givenConcept(trx, workspaceId, 'Concept X')
+    const y = await givenConcept(trx, workspaceId, 'Concept Y')
+
+    const noteA = await givenNote(trx, workspaceId, '/note-a.md')
+    const noteB = await givenNote(trx, workspaceId, '/note-b.md')
+    const chunkA = await givenChunk(trx, workspaceId, noteA.id, 0, 'the zephyr protocol handles retries', vec(1, 0))
+    const chunkB = await givenChunk(trx, workspaceId, noteB.id, 0, 'cooking pasta recipes with anchovies', vec(0, 1))
+
+    await givenMention(trx, workspaceId, chunkA.id, x.id)
+    await givenMention(trx, workspaceId, chunkB.id, y.id)
+
+    await mergeConceptNode(trx, { id: x.id, workspaceId, name: x.name })
+    await mergeConceptNode(trx, { id: y.id, workspaceId, name: y.name })
+    // The Relation is stored ONLY as Y→X, the reverse of the natural expansion
+    // direction (X is the matched Concept). It must still be traversable.
+    await mergeRelatesToEdge(trx, { fromId: y.id, toId: x.id, type: 'contradicts', workspaceId })
+
+    const result = await searchNotesTool.execute(
+      { query: 'zephyr', limit: 1, relatedLimit: 3 },
+      stubContext(trx, workspaceId, stubEmbedding(vec(1, 0))),
+    )
+
+    const payload = result.result as any
+    expect(payload.notes.map((n: any) => n.path)).toEqual(['/note-a.md'])
+
+    const related = payload.related
+    expect(related).toHaveLength(1)
+    expect(related[0].path).toBe('/note-b.md')
+    expect(related[0].text).toBe('cooking pasta recipes with anchovies')
+    // Provenance still reports the Relation type and both Concept names.
+    expect(related[0].provenance).toEqual({
+      matchedConcept: 'Concept X',
+      neighborConcept: 'Concept Y',
+      relationType: 'contradicts',
+    })
+  })
+
   test('graph expansion does not cross workspace boundaries', async ({ trx }) => {
     const workspaceId = await givenWorkspace(trx, 'graph-ws-a')
     const other = await givenWorkspace(trx, 'graph-ws-b')

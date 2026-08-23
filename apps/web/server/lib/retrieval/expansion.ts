@@ -66,7 +66,7 @@ export async function expandRelatedChunks(
   const neighborRows = await queryCypher<NeighborRow>(
     db,
     [
-      `MATCH (a:Concept)-[r:RELATES_TO]->(b:Concept)`,
+      `MATCH (a:Concept)-[r:RELATES_TO]-(b:Concept)`,
       `WHERE a.id IN [${idList}] AND b.workspace_id = ${agLiteral(workspaceId)} AND b.id <> a.id`,
       `RETURN a.id AS matched_id, a.name AS matched_name, b.id AS neighbor_id, b.name AS neighbor_name, r.type AS relation_type`,
     ].join(' '),
