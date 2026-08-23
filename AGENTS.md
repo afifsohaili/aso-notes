@@ -95,3 +95,9 @@ Dev notes:
 - Set `NUXT_DISABLE_NOTES_SYNC=1` / `NUXT_DISABLE_EMAIL_WORKER=1` to disable background workers.
 - The graph is stored in Apache AGE and queried with Cypher; embeddings live in `pgvector`.
 - LLM provider config is per-use-case: `{AGENT|EXTRACTION|EMBEDDING}_{PROVIDER|BASE_URL|MODEL|API_KEY}`. Default provider is OpenRouter.
+
+## Agent skills
+
+### Issue tracker
+
+Specs and tickets live as local markdown under `plans/<NNN>-<slug>/`. See `docs/agents/issue-tracker.md`.
