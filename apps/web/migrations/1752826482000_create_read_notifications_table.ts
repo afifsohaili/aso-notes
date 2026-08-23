@@ -1,4 +1,5 @@
 import type { Kysely } from 'kysely'
+import { sql } from 'kysely'
 
 export async function up(db: Kysely<any>): Promise<void> {
   await db.schema
@@ -8,7 +9,7 @@ export async function up(db: Kysely<any>): Promise<void> {
       col.notNull().references('notifications.id').onDelete('cascade'))
     .addColumn('user_id', 'text', col =>
       col.notNull().references('users.id').onDelete('cascade'))
-    .addColumn('read_at', 'timestamp', col => col.defaultTo('now()').notNull())
+    .addColumn('read_at', 'timestamp', col => col.defaultTo(sql`now()`).notNull())
     .execute()
 
   // Create unique constraint

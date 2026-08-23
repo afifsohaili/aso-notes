@@ -16,7 +16,21 @@ export interface HybridChunkRow {
   score: number
 }
 
-interface DenseRow {
+/** A fused concept row with its fused relevance score. */
+export interface HybridConceptRow {
+  id: string
+  name: string
+  description: string | null
+  score: number
+}
+
+/** A candidate row from either leg, before fusion. */
+interface CandidateRow {
+  id: string
+}
+
+/** A chunk candidate row from either leg, before fusion. */
+interface ChunkCandidateRow {
   id: string
   path: string
   title: string
@@ -24,12 +38,53 @@ interface DenseRow {
   seq: number
 }
 
-interface LexicalRow {
+/** A concept candidate row from either leg, before fusion. */
+interface ConceptCandidateRow {
   id: string
-  path: string
-  title: string
-  text: string
-  seq: number
+  name: string
+  description: string | null
+}
+
+/**
+ * Generic hybrid search: runs a dense (vector) leg and a lexical (BM25) leg,
+ * both Workspace-scoped, and fuses the two ranked lists with RRF. Returns
+ * fused rows ordered by descending fused score.
+ */
+async function hybridSearch<T extends CandidateRow>(
+  db: AgentDb,
+  workspaceId: string,
+  query: string,
+  queryEmbedding: number[],
+  limit: number,
+  legs: {
+    dense: () => Promise<T[]>
+    lexical: () => Promise<T[]>
+  },
+): Promise<(T & { score: number })[]> {
+  const [denseRows, lexicalRows] = await Promise.all([
+    legs.dense(),
+    legs.lexical(),
+  ])
+
+  const fused = fuseRankedLists([
+    denseRows.map(r => ({ id: r.id })),
+    lexicalRows.map(r => ({ id: r.id })),
+  ])
+
+  const byId = new Map<string, T>()
+  for (const row of denseRows)
+    byId.set(row.id, row)
+  for (const row of lexicalRows) {
+    if (!byId.has(row.id))
+      byId.set(row.id, row)
+  }
+
+  return fused
+    .slice(0, limit)
+    .map(({ id, score }) => {
+      const row = byId.get(id)!
+      return { ...row, score }
+    })
 }
 
 /**
@@ -44,50 +99,10 @@ export async function hybridSearchChunks(
   queryEmbedding: number[],
   limit: number,
 ): Promise<HybridChunkRow[]> {
-  const [denseRows, lexicalRows] = await Promise.all([
-    runDenseLeg(db, workspaceId, queryEmbedding),
-    runLexicalLeg(db, workspaceId, query),
-  ])
-
-  const fused = fuseRankedLists([
-    denseRows.map(r => ({ id: r.id })),
-    lexicalRows.map(r => ({ id: r.id })),
-  ])
-
-  const byId = new Map<string, DenseRow>()
-  for (const row of denseRows)
-    byId.set(row.id, row)
-  for (const row of lexicalRows) {
-    if (!byId.has(row.id))
-      byId.set(row.id, row)
-  }
-
-  return fused
-    .slice(0, limit)
-    .map(({ id, score }) => {
-      const row = byId.get(id)!
-      return { ...row, score }
-    })
-}
-
-/** A fused concept row with its fused relevance score. */
-export interface HybridConceptRow {
-  id: string
-  name: string
-  description: string | null
-  score: number
-}
-
-interface ConceptDenseRow {
-  id: string
-  name: string
-  description: string | null
-}
-
-interface ConceptLexicalRow {
-  id: string
-  name: string
-  description: string | null
+  return hybridSearch(db, workspaceId, query, queryEmbedding, limit, {
+    dense: () => runDenseLeg(db, workspaceId, queryEmbedding),
+    lexical: () => runLexicalLeg(db, workspaceId, query),
+  })
 }
 
 /**
@@ -102,37 +117,17 @@ export async function hybridSearchConcepts(
   queryEmbedding: number[],
   limit: number,
 ): Promise<HybridConceptRow[]> {
-  const [denseRows, lexicalRows] = await Promise.all([
-    runConceptDenseLeg(db, workspaceId, queryEmbedding),
-    runConceptLexicalLeg(db, workspaceId, query),
-  ])
-
-  const fused = fuseRankedLists([
-    denseRows.map(r => ({ id: r.id })),
-    lexicalRows.map(r => ({ id: r.id })),
-  ])
-
-  const byId = new Map<string, ConceptDenseRow>()
-  for (const row of denseRows)
-    byId.set(row.id, row)
-  for (const row of lexicalRows) {
-    if (!byId.has(row.id))
-      byId.set(row.id, row)
-  }
-
-  return fused
-    .slice(0, limit)
-    .map(({ id, score }) => {
-      const row = byId.get(id)!
-      return { ...row, score }
-    })
+  return hybridSearch(db, workspaceId, query, queryEmbedding, limit, {
+    dense: () => runConceptDenseLeg(db, workspaceId, queryEmbedding),
+    lexical: () => runConceptLexicalLeg(db, workspaceId, query),
+  })
 }
 
 async function runConceptDenseLeg(
   db: AgentDb,
   workspaceId: string,
   queryEmbedding: number[],
-): Promise<ConceptDenseRow[]> {
+): Promise<ConceptCandidateRow[]> {
   return db
     .selectFrom('concepts')
     .select([
@@ -152,7 +147,7 @@ async function runConceptLexicalLeg(
   db: AgentDb,
   workspaceId: string,
   query: string,
-): Promise<ConceptLexicalRow[]> {
+): Promise<ConceptCandidateRow[]> {
   return db
     .selectFrom('concepts')
     .select([
@@ -173,7 +168,7 @@ async function runDenseLeg(
   db: AgentDb,
   workspaceId: string,
   queryEmbedding: number[],
-): Promise<DenseRow[]> {
+): Promise<ChunkCandidateRow[]> {
   return db
     .selectFrom('chunks')
     .innerJoin('notes', 'notes.id', 'chunks.note_id')
@@ -197,7 +192,7 @@ async function runLexicalLeg(
   db: AgentDb,
   workspaceId: string,
   query: string,
-): Promise<LexicalRow[]> {
+): Promise<ChunkCandidateRow[]> {
   return db
     .selectFrom('chunks')
     .innerJoin('notes', 'notes.id', 'chunks.note_id')

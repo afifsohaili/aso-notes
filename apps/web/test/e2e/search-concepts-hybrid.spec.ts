@@ -1,55 +1,7 @@
-import type { AgentContext, EmbeddingProvider } from '../../server/lib/agent/types'
 import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
 import { searchConceptsTool } from '../../server/lib/agent/tools/search-concepts'
-import { halfvecLiteral } from '../../server/lib/agent/vector'
-
-async function givenWorkspace(trx: any, name: string): Promise<string> {
-  const row = await trx
-    .insertInto('workspaces')
-    .values({ name })
-    .returning('id')
-    .executeTakeFirstOrThrow()
-  return row.id
-}
-
-async function givenConcept(trx: any, workspaceId: string, name: string, embedding: number[]) {
-  return trx
-    .insertInto('concepts')
-    .values({
-      workspace_id: workspaceId,
-      name,
-      name_normalized: name.toLowerCase(),
-      description: `${name} description`,
-      embedding: halfvecLiteral(embedding),
-    })
-    .returning(['id', 'name'])
-    .executeTakeFirstOrThrow()
-}
-
-function vec(a: number, b: number): number[] {
-  const v = Array.from({ length: 2048 }).fill(0)
-  v[0] = a
-  v[1] = b
-  return v
-}
-
-function stubEmbedding(value: number[]): EmbeddingProvider {
-  return {
-    async embed(texts) {
-      return texts.map(() => value)
-    },
-  }
-}
-
-function stubContext(trx: any, workspaceId: string, embedding?: EmbeddingProvider): AgentContext {
-  return {
-    workspaceId,
-    db: trx,
-    llm: { async complete() { throw new Error('llm not needed') } },
-    embedding: embedding ?? { async embed() { throw new Error('embedding not needed') } },
-  }
-}
+import { givenConcept, givenWorkspace, stubContext, stubEmbedding, vec } from './agent-stubs'
 
 describe('search_concepts hybrid', () => {
   test('a query naming a concept exactly ranks it first even when semantically distant', async ({ trx }) => {

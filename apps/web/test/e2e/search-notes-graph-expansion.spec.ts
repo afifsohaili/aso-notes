@@ -1,92 +1,16 @@
-import type { AgentContext, EmbeddingProvider } from '../../server/lib/agent/types'
 import { test } from '@base/testing/test'
 import { describe, expect } from 'vitest'
 import { searchNotesTool } from '../../server/lib/agent/tools/search-notes'
 import { halfvecLiteral } from '../../server/lib/agent/vector'
 import { mergeConceptNode, mergeRelatesToEdge } from '../../server/lib/graph'
 import { ensureNotesGraphCatalog } from './age-catalog'
-
-async function givenWorkspace(trx: any, name: string): Promise<string> {
-  const row = await trx
-    .insertInto('workspaces')
-    .values({ name })
-    .returning('id')
-    .executeTakeFirstOrThrow()
-  return row.id
-}
-
-async function givenNote(trx: any, workspaceId: string, path: string) {
-  return trx
-    .insertInto('notes')
-    .values({
-      workspace_id: workspaceId,
-      path,
-      title: path,
-      content: path,
-      content_hash: `hash-${path}`,
-      status: 'ingested',
-    })
-    .returning(['id', 'path'])
-    .executeTakeFirstOrThrow()
-}
-
-async function givenChunk(trx: any, workspaceId: string, noteId: string, seq: number, text: string, embedding: number[]) {
-  return trx
-    .insertInto('chunks')
-    .values({
-      workspace_id: workspaceId,
-      note_id: noteId,
-      seq,
-      text,
-      token_count: Math.ceil(text.length / 4),
-      embedding: halfvecLiteral(embedding),
-    })
-    .returning('id')
-    .executeTakeFirstOrThrow()
-}
-
-async function givenConcept(trx: any, workspaceId: string, name: string) {
-  return trx
-    .insertInto('concepts')
-    .values({
-      workspace_id: workspaceId,
-      name,
-      name_normalized: name.toLowerCase(),
-      description: `${name} description`,
-    })
-    .returning(['id', 'name'])
-    .executeTakeFirstOrThrow()
-}
+import { givenChunk, givenConcept, givenNote, givenWorkspace, stubContext, stubEmbedding, vec } from './agent-stubs'
 
 async function givenMention(trx: any, workspaceId: string, chunkId: string, conceptId: string) {
   await trx
     .insertInto('mentions')
     .values({ workspace_id: workspaceId, chunk_id: chunkId, concept_id: conceptId })
     .execute()
-}
-
-function vec(a: number, b: number): number[] {
-  const v = Array.from({ length: 2048 }).fill(0)
-  v[0] = a
-  v[1] = b
-  return v
-}
-
-function stubEmbedding(value: number[]): EmbeddingProvider {
-  return {
-    async embed(texts) {
-      return texts.map(() => value)
-    },
-  }
-}
-
-function stubContext(trx: any, workspaceId: string, embedding: EmbeddingProvider): AgentContext {
-  return {
-    workspaceId,
-    db: trx,
-    llm: { async complete() { throw new Error('llm not needed') } },
-    embedding,
-  }
 }
 
 /**

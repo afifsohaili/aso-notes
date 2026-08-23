@@ -2,8 +2,6 @@
 -- PostgreSQL database dump
 --
 
-\restrict PZUTGUHqfmkKYSCuYuAj2Ukq6dSbx0m6pK6O9lQneWAMGFCT8T4WNowLTuYbnve
-
 -- Dumped from database version 16.15 (Debian 16.15-1.pgdg12+2)
 -- Dumped by pg_dump version 16.15 (Debian 16.15-1.pgdg12+2)
 
@@ -715,7 +713,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-23 12:11:35.617292'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -748,7 +746,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-23 12:11:35.617292'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2005,6 +2003,4 @@ ALTER TABLE ONLY public.workspace_settings
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict PZUTGUHqfmkKYSCuYuAj2Ukq6dSbx0m6pK6O9lQneWAMGFCT8T4WNowLTuYbnve
 

@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { defaultSchemaOutPath, dumpSchema } from '@base/testing/provisioning'
@@ -44,6 +45,16 @@ try {
 
   console.log(`Dumping schema to ${outPath}...`)
   await dumpSchema({ appRoot, databaseUrl: tempUrl, outPath })
+
+  // pg_dump 16.15 emits a random `\restrict`/`\unrestrict` token on every run
+  // (a psql session-scoped security key). It is noise, not schema, and would
+  // churn the committed file on each dump, so strip it.
+  const sql = readFileSync(outPath, 'utf8')
+  const cleaned = sql
+    .replace(/^\\restrict \S+\n\n?/m, '')
+    .replace(/\n\\unrestrict \S+\s*$/, '\n')
+  writeFileSync(outPath, cleaned)
+
   console.log(`Schema dumped to ${outPath}`)
 }
 finally {

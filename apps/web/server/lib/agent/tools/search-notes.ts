@@ -62,7 +62,7 @@ export const searchNotesTool: AgentTool = {
     if (notes.length > 0) {
       // Exclude the Notes already in the direct result from expansion so a
       // neighbor can never re-surface a direct hit's Note.
-      const excludedIds = await excludedNoteIds(ctx.db, ctx.workspaceId, byNote)
+      const excludedIds = await excludedNoteIds(ctx.db, ctx.workspaceId, [...byNote.keys()])
       const related = await expandRelatedChunks(ctx.db, ctx.workspaceId, {
         resultChunkIds: directChunkIds,
         excludedNoteIds: excludedIds,
@@ -85,9 +85,8 @@ export const searchNotesTool: AgentTool = {
 async function excludedNoteIds(
   db: AgentDb,
   workspaceId: string,
-  byNote: Map<string, unknown>,
+  paths: string[],
 ): Promise<string[]> {
-  const paths = [...byNote.keys()]
   if (paths.length === 0)
     return []
   const rows = await db
