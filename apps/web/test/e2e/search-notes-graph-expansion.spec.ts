@@ -198,8 +198,8 @@ describe('search_notes graph expansion', () => {
     expect((result.result as any).related).toHaveLength(2)
   })
 
-  test('relatedLimit=0 disables expansion entirely', async ({ trx }) => {
-    const workspaceId = await givenWorkspace(trx, 'graph-disabled')
+  test('relatedLimit=0 is clamped up to the minimum of 1', async ({ trx }) => {
+    const workspaceId = await givenWorkspace(trx, 'graph-clamp-min')
     await seedExpansionFixture(trx, workspaceId)
 
     const result = await searchNotesTool.execute(
@@ -208,9 +208,10 @@ describe('search_notes graph expansion', () => {
     )
 
     const payload = result.result as any
-    expect(payload.related).toBeUndefined()
-    expect(payload.notes.map((n: any) => n.path)).toEqual(['/note-a.md'])
-    expect(result.notes).toEqual(['/note-a.md'])
+    // 0 is clamped to 1, so expansion still runs and surfaces the neighbor.
+    expect(payload.related).toHaveLength(1)
+    expect(payload.related[0].path).toBe('/note-b.md')
+    expect(result.notes).toContain('/note-b.md')
   })
 
   test('relatedLimit defaults to 3 when omitted', async ({ trx }) => {

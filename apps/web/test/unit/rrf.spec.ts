@@ -56,20 +56,14 @@ describe('fuseRankedLists (RRF)', () => {
     expect(result.map(r => r.id)).toEqual(['a', 'b'])
   })
 
-  it('applies per-list weights', () => {
-    const result = fuseRankedLists(
-      [
-        [{ id: 'a' }, { id: 'b' }],
-        [{ id: 'b' }],
-      ],
-      { weights: [1, 0.5] },
-    )
-    // a: 1/61, b: 1/62 + 0.5/61
-    expect(result[0]!.id).toBe('b')
-  })
-
   it('rejects an unsupported fusion strategy', () => {
     expect(() => fuseRankedLists([[{ id: 'a' }]], { strategy: 'weighted' as never }))
       .toThrow()
+  })
+
+  it('defaults to RRF when no strategy is given', () => {
+    const result = fuseRankedLists([[{ id: 'a' }]])
+    expect(result[0]!.id).toBe('a')
+    expect(result[0]!.score).toBeCloseTo(1 / 61)
   })
 })

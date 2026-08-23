@@ -21,8 +21,8 @@ export const searchNotesTool: AgentTool = {
       },
       relatedLimit: {
         type: 'integer',
-        description: 'Maximum number of graph-expanded related chunks to return alongside the direct hits (default 3, max 10; 0 disables expansion). Related chunks are grouped per-note.',
-        minimum: 0,
+        description: 'Maximum number of graph-expanded related chunks to return alongside the direct hits (default 3, min 1, max 10). Related chunks are grouped per-note.',
+        minimum: 1,
         maximum: 10,
       },
     },
@@ -35,10 +35,10 @@ export const searchNotesTool: AgentTool = {
       return { result: { error: 'query is required' }, notes: [] }
 
     const limit = Math.max(1, Math.min(20, Math.floor(Number(args.limit) || 5)))
-    // Default 3; explicit 0 disables expansion entirely.
+    // Default 3; clamped to the 1–10 range like `limit`.
     const relatedLimit = args.relatedLimit === undefined
       ? 3
-      : Math.max(0, Math.min(10, Math.floor(Number(args.relatedLimit) || 0)))
+      : Math.max(1, Math.min(10, Math.floor(Number(args.relatedLimit) || 3)))
     const [queryEmbedding] = await ctx.embedding.embed([query])
 
     const rows = await hybridSearchChunks(ctx.db, ctx.workspaceId, query, queryEmbedding!, limit)
@@ -59,7 +59,7 @@ export const searchNotesTool: AgentTool = {
     const notes = [...byNote.values()]
     const result: Record<string, unknown> = { notes, count: notes.length }
 
-    if (relatedLimit > 0 && notes.length > 0) {
+    if (notes.length > 0) {
       // Exclude the Notes already in the direct result from expansion so a
       // neighbor can never re-surface a direct hit's Note.
       const excludedIds = await excludedNoteIds(ctx.db, ctx.workspaceId, byNote)

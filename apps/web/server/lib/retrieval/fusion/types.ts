@@ -1,7 +1,6 @@
-/** A single ranked result: an id plus any caller payload, in rank order. */
+/** A single ranked result: an id, in rank order. */
 export interface RankedItem {
   id: string
-  [key: string]: unknown
 }
 
 /** A fused result: the id plus its fused relevance score. */
