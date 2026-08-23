@@ -6,6 +6,9 @@ services:
     container_name: aso-notes-db
     ports:
       - "5433:5432"
+    # pg_search must be loaded via shared_preload_libraries (see the Dockerfile
+    # comment for the pinned version and verified BM25 syntax).
+    command: ["postgres", "-c", "shared_preload_libraries=pg_search"]
     environment:
       POSTGRES_DB: aso_notes_development
       POSTGRES_HOST_AUTH_METHOD: trust

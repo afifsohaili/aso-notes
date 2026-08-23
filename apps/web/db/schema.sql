@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict CDlJCtrZmaA9qB6KPmf0pXvI36iPeqd7PxuGcxFjlG2cLgdX0mPCtDIo6jr0Ovo
+\restrict PZUTGUHqfmkKYSCuYuAj2Ukq6dSbx0m6pK6O9lQneWAMGFCT8T4WNowLTuYbnve
 
--- Dumped from database version 16.14 (Debian 16.14-1.pgdg12+1)
--- Dumped by pg_dump version 16.14 (Debian 16.14-1.pgdg12+1)
+-- Dumped from database version 16.15 (Debian 16.15-1.pgdg12+2)
+-- Dumped by pg_dump version 16.15 (Debian 16.15-1.pgdg12+2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -196,8 +196,10 @@ DROP TABLE IF EXISTS notes_graph._ag_label_vertex;
 DROP SEQUENCE IF EXISTS notes_graph._ag_label_edge_id_seq;
 DROP TABLE IF EXISTS notes_graph._ag_label_edge;
 DROP FUNCTION IF EXISTS public.trg_notes_default_synced_folder();
-DROP EXTENSION IF EXISTS vector;
 DROP EXTENSION IF EXISTS age;
+DROP EXTENSION IF EXISTS pg_search;
+DROP EXTENSION IF EXISTS vector;
+DROP SCHEMA IF EXISTS paradedb;
 DROP SCHEMA IF EXISTS notes_graph;
 DROP SCHEMA IF EXISTS ag_catalog;
 --
@@ -215,17 +217,10 @@ CREATE SCHEMA notes_graph;
 
 
 --
--- Name: age; Type: EXTENSION; Schema: -; Owner: -
+-- Name: paradedb; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE EXTENSION IF NOT EXISTS age WITH SCHEMA ag_catalog;
-
-
---
--- Name: EXTENSION age; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION age IS 'AGE database extension';
+CREATE SCHEMA paradedb;
 
 
 --
@@ -240,6 +235,34 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+
+
+--
+-- Name: pg_search; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
+
+
+--
+-- Name: EXTENSION pg_search; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pg_search IS 'pg_search: Full text search for PostgreSQL using BM25';
+
+
+--
+-- Name: age; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS age WITH SCHEMA ag_catalog;
+
+
+--
+-- Name: EXTENSION age; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION age IS 'AGE database extension';
 
 
 --
@@ -690,7 +713,7 @@ CREATE TABLE public.notifications (
     target_type character varying(50) NOT NULL,
     target_id text,
     created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT '2026-08-10 02:11:23.137067'::timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT '2026-08-23 12:11:35.617292'::timestamp without time zone NOT NULL,
     is_active boolean DEFAULT true NOT NULL
 );
 
@@ -723,7 +746,7 @@ CREATE TABLE public.read_notifications (
     id integer NOT NULL,
     notification_id integer NOT NULL,
     user_id text NOT NULL,
-    read_at timestamp without time zone DEFAULT '2026-08-10 02:11:23.137067'::timestamp without time zone NOT NULL
+    read_at timestamp without time zone DEFAULT '2026-08-23 12:11:35.617292'::timestamp without time zone NOT NULL
 );
 
 
@@ -1967,5 +1990,5 @@ ALTER TABLE ONLY public.workspace_settings
 -- PostgreSQL database dump complete
 --
 
-\unrestrict CDlJCtrZmaA9qB6KPmf0pXvI36iPeqd7PxuGcxFjlG2cLgdX0mPCtDIo6jr0Ovo
+\unrestrict PZUTGUHqfmkKYSCuYuAj2Ukq6dSbx0m6pK6O9lQneWAMGFCT8T4WNowLTuYbnve
 
