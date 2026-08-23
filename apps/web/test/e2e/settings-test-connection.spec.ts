@@ -86,12 +86,14 @@ describe('pOST /api/settings/test-connection', () => {
     }
   })
 
-  test('succeeds for ollama embedding with 2048 dims', async ({ server }) => {
+  test('succeeds for ollama embedding with native 2048 dims, requesting dimensions:2048', async ({ server }) => {
     const { cookies } = await givenVerifiedUser()
 
-    const fetchStub = async (url: string | URL | Request): Promise<Response> => {
+    const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
       expect(urlString).toContain('/api/embed')
+      const body = JSON.parse(String(init?.body))
+      expect(body.dimensions).toBe(2048)
       return makeOllamaEmbeddingResponse(2048)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -111,12 +113,14 @@ describe('pOST /api/settings/test-connection', () => {
     }
   })
 
-  test('returns ok:false with dims for non-2048 ollama embedding', async ({ server }) => {
+  test('accepts ollama embedding that ignores dimensions and returns sub-2048 (padded to 2048)', async ({ server }) => {
     const { cookies } = await givenVerifiedUser()
 
-    const fetchStub = async (url: string | URL | Request): Promise<Response> => {
+    const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
       expect(urlString).toContain('/api/embed')
+      const body = JSON.parse(String(init?.body))
+      expect(body.dimensions).toBe(2048)
       return makeOllamaEmbeddingResponse(768)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -129,7 +133,35 @@ describe('pOST /api/settings/test-connection', () => {
       })
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body).toEqual({ ok: false, dims: 768, expected: 2048 })
+      expect(body).toEqual({ ok: true })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('rejects ollama model whose native output exceeds 2048 with a clear error', async ({ server }) => {
+    const { cookies } = await givenVerifiedUser()
+
+    const fetchStub = async (url: string | URL | Request): Promise<Response> => {
+      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
+      expect(urlString).toContain('/api/embed')
+      return makeOllamaEmbeddingResponse(4096)
+    }
+    vi.stubGlobal('fetch', fetchStub)
+
+    try {
+      const res = await server('/api/settings/test-connection', {
+        method: 'POST',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'embedding', provider: 'ollama', model: 'nomic-embed-text' }),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ok).toBe(false)
+      expect(body.error).toContain('exceed')
+      expect(body.error).toContain('2048')
+      expect(body.error).toContain('unsupported')
     }
     finally {
       vi.unstubAllGlobals()
@@ -184,7 +216,7 @@ describe('pOST /api/settings/test-connection', () => {
     }
   })
 
-  test('succeeds for omlx embedding with 2048 dims via /v1/embeddings', async ({ server }) => {
+  test('succeeds for omlx embedding with native 2048 dims, requesting dimensions:2048', async ({ server }) => {
     const { cookies } = await givenVerifiedUser()
 
     const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -192,7 +224,8 @@ describe('pOST /api/settings/test-connection', () => {
       expect(urlString).toContain('/v1/embeddings')
       const body = JSON.parse(String(init?.body))
       expect(body.model).toBe('mlx-community/all-MiniLM-L6-v2')
-      expect(body.input).toBe('dimension probe')
+      expect(body.input).toEqual(['dimension probe'])
+      expect(body.dimensions).toBe(2048)
       return makeOmlxEmbeddingsResponse(2048)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -212,12 +245,14 @@ describe('pOST /api/settings/test-connection', () => {
     }
   })
 
-  test('returns ok:false with dims for non-2048 omlx embedding', async ({ server }) => {
+  test('accepts omlx embedding that ignores dimensions and returns sub-2048 (padded to 2048)', async ({ server }) => {
     const { cookies } = await givenVerifiedUser()
 
-    const fetchStub = async (url: string | URL | Request): Promise<Response> => {
+    const fetchStub = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
       expect(urlString).toContain('/v1/embeddings')
+      const body = JSON.parse(String(init?.body))
+      expect(body.dimensions).toBe(2048)
       return makeOmlxEmbeddingsResponse(768)
     }
     vi.stubGlobal('fetch', fetchStub)
@@ -230,7 +265,35 @@ describe('pOST /api/settings/test-connection', () => {
       })
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body).toEqual({ ok: false, dims: 768, expected: 2048 })
+      expect(body).toEqual({ ok: true })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test('rejects omlx model whose native output exceeds 2048 with a clear error', async ({ server }) => {
+    const { cookies } = await givenVerifiedUser()
+
+    const fetchStub = async (url: string | URL | Request): Promise<Response> => {
+      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
+      expect(urlString).toContain('/v1/embeddings')
+      return makeOmlxEmbeddingsResponse(4096)
+    }
+    vi.stubGlobal('fetch', fetchStub)
+
+    try {
+      const res = await server('/api/settings/test-connection', {
+        method: 'POST',
+        headers: { 'cookie': cookies, 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'embedding', provider: 'omlx', model: 'mlx-community/all-MiniLM-L6-v2' }),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ok).toBe(false)
+      expect(body.error).toContain('exceed')
+      expect(body.error).toContain('2048')
+      expect(body.error).toContain('unsupported')
     }
     finally {
       vi.unstubAllGlobals()

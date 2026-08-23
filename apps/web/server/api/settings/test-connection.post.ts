@@ -2,6 +2,17 @@ import process from 'node:process'
 import { resolveEmbeddingProvider, resolveLLMProvider } from '../../lib/ai/registry'
 import { EMBEDDING_DIMENSIONS } from '../../lib/ai/types'
 
+/**
+ * Error thrown by the embedding adapters (normalizeEmbeddingDimensions) when a
+ * provider returns a vector longer than the graph-store width. That model
+ * cannot reach the 2048 target and is unsupported.
+ */
+export const OVER_DIMENSIONS_ERROR = 'above the'
+
+function isOverDimensionsError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes(OVER_DIMENSIONS_ERROR)
+}
+
 function validateRole(value: unknown): 'agent' | 'extraction' | 'embedding' {
   if (value === 'agent' || value === 'extraction' || value === 'embedding')
     return value
@@ -14,24 +25,16 @@ function validateProvider(value: unknown): 'openrouter' | 'ollama' | 'omlx' {
   throw createError({ statusCode: 400, message: 'provider must be \'openrouter\', \'ollama\' or \'omlx\'' })
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, { ...init, signal: controller.signal })
-  }
-  finally {
-    clearTimeout(timeout)
-  }
-}
-
 /**
  * Test a live provider/model combination without saving it.
  *
- * - Chat roles (agent/extraction): one minimal completion.
- * - Embedding: probe with one tiny input, no `dimensions` param, and accept
- *   only the graph-store width (2048). Mismatch is a validation outcome
- *   returned as `{ ok: false, dims, expected: 2048 }`, not a server error.
+ * - Chat (agent/extraction): one minimal completion.
+ * - Embedding: probe with one tiny input. The adapter requests
+ *   `dimensions: 2048` from the provider (native Matryoshka truncation where
+ *   supported), zero-pads sub-2048 output, and throws when native output
+ *   exceeds 2048. So a successful embed() call means the model can reach
+ *   2048 and is accepted. A >2048 native model surfaces as a clear,
+ *   user-facing "unsupported" error.
  * - All other errors (auth, unreachable, unknown model) are returned as
  *   `{ ok: false, error }`. 4xx is reserved for malformed requests/authz.
  */
@@ -68,65 +71,23 @@ export default defineEventHandler(async (event) => {
       return { ok: true }
     }
 
-    // Embedding role
+    // Embedding role. All three providers go through the adapter, which
+    // requests `dimensions: 2048` and normalizes output to exactly 2048
+    // (native truncation, zero-pad for sub-2048, throw for >2048). A
+    // successful embed() therefore proves the model can reach 2048.
     const resolved = resolveEmbeddingProvider(env, settings, { timeoutMs, maxAttempts: 1 })
-
-    if (resolved.kind === 'openrouter') {
-      const embeddings = await resolved.provider.embed(['dimension probe'])
-      const dims = embeddings[0]?.length ?? 0
-      if (dims !== EMBEDDING_DIMENSIONS) {
-        return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
-      }
-      return { ok: true }
-    }
-
-    // Ollama embedding: raw /api/embed without dimensions param.
-    if (resolved.kind === 'ollama') {
-      const response = await fetchWithTimeout(
-        `${resolved.baseUrl}/api/embed`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: resolved.model, input: 'dimension probe' }),
-        },
-        timeoutMs,
-      )
-      if (!response.ok) {
-        const text = await response.text()
-        return { ok: false, error: `Ollama returned ${response.status}: ${text}` }
-      }
-      const payload = await response.json() as { embeddings: number[][] }
-      const dims = payload.embeddings[0]?.length ?? 0
-      if (dims !== EMBEDDING_DIMENSIONS) {
-        return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
-      }
-      return { ok: true }
-    }
-
-    // oMLX embedding: OpenAI-compatible /embeddings endpoint.
-    const response = await fetchWithTimeout(
-      `${resolved.baseUrl}/embeddings`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: resolved.model, input: 'dimension probe' }),
-      },
-      timeoutMs,
-    )
-    if (!response.ok) {
-      const text = await response.text()
-      return { ok: false, error: `oMLX returned ${response.status}: ${text}` }
-    }
-    const payload = await response.json() as { data: { embedding: number[] }[] }
-    const dims = payload.data[0]?.embedding.length ?? 0
-    if (dims !== EMBEDDING_DIMENSIONS) {
-      return { ok: false, dims, expected: EMBEDDING_DIMENSIONS }
-    }
+    await resolved.provider.embed(['dimension probe'])
     return { ok: true }
   }
   catch (err) {
     if (err && typeof err === 'object' && 'statusCode' in err && (err as any).statusCode === 400) {
       throw err
+    }
+    if (isOverDimensionsError(err)) {
+      return {
+        ok: false,
+        error: `This model's native embedding exceeds the supported ${EMBEDDING_DIMENSIONS} dimensions — it is unsupported. Pick a model that outputs at most ${EMBEDDING_DIMENSIONS} dimensions.`,
+      }
     }
     return { ok: false, error: err instanceof Error ? err.message : 'unknown error' }
   }
