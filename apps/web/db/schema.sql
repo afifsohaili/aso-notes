@@ -103,6 +103,7 @@ DROP INDEX IF EXISTS public.idx_links_from_note_id;
 DROP INDEX IF EXISTS public.idx_concepts_embedding_hnsw;
 DROP INDEX IF EXISTS public.idx_chunks_note_id;
 DROP INDEX IF EXISTS public.idx_chunks_embedding_hnsw;
+DROP INDEX IF EXISTS public.idx_chunks_bm25;
 DROP INDEX IF EXISTS public.folders_synced_folder_path_unique;
 DROP INDEX IF EXISTS public.folders_synced_folder_id_idx;
 DROP INDEX IF EXISTS public.consolidation_snapshots_workspace_id_idx;
@@ -1337,6 +1338,13 @@ CREATE INDEX folders_synced_folder_id_idx ON public.folders USING btree (synced_
 --
 
 CREATE UNIQUE INDEX folders_synced_folder_path_unique ON public.folders USING btree (synced_folder_id, path);
+
+
+--
+-- Name: idx_chunks_bm25; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chunks_bm25 ON public.chunks USING paradedb (id, workspace_id, text) WITH (key_field=id);
 
 
 --

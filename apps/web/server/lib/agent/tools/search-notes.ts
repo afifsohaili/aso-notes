@@ -1,12 +1,11 @@
 import type { AgentTool, AgentToolResult } from '../types'
-import { sql } from 'kysely'
-import { halfvecLiteral } from '../vector'
+import { hybridSearchChunks } from '../../retrieval'
 
 export const SEARCH_NOTES_TOOL_NAME = 'search_notes'
 
 export const searchNotesTool: AgentTool = {
   name: SEARCH_NOTES_TOOL_NAME,
-  description: 'Semantic search over note chunks. Returns the most relevant note passages for a query.',
+  description: 'Hybrid semantic + lexical search over note chunks. Returns the most relevant note passages for a query.',
   parameters: {
     type: 'object',
     properties: {
@@ -32,30 +31,16 @@ export const searchNotesTool: AgentTool = {
     const limit = Math.max(1, Math.min(20, Math.floor(Number(args.limit) || 5)))
     const [queryEmbedding] = await ctx.embedding.embed([query])
 
-    const rows = await ctx.db
-      .selectFrom('chunks')
-      .innerJoin('notes', 'notes.id', 'chunks.note_id')
-      .select([
-        'notes.path',
-        'notes.title',
-        'chunks.text',
-        'chunks.seq',
-        sql<number>`chunks.embedding <=> ${halfvecLiteral(queryEmbedding!)}`.as('distance'),
-      ])
-      .where('chunks.workspace_id', '=', ctx.workspaceId)
-      .where('notes.workspace_id', '=', ctx.workspaceId)
-      .orderBy('distance', 'asc')
-      .limit(limit)
-      .execute()
+    const rows = await hybridSearchChunks(ctx.db, ctx.workspaceId, query, queryEmbedding!, limit)
 
-    const byNote = new Map<string, { path: string, title: string, chunks: { text: string, seq: number }[] }>()
+    const byNote = new Map<string, { path: string, title: string, chunks: { text: string, seq: number, score: number }[] }>()
     for (const row of rows) {
       const existing = byNote.get(row.path)
       if (existing) {
-        existing.chunks.push({ text: row.text, seq: row.seq })
+        existing.chunks.push({ text: row.text, seq: row.seq, score: row.score })
       }
       else {
-        byNote.set(row.path, { path: row.path, title: row.title, chunks: [{ text: row.text, seq: row.seq }] })
+        byNote.set(row.path, { path: row.path, title: row.title, chunks: [{ text: row.text, seq: row.seq, score: row.score }] })
       }
     }
 
