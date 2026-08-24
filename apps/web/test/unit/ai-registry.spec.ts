@@ -66,6 +66,16 @@ describe('ai registry — createLLMProvider', () => {
     expect(provider.baseUrl).toBe('http://localhost:8000/v1')
   })
 
+  it('passes the env api key to omlx providers', () => {
+    const provider = createLLMProvider('agent', {
+      NUXT_LLM_AGENT_PROVIDER: 'omlx',
+      NUXT_LLM_AGENT_MODEL: 'mlx-community/llama-3.2-3b',
+      NUXT_LLM_AGENT_API_KEY: 'omlx-secret',
+    })
+    expect(provider.kind).toBe('omlx')
+    expect((provider.provider as OmlxLLMProvider).apiKey).toBe('omlx-secret')
+  })
+
   it('honours an omlx base url override', () => {
     const provider = createLLMProvider('extraction', {
       NUXT_LLM_EXTRACTION_PROVIDER: 'omlx',
@@ -117,6 +127,16 @@ describe('ai registry — createEmbeddingProvider', () => {
     expect(provider.kind).toBe('omlx')
     expect(provider.model).toBe('mlx-community/all-MiniLM-L6-v2')
     expect(provider.baseUrl).toBe('http://localhost:8000/v1')
+  })
+
+  it('passes the env api key to omlx embedding providers', () => {
+    const provider = createEmbeddingProvider({
+      NUXT_LLM_EMBEDDING_PROVIDER: 'omlx',
+      NUXT_LLM_EMBEDDING_MODEL: 'mlx-community/all-MiniLM-L6-v2',
+      NUXT_LLM_EMBEDDING_API_KEY: 'omlx-secret',
+    })
+    expect(provider.kind).toBe('omlx')
+    expect((provider.provider as OmlxEmbeddingProvider).apiKey).toBe('omlx-secret')
   })
 
   it('honours an omlx embedding base url override', () => {

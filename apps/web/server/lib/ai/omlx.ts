@@ -17,6 +17,11 @@ export const OMLX_BASE_URL = 'http://localhost:8000/v1'
 export interface OmlxOptions {
   model: string
   baseUrl?: string
+  /**
+   * API key for servers with authentication enabled (oMLX main key or
+   * sub-key). Sent as `Authorization: Bearer <key>`; omitted when unset.
+   */
+  apiKey?: string
   /** Injectable for tests — no live API calls in the test suite. */
   fetchFn?: typeof fetch
   /** Injectable for tests — no real sleeps in the test suite. */
@@ -82,6 +87,7 @@ interface ChatCompletionsResponse {
 export class OmlxLLMProvider implements LLMProvider {
   private readonly model: string
   private readonly baseUrl: string
+  readonly apiKey?: string
   readonly resilience: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>>
   private readonly fetchFn: typeof fetch
   private readonly sleepFn: (ms: number) => Promise<void>
@@ -89,6 +95,7 @@ export class OmlxLLMProvider implements LLMProvider {
   constructor(options: OmlxOptions) {
     this.model = options.model
     this.baseUrl = options.baseUrl ?? OMLX_BASE_URL
+    this.apiKey = options.apiKey
     this.fetchFn = options.fetchFn ?? fetch
     this.sleepFn = options.sleepFn ?? (async (_ms: number) => {})
     this.resilience = {
@@ -120,7 +127,10 @@ export class OmlxLLMProvider implements LLMProvider {
 
     const response = await resilientFetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+      },
       body: JSON.stringify(body),
       signal,
     }, {
@@ -169,6 +179,7 @@ interface EmbeddingsResponse {
 export class OmlxEmbeddingProvider implements EmbeddingProvider {
   private readonly model: string
   private readonly baseUrl: string
+  readonly apiKey?: string
   readonly resilience: Required<Pick<ResilientFetchOptions, 'timeoutMs' | 'maxAttempts' | 'baseDelayMs'>>
   private readonly fetchFn: typeof fetch
   private readonly sleepFn: (ms: number) => Promise<void>
@@ -177,6 +188,7 @@ export class OmlxEmbeddingProvider implements EmbeddingProvider {
   constructor(options: OmlxEmbeddingOptions) {
     this.model = options.model
     this.baseUrl = options.baseUrl ?? OMLX_BASE_URL
+    this.apiKey = options.apiKey
     this.fetchFn = options.fetchFn ?? fetch
     this.sleepFn = options.sleepFn ?? (async (_ms: number) => {})
     this.dimensions = options.dimensions ?? EMBEDDING_DIMENSIONS
@@ -190,7 +202,10 @@ export class OmlxEmbeddingProvider implements EmbeddingProvider {
   async embed(texts: string[]): Promise<number[][]> {
     const response = await resilientFetch(`${this.baseUrl}/embeddings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model: this.model,
         input: texts,

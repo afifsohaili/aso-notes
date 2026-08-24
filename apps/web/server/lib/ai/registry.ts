@@ -26,7 +26,9 @@ export { DEFAULT_CHAT_MODEL, OPENROUTER_BASE_URL } from './openrouter-llm'
  *   NUXT_LLM_EMBEDDING_PROVIDER / _BASE_URL / _MODEL / _API_KEY
  *
  * Provider defaults to 'openrouter'. Base URL defaults per provider.
- * API key is required for openrouter and ignored for ollama and omlx.
+ * API key is required for openrouter, optional for omlx (sent as
+ * `Authorization: Bearer` when set — oMLX servers with auth enabled reject
+ * unauthenticated requests), and ignored for ollama.
  * Model falls back to the provider default (openrouter only — ollama and
  * omlx require an explicit model). omlx defaults to the local oMLX server
  * at http://localhost:8000/v1. No legacy env vars are honored.
@@ -173,7 +175,7 @@ export function resolveLLMProvider(role: LlmRole, env: EnvMap, settings: Resolve
     provider = new OllamaLLMProvider({ model, baseUrl, ...providerOptions })
   }
   else if (kind === 'omlx') {
-    provider = new OmlxLLMProvider({ model, baseUrl, ...providerOptions })
+    provider = new OmlxLLMProvider({ model, baseUrl, apiKey: env[keys.apiKey], ...providerOptions })
   }
   else {
     provider = new OpenRouterLLMProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })
@@ -203,7 +205,7 @@ export function resolveEmbeddingProvider(env: EnvMap, settings: ResolvedProvider
     provider = new OllamaEmbeddingProvider({ model, baseUrl, ...providerOptions })
   }
   else if (kind === 'omlx') {
-    provider = new OmlxEmbeddingProvider({ model, baseUrl, ...providerOptions })
+    provider = new OmlxEmbeddingProvider({ model, baseUrl, apiKey: env[keys.apiKey], ...providerOptions })
   }
   else {
     provider = new OpenRouterEmbeddingProvider({ apiKey: resolveApiKey(env, keys.apiKey), model, baseUrl, ...providerOptions })

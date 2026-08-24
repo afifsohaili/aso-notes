@@ -59,6 +59,19 @@ describe('omlxLLMProvider', () => {
     expect(headers['Content-Type']).toBe('application/json')
   })
 
+  it('sends Authorization Bearer when an api key is configured', async () => {
+    const { calls, fetchFn } = mockFetch(200, {
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+    })
+    const provider = new OmlxLLMProvider({ model: 'm', apiKey: 'omlx-secret', fetchFn })
+
+    await provider.complete({ messages: [{ role: 'user', content: 'hi' }] })
+
+    const headers = calls[0]!.init.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer omlx-secret')
+    expect(headers['Content-Type']).toBe('application/json')
+  })
+
   it('maps tools, tool_choice, maxTokens and temperature to the wire format', async () => {
     const { calls, fetchFn } = mockFetch(200, {
       choices: [{ message: { role: 'assistant', content: '{}' } }],
@@ -270,6 +283,17 @@ describe('omlxEmbeddingProvider', () => {
 
     const body = JSON.parse(String(calls[0]!.init.body))
     expect(body.dimensions).toBe(2)
+  })
+
+  it('sends Authorization Bearer when an api key is configured', async () => {
+    const { calls, fetchFn } = mockFetch(200, { data: [{ index: 0, embedding: [0.1] }] })
+    const provider = new OmlxEmbeddingProvider({ model: 'm', apiKey: 'omlx-secret', fetchFn, dimensions: 2 })
+
+    await provider.embed(['x'])
+
+    const headers = calls[0]!.init.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer omlx-secret')
+    expect(headers['Content-Type']).toBe('application/json')
   })
 
   it('requests the graph-store width by default', async () => {

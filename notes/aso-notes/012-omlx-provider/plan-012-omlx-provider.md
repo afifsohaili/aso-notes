@@ -15,7 +15,7 @@ The app previously supported `openrouter` (remote, paid) and `ollama` (local). `
 - **Provider kind**: add a new `omlx` provider kind rather than generalizing to a generic openai-compatible provider. This keeps zero risk to existing provider paths.
 - **Roles**: support `omlx` for the agent, extraction, and embedding roles. The consolidation role falls back to the extraction config (existing pattern, no change).
 - **Embedding strategy**: zero-pad short vectors to `EMBEDDING_DIMENSIONS = 2048` (like ollama) rather than migrating the graph store to 1024. This keeps the graph store unchanged.
-- **Configurability**: `base_url` is the seam for remote Macs. Default is `http://localhost:8000/v1`; a remote Mac uses a custom `base_url`. oMLX API-key auth is not supported by the app (no api-key field in the provider; works with an unauthenticated oMLX server).
+- **Configurability**: `base_url` is the seam for remote Macs. Default is `http://localhost:8000/v1`; a remote Mac uses a custom `base_url`. API-key auth is supported: the per-role `NUXT_LLM_*_API_KEY` env var is sent as `Authorization: Bearer` when set (oMLX main key or sub-key); an unauthenticated oMLX server works with no key.
 - **Model**: `omlx` requires an explicit model (no default), like ollama.
 
 ## Implementation status per phase
@@ -25,12 +25,12 @@ The app previously supported `openrouter` (remote, paid) and `ollama` (local). `
 Built:
 
 - `apps/web/server/lib/ai/omlx.ts`:
-  - `OmlxLLMProvider` — OpenAI `/chat/completions` wire format, tool_calls, response_format, usage, finish_reason; no Authorization header.
-  - `OmlxEmbeddingProvider` — `/embeddings`; zero-pads short vectors to `EMBEDDING_DIMENSIONS = 2048`, errors if longer.
+  - `OmlxLLMProvider` — OpenAI `/chat/completions` wire format, tool_calls, response_format, usage, finish_reason; `Authorization: Bearer` header when an api key is configured.
+  - `OmlxEmbeddingProvider` — `/embeddings`; zero-pads short vectors to `EMBEDDING_DIMENSIONS = 2048`, errors if longer; `Authorization: Bearer` header when an api key is configured.
 - `apps/web/server/lib/ai/registry.ts`:
   - `ProviderKind` gains `'omlx'`.
   - Default `OMLX_BASE_URL = 'http://localhost:8000/v1'`.
-  - Model required, no API key.
+  - Model required; API key optional (env `NUXT_LLM_*_API_KEY` passed through).
 
 Tests:
 
